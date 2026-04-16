@@ -1,0 +1,741 @@
+// Copyright 2026 fitctl contributors
+// SPDX-License-Identifier: Apache-2.0
+
+//! Batch host classification over existing contracts and service profiles.
+//!
+//! This layer reuses the validation engine across a matrix of inputs and emits a typed summary
+//! artifact instead of inventing a separate fit-decision model.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+
+use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
+
+use crate::artifacts::batch_classification_report_v1::{
+    BatchClassificationBasisV1, BatchClassificationContractRefV1,
+    BatchClassificationContractSummaryV1, BatchClassificationReportPayloadV1,
+    BatchClassificationReportV1, BatchClassificationRowV1, BatchClassificationServiceProfileRefV1,
+    BatchClassificationServiceProfileSummaryV1,
+};
+use crate::artifacts::contract_v1::HostContractV1;
+use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
+use crate::artifacts::schema_ids_v1::BATCH_CLASSIFICATION_REPORT_SCHEMA_ID;
+use crate::artifacts::semantic_hash_v1::{
+    semantic_hash_hex_for_contract, semantic_hash_hex_for_service_profile,
+};
+use crate::artifacts::service_profile_v1::ServiceProfileV1;
+use crate::artifacts::validation_v1::{
+    validate_batch_classification_report, ArtifactValidationErrorCode,
+};
+use crate::validate::{
+    validate_request_v1, ValidationError, ValidationErrorCode, ValidationModeV1,
+    ValidationRequestV1, ValidationVerdictV1,
+};
+
+pub const BATCH_CLASSIFICATION_ERROR_MODEL_ID: &str = "fitctl.batch_classification.v1";
+pub const BATCH_CLASSIFICATION_ERROR_MODEL_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchClassificationErrorCode {
+    BatchInputInvalid,
+    BatchSchemaUnsupported,
+    BatchArtifactInvalid,
+    BatchExecutionFailed,
+}
+
+impl BatchClassificationErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BatchInputInvalid => "batch_input_invalid",
+            Self::BatchSchemaUnsupported => "batch_schema_unsupported",
+            Self::BatchArtifactInvalid => "batch_artifact_invalid",
+            Self::BatchExecutionFailed => "batch_execution_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchClassificationError {
+    pub code: BatchClassificationErrorCode,
+    pub checkpoint_id: &'static str,
+    pub message: String,
+    pub error_model_id: &'static str,
+    pub error_model_version: u32,
+}
+
+impl BatchClassificationError {
+    fn new(
+        code: BatchClassificationErrorCode,
+        checkpoint_id: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            checkpoint_id,
+            message: message.into(),
+            error_model_id: BATCH_CLASSIFICATION_ERROR_MODEL_ID,
+            error_model_version: BATCH_CLASSIFICATION_ERROR_MODEL_VERSION,
+        }
+    }
+}
+
+impl std::fmt::Display for BatchClassificationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} [{} at {}]",
+            self.message,
+            self.code.as_str(),
+            self.checkpoint_id
+        )
+    }
+}
+
+impl std::error::Error for BatchClassificationError {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BatchClassificationRequestV1 {
+    pub contracts: Vec<HostContractV1>,
+    pub service_profiles: Vec<ServiceProfileV1>,
+    pub validated_at: String,
+}
+
+pub fn classify_batch_v1(
+    request: BatchClassificationRequestV1,
+) -> Result<BatchClassificationReportV1, BatchClassificationError> {
+    ensure_validated_at(&request.validated_at)?;
+
+    let contracts = sort_unique_contracts(&request.contracts)?;
+    let service_profiles = sort_unique_service_profiles(&request.service_profiles)?;
+
+    if contracts.is_empty() {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_request_validate",
+            "batch classification requires at least one contract artifact",
+        ));
+    }
+    if service_profiles.is_empty() {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_request_validate",
+            "batch classification requires at least one service-profile artifact",
+        ));
+    }
+
+    let ordered_contracts = contracts
+        .values()
+        .map(|contract| {
+            Ok(BatchClassificationContractRefV1 {
+                artifact_id: contract.envelope.artifact_id.clone(),
+                semantic_hash: semantic_hash_hex_for_contract(contract).map_err(|error| {
+                    BatchClassificationError::new(
+                        BatchClassificationErrorCode::BatchExecutionFailed,
+                        "batch_validate",
+                        error.message,
+                    )
+                })?,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let ordered_service_profiles = service_profiles
+        .values()
+        .map(|profile| {
+            Ok(BatchClassificationServiceProfileRefV1 {
+                artifact_id: profile.envelope.artifact_id.clone(),
+                semantic_hash: semantic_hash_hex_for_service_profile(profile).map_err(|error| {
+                    BatchClassificationError::new(
+                        BatchClassificationErrorCode::BatchExecutionFailed,
+                        "batch_validate",
+                        error.message,
+                    )
+                })?,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut rows = Vec::new();
+
+    for contract_ref in &ordered_contracts {
+        let contract = contracts
+            .get(contract_ref.artifact_id.as_str())
+            .expect("ordered contracts must match the contract map");
+        for profile_ref in &ordered_service_profiles {
+            let service_profile = service_profiles
+                .get(profile_ref.artifact_id.as_str())
+                .expect("ordered service profiles must match the profile map");
+            let validation_report = validate_request_v1(ValidationRequestV1 {
+                contract: contract.clone(),
+                service_profile: service_profile.clone(),
+                host_state: None,
+                mode: ValidationModeV1::ContractOnly,
+                validated_at: request.validated_at.clone(),
+                notes: Some("batch-classification".to_string()),
+                max_state_age_seconds: None,
+            })
+            .map_err(map_validation_error)?;
+
+            rows.push(BatchClassificationRowV1 {
+                row_id: format!("{}::{}", contract_ref.artifact_id, profile_ref.artifact_id),
+                contract_artifact_id: contract_ref.artifact_id.clone(),
+                contract_semantic_hash: contract_ref.semantic_hash.clone(),
+                service_profile_artifact_id: profile_ref.artifact_id.clone(),
+                service_profile_semantic_hash: profile_ref.semantic_hash.clone(),
+                verdict: validation_report.report.verdict,
+                primary_reason_code: validation_report.report.primary_reason_code,
+                selected_degradation_tier: validation_report.report.selected_degradation_tier,
+                summary: validation_report.report.summary,
+            });
+        }
+    }
+
+    let report = BatchClassificationReportV1 {
+        envelope: ArtifactEnvelopeV1 {
+            schema_id: BATCH_CLASSIFICATION_REPORT_SCHEMA_ID.to_string(),
+            schema_version: 1,
+            artifact_id: build_report_artifact_id(
+                &request.validated_at,
+                &ordered_contracts,
+                &ordered_service_profiles,
+            ),
+            provenance: local_artifact_provenance_v1(
+                "classify:contract_only",
+                request.validated_at.clone(),
+                "classify",
+                build_correlation_id(&ordered_contracts, &ordered_service_profiles),
+            ),
+            redaction: None,
+            signatures: vec![],
+        },
+        classification_basis: BatchClassificationBasisV1 {
+            validation_mode: ValidationModeV1::ContractOnly,
+            validated_at: request.validated_at,
+            validation_engine_id: "fitctl.validate.v1".to_string(),
+            validation_engine_version: "1".to_string(),
+            ordered_contracts: ordered_contracts.clone(),
+            ordered_service_profiles: ordered_service_profiles.clone(),
+        },
+        report: BatchClassificationReportPayloadV1 {
+            rows: rows.clone(),
+            contract_summaries: build_contract_summaries(&ordered_contracts, &rows),
+            service_profile_summaries: build_service_profile_summaries(
+                &ordered_service_profiles,
+                &rows,
+            ),
+        },
+    };
+
+    validate_batch_classification_report(&report).map_err(|error| {
+        let code = match error.code {
+            ArtifactValidationErrorCode::ArtifactSchemaIdInvalid
+            | ArtifactValidationErrorCode::ArtifactSchemaVersionInvalid => {
+                BatchClassificationErrorCode::BatchSchemaUnsupported
+            }
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt
+            | ArtifactValidationErrorCode::ContractBasisInvalid => {
+                BatchClassificationErrorCode::BatchArtifactInvalid
+            }
+        };
+        BatchClassificationError::new(code, "batch_report_emit", error.message)
+    })?;
+
+    Ok(report)
+}
+
+pub fn load_batch_classification_report_from_path(
+    path: &Path,
+) -> Result<BatchClassificationReportV1, BatchClassificationError> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            format!(
+                "failed to read batch classification report {}: {error}",
+                path.display()
+            ),
+        )
+    })?;
+
+    let raw: Value = serde_json::from_str(&text).map_err(|error| {
+        BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            format!(
+                "failed to decode batch classification report {}: {error}",
+                path.display()
+            ),
+        )
+    })?;
+    load_batch_classification_report_from_value(raw)
+}
+
+pub fn load_batch_classification_report_from_value(
+    raw: Value,
+) -> Result<BatchClassificationReportV1, BatchClassificationError> {
+    validate_batch_classification_report_json(&raw)?;
+
+    let report: BatchClassificationReportV1 = serde_json::from_value(raw).map_err(|error| {
+        BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            format!("failed to decode typed batch classification report input: {error}"),
+        )
+    })?;
+
+    validate_batch_classification_report(&report).map_err(|error| {
+        let code = match error.code {
+            ArtifactValidationErrorCode::ArtifactSchemaIdInvalid
+            | ArtifactValidationErrorCode::ArtifactSchemaVersionInvalid => {
+                BatchClassificationErrorCode::BatchSchemaUnsupported
+            }
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt
+            | ArtifactValidationErrorCode::ContractBasisInvalid => {
+                BatchClassificationErrorCode::BatchArtifactInvalid
+            }
+        };
+        BatchClassificationError::new(code, "batch_report_emit", error.message)
+    })?;
+
+    Ok(report)
+}
+
+fn build_contract_summaries(
+    ordered_contracts: &[BatchClassificationContractRefV1],
+    rows: &[BatchClassificationRowV1],
+) -> Vec<BatchClassificationContractSummaryV1> {
+    ordered_contracts
+        .iter()
+        .map(|contract| {
+            let mut fit_profile_ids = Vec::new();
+            let mut degraded_profile_ids = Vec::new();
+            let mut unfit_profile_ids = Vec::new();
+            let mut indeterminate_profile_ids = Vec::new();
+
+            for row in rows
+                .iter()
+                .filter(|row| row.contract_artifact_id == contract.artifact_id)
+            {
+                match row.verdict {
+                    ValidationVerdictV1::Fit => {
+                        fit_profile_ids.push(row.service_profile_artifact_id.clone())
+                    }
+                    ValidationVerdictV1::FitWithDegradation => {
+                        degraded_profile_ids.push(row.service_profile_artifact_id.clone())
+                    }
+                    ValidationVerdictV1::Unfit => {
+                        unfit_profile_ids.push(row.service_profile_artifact_id.clone())
+                    }
+                    ValidationVerdictV1::Indeterminate => {
+                        indeterminate_profile_ids.push(row.service_profile_artifact_id.clone())
+                    }
+                }
+            }
+
+            BatchClassificationContractSummaryV1 {
+                contract_artifact_id: contract.artifact_id.clone(),
+                fit_profile_ids,
+                degraded_profile_ids,
+                unfit_profile_ids,
+                indeterminate_profile_ids,
+            }
+        })
+        .collect()
+}
+
+fn build_service_profile_summaries(
+    ordered_service_profiles: &[BatchClassificationServiceProfileRefV1],
+    rows: &[BatchClassificationRowV1],
+) -> Vec<BatchClassificationServiceProfileSummaryV1> {
+    ordered_service_profiles
+        .iter()
+        .map(|profile| {
+            let mut fit_contract_ids = Vec::new();
+            let mut degraded_contract_ids = Vec::new();
+            let mut unfit_contract_ids = Vec::new();
+            let mut indeterminate_contract_ids = Vec::new();
+
+            for row in rows
+                .iter()
+                .filter(|row| row.service_profile_artifact_id == profile.artifact_id)
+            {
+                match row.verdict {
+                    ValidationVerdictV1::Fit => {
+                        fit_contract_ids.push(row.contract_artifact_id.clone())
+                    }
+                    ValidationVerdictV1::FitWithDegradation => {
+                        degraded_contract_ids.push(row.contract_artifact_id.clone())
+                    }
+                    ValidationVerdictV1::Unfit => {
+                        unfit_contract_ids.push(row.contract_artifact_id.clone())
+                    }
+                    ValidationVerdictV1::Indeterminate => {
+                        indeterminate_contract_ids.push(row.contract_artifact_id.clone())
+                    }
+                }
+            }
+
+            BatchClassificationServiceProfileSummaryV1 {
+                service_profile_artifact_id: profile.artifact_id.clone(),
+                fit_contract_ids,
+                degraded_contract_ids,
+                unfit_contract_ids,
+                indeterminate_contract_ids,
+            }
+        })
+        .collect()
+}
+
+fn sort_unique_contracts(
+    contracts: &[HostContractV1],
+) -> Result<BTreeMap<String, HostContractV1>, BatchClassificationError> {
+    let mut ordered = BTreeMap::new();
+
+    for contract in contracts {
+        let artifact_id = contract.envelope.artifact_id.clone();
+        if artifact_id.trim().is_empty() {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_contract_select",
+                "contract artifact ids must be non-blank for batch classification",
+            ));
+        }
+        if ordered
+            .insert(artifact_id.clone(), contract.clone())
+            .is_some()
+        {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_contract_select",
+                format!("duplicate contract artifact id {artifact_id} is not allowed"),
+            ));
+        }
+    }
+
+    Ok(ordered)
+}
+
+fn sort_unique_service_profiles(
+    service_profiles: &[ServiceProfileV1],
+) -> Result<BTreeMap<String, ServiceProfileV1>, BatchClassificationError> {
+    let mut ordered = BTreeMap::new();
+
+    for service_profile in service_profiles {
+        let artifact_id = service_profile.envelope.artifact_id.clone();
+        if artifact_id.trim().is_empty() {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_profile_select",
+                "service-profile artifact ids must be non-blank for batch classification",
+            ));
+        }
+        if ordered
+            .insert(artifact_id.clone(), service_profile.clone())
+            .is_some()
+        {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_profile_select",
+                format!("duplicate service-profile artifact id {artifact_id} is not allowed"),
+            ));
+        }
+    }
+
+    Ok(ordered)
+}
+
+fn ensure_validated_at(validated_at: &str) -> Result<(), BatchClassificationError> {
+    if validated_at.trim().is_empty() {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_request_validate",
+            "batch classification requires a non-blank validated-at timestamp",
+        ));
+    }
+    parse_timestamp_seconds(validated_at).map(|_| ())
+}
+
+fn parse_timestamp_seconds(value: &str) -> Result<i64, BatchClassificationError> {
+    if let Some(rest) = value.strip_prefix("unix:") {
+        let seconds = rest.parse::<i64>().map_err(|_| {
+            BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_request_validate",
+                "batch classification validated-at must be RFC3339 UTC or unix:<seconds>",
+            )
+        })?;
+        if seconds < 0 {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_request_validate",
+                "batch classification unix timestamps must be non-negative",
+            ));
+        }
+        return Ok(seconds);
+    }
+
+    parse_rfc3339_utc_seconds(value)
+}
+
+fn parse_rfc3339_utc_seconds(value: &str) -> Result<i64, BatchClassificationError> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || bytes[19] != b'Z'
+    {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_request_validate",
+            "batch classification validated-at must be RFC3339 UTC or unix:<seconds>",
+        ));
+    }
+
+    let year = value[0..4]
+        .parse::<i32>()
+        .map_err(|_| invalid_timestamp_error())?;
+    let month = value[5..7]
+        .parse::<u32>()
+        .map_err(|_| invalid_timestamp_error())?;
+    let day = value[8..10]
+        .parse::<u32>()
+        .map_err(|_| invalid_timestamp_error())?;
+    let hour = value[11..13]
+        .parse::<u32>()
+        .map_err(|_| invalid_timestamp_error())?;
+    let minute = value[14..16]
+        .parse::<u32>()
+        .map_err(|_| invalid_timestamp_error())?;
+    let second = value[17..19]
+        .parse::<u32>()
+        .map_err(|_| invalid_timestamp_error())?;
+
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return Err(invalid_timestamp_error());
+    }
+
+    let days = days_from_civil(year, month, day);
+    Ok(days * 86_400 + i64::from(hour * 3_600 + minute * 60 + second))
+}
+
+fn invalid_timestamp_error() -> BatchClassificationError {
+    BatchClassificationError::new(
+        BatchClassificationErrorCode::BatchInputInvalid,
+        "batch_request_validate",
+        "batch classification validated-at must be RFC3339 UTC or unix:<seconds>",
+    )
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let year = i64::from(year) - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let month = i64::from(month);
+    let day = i64::from(day);
+    let day_of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+fn build_report_artifact_id(
+    validated_at: &str,
+    ordered_contracts: &[BatchClassificationContractRefV1],
+    ordered_service_profiles: &[BatchClassificationServiceProfileRefV1],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(validated_at.as_bytes());
+    for contract in ordered_contracts {
+        hasher.update(contract.artifact_id.as_bytes());
+        hasher.update(contract.semantic_hash.as_bytes());
+    }
+    for profile in ordered_service_profiles {
+        hasher.update(profile.artifact_id.as_bytes());
+        hasher.update(profile.semantic_hash.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let hex = digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("batch-classification-{hex}")
+}
+
+fn build_correlation_id(
+    ordered_contracts: &[BatchClassificationContractRefV1],
+    ordered_service_profiles: &[BatchClassificationServiceProfileRefV1],
+) -> String {
+    format!(
+        "contracts:{};profiles:{}",
+        ordered_contracts
+            .iter()
+            .map(|value| value.artifact_id.as_str())
+            .collect::<Vec<_>>()
+            .join(","),
+        ordered_service_profiles
+            .iter()
+            .map(|value| value.artifact_id.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
+fn map_validation_error(error: ValidationError) -> BatchClassificationError {
+    let code = match error.code {
+        ValidationErrorCode::ValidationInputInvalid
+        | ValidationErrorCode::ContractArtifactInvalid
+        | ValidationErrorCode::ServiceProfileArtifactInvalid
+        | ValidationErrorCode::StateArtifactInvalid
+        | ValidationErrorCode::ValidationModeUnsupported => {
+            BatchClassificationErrorCode::BatchInputInvalid
+        }
+        ValidationErrorCode::ValidationReportInvalid
+        | ValidationErrorCode::ValidationExecutionFailed => {
+            BatchClassificationErrorCode::BatchExecutionFailed
+        }
+    };
+    BatchClassificationError::new(code, "batch_validate", error.message)
+}
+
+fn validate_batch_classification_report_json(raw: &Value) -> Result<(), BatchClassificationError> {
+    let root = raw.as_object().ok_or_else(|| {
+        BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            "batch classification report must decode to a JSON object",
+        )
+    })?;
+
+    reject_unknown_keys(root, &["envelope", "classification_basis", "report"])?;
+    reject_explicit_nulls(
+        root,
+        &["envelope", "classification_basis", "report"],
+        "batch classification report field",
+    )?;
+
+    let envelope = require_object(root, "envelope", "batch classification envelope")?;
+    reject_unknown_keys(
+        envelope,
+        &[
+            "schema_id",
+            "schema_version",
+            "artifact_id",
+            "provenance",
+            "redaction",
+            "signatures",
+        ],
+    )?;
+    reject_explicit_nulls(
+        envelope,
+        &[
+            "schema_id",
+            "schema_version",
+            "artifact_id",
+            "provenance",
+            "signatures",
+        ],
+        "batch classification envelope field",
+    )?;
+
+    let provenance = require_object(envelope, "provenance", "batch classification provenance")?;
+    reject_unknown_keys(
+        provenance,
+        &[
+            "source",
+            "collected_at",
+            "tool_version",
+            "command_name",
+            "correlation_id",
+        ],
+    )?;
+    reject_explicit_nulls(
+        provenance,
+        &["source", "collected_at"],
+        "batch classification provenance field",
+    )?;
+
+    let basis = require_object(root, "classification_basis", "batch classification basis")?;
+    reject_explicit_nulls(
+        basis,
+        &[
+            "validation_mode",
+            "validated_at",
+            "validation_engine_id",
+            "validation_engine_version",
+            "ordered_contracts",
+            "ordered_service_profiles",
+        ],
+        "batch classification basis field",
+    )?;
+
+    let report = require_object(root, "report", "batch classification report payload")?;
+    reject_explicit_nulls(
+        report,
+        &["rows", "contract_summaries", "service_profile_summaries"],
+        "batch classification report field",
+    )?;
+
+    Ok(())
+}
+
+fn require_object<'a>(
+    value: &'a Map<String, Value>,
+    key: &'static str,
+    label: &'static str,
+) -> Result<&'a Map<String, Value>, BatchClassificationError> {
+    value.get(key).and_then(Value::as_object).ok_or_else(|| {
+        BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            format!("{label} must be a non-null object"),
+        )
+    })
+}
+
+fn reject_unknown_keys(
+    map: &Map<String, Value>,
+    allowed_keys: &[&str],
+) -> Result<(), BatchClassificationError> {
+    if let Some(key) = map.keys().find(|key| !allowed_keys.contains(&key.as_str())) {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            format!("batch classification report contains unsupported field {key}"),
+        ));
+    }
+
+    Ok(())
+}
+
+fn reject_explicit_nulls(
+    map: &Map<String, Value>,
+    keys: &[&str],
+    label: &'static str,
+) -> Result<(), BatchClassificationError> {
+    if let Some(key) = keys
+        .iter()
+        .find(|key| map.get(**key).is_some_and(Value::is_null))
+    {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_input_load",
+            format!("{label} {key} must not be null"),
+        ));
+    }
+
+    Ok(())
+}
+
+pub fn batch_classification_report_schema_id() -> &'static str {
+    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID
+}

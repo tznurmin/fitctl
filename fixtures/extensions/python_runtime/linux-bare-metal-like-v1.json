@@ -1,0 +1,34 @@
+{
+  "schema_id": "fitctl.fixture.extension.org.example.runtime.python.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-bare-metal-like-v1",
+  "namespace": "org.example.runtime.python",
+  "evidence": {
+    "schema_id": "fitctl.extension.org.example.runtime.python.evidence.v1",
+    "schema_version": 1,
+    "collector": {
+      "collector_id": "org.example.runtime.python.collector.v1",
+      "collector_version": "1",
+      "source_family": "fixture_replay"
+    },
+    "claim_metadata": {
+      "assurance_source": "self_observed",
+      "derivation_stage": "normalized",
+      "source_collectors": [
+        "org.example.runtime.python.collector.v1"
+      ],
+      "evidence_paths": [
+        "$.survey.extension_evidence.org.example.runtime.python"
+      ],
+      "trust_evidence_refs": []
+    },
+    "runtime_id": "python3",
+    "runtime_state": "observed",
+    "executable_path": "/usr/bin/python3",
+    "version": {
+      "major": 3,
+      "minor": 11,
+      "patch": 8
+    }
+  }
+}

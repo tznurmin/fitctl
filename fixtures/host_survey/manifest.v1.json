@@ -1,0 +1,90 @@
+{
+  "schema_id": "fitctl.fixture.host_survey.corpus.v1",
+  "schema_version": 1,
+  "corpus_id": "host_survey_core_linux_v1",
+  "fixtures": [
+    {
+      "fixture_id": "linux-bare-metal-like-v1",
+      "path": "linux-bare-metal-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": [
+        "linux-bare-metal-like-fresh-v1",
+        "linux-bare-metal-like-stale-v1",
+        "linux-bare-metal-like-cgroup-limited-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-vm-like-v1",
+      "path": "linux-vm-like-v1.json",
+      "execution_context": "vm_like",
+      "coverage_tags": [
+        "vm_like",
+        "limited_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-container-restricted-v1",
+      "path": "linux-container-restricted-v1.json",
+      "execution_context": "container_restricted",
+      "coverage_tags": [
+        "container_restricted",
+        "limited_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": [
+        "linux-container-runtime-missing-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-v1",
+      "path": "linux-gpu-workstation-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "discrete_gpu"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-network-mixed-like-v1",
+      "path": "linux-network-mixed-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "wifi",
+        "network_odd",
+        "mixed_virtual_network"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-arm-sbc-like-v1",
+      "path": "linux-arm-sbc-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "aarch64",
+        "wifi",
+        "integrated_graphics",
+        "storage_odd",
+        "arm_cpu_fallback"
+      ],
+      "related_state_fixtures": []
+    }
+  ]
+}

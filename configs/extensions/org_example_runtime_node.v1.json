@@ -1,0 +1,21 @@
+{
+  "schema_id": "fitctl.extension-pack.v1",
+  "schema_version": 1,
+  "pack_id": "org-example-runtime-node-v1",
+  "namespace": "org.example.runtime.node",
+  "namespace_owner": "org.example",
+  "pack_version": "1.0.0",
+  "collector_ids": [
+    "org.example.runtime.node.collector.v1"
+  ],
+  "emitted_sections": [
+    {
+      "section_kind": "extension_contract",
+      "schema_id": "fitctl.extension.org.example.runtime.node.contract.v1",
+      "schema_version": 1
+    }
+  ],
+  "required_privilege": "unprivileged",
+  "freshness_model": "static_until_recollected",
+  "failure_semantics": "fail_closed"
+}

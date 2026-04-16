@@ -1,0 +1,228 @@
+{
+  "schema_id": "fitctl.fixture.host_survey.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-arm-sbc-like-v1",
+  "collected_at": "2025-04-22T14:37:19Z",
+  "host_alias": "demo-arm-sbc-01",
+  "execution_context": {
+    "visibility_scope": "bare_metal_like",
+    "privilege_level": "full",
+    "container_runtime": null,
+    "notes": [
+      "device-tree platform model detected"
+    ]
+  },
+  "collectors": [
+    "procfs",
+    "cpuinfo_flags",
+    "sysfs",
+    "sysfs_cpu_topology",
+    "cgroupfs",
+    "mountinfo",
+    "netdev",
+    "iproute2_addr",
+    "block_and_filesystem",
+    "drm_class",
+    "drm_platform_graphics",
+    "devfs_accelerator_nodes"
+  ],
+  "observations": {
+    "hostname": {
+      "state": "observed",
+      "value": "demo-arm-sbc-01"
+    },
+    "cpu": {
+      "state": "partially_observed",
+      "limitation_reason": "collector_limitation",
+      "value": {
+        "architecture": "aarch64",
+        "logical_cores": 4,
+        "model": "Arm Cortex-A72",
+        "model_basis": "arm_part_lookup",
+        "physical_cores": 4,
+        "threads_per_core": 1,
+        "feature_flags": [
+          "asimd",
+          "cpuid",
+          "crc32",
+          "evtstrm",
+          "fp"
+        ]
+      }
+    },
+    "memory": {
+      "state": "observed",
+      "value": {
+        "total_bytes": 8175472640
+      }
+    },
+    "storage": {
+      "state": "observed",
+    "value": {
+      "block_devices": [
+        "mmcblk0",
+        "sda",
+        "sdb",
+        "zram0"
+      ],
+      "block_device_details": [
+        {
+          "name": "mmcblk0",
+          "class": "solid_state",
+          "removable": false
+        },
+        {
+          "name": "sda",
+          "class": "rotational",
+          "removable": false
+        },
+        {
+          "name": "sdb",
+          "class": "rotational",
+          "removable": true
+        },
+        {
+          "name": "zram0",
+          "class": "ram",
+          "removable": false
+        }
+      ],
+      "mounts": [
+        "/",
+        "/boot",
+        "/boot/firmware",
+        "/home"
+      ],
+      "mount_details": [
+        {
+          "path": "/",
+          "filesystem_type": "ext4",
+          "role": "root"
+        },
+        {
+          "path": "/boot",
+          "filesystem_type": "vfat",
+          "role": "boot"
+        },
+        {
+          "path": "/boot/firmware",
+          "filesystem_type": "vfat",
+          "role": "boot"
+        },
+        {
+          "path": "/home",
+          "filesystem_type": "ext4",
+          "role": "home"
+        }
+      ]
+    }
+  },
+    "network": {
+      "state": "observed",
+      "value": {
+        "interfaces": [
+          "eth0",
+          "lo",
+          "wlan0"
+        ],
+        "interface_details": [
+          {
+            "name": "eth0",
+            "interface_kind": "ethernet",
+            "interface_virtuality": "physical",
+            "link_state": "up",
+            "carrier_state": "up",
+            "duplex": "full",
+            "mtu": 1500,
+            "speed_mbps": 1000,
+            "mac_address": "52:54:00:12:34:56",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "192.0.2.20",
+                "prefix_len": 24
+              }
+            ]
+          },
+          {
+            "name": "lo",
+            "interface_kind": "loopback",
+            "interface_virtuality": "virtual",
+            "link_state": "unknown",
+            "carrier_state": "unknown",
+            "duplex": "unknown",
+            "mtu": 65536,
+            "speed_mbps": null,
+            "mac_address": "00:00:00:00:00:00",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "127.0.0.1",
+                "prefix_len": 8
+              },
+              {
+                "family": "ipv6",
+                "address": "::1",
+                "prefix_len": 128
+              }
+            ]
+          },
+          {
+            "name": "wlan0",
+            "interface_kind": "wireless",
+            "interface_virtuality": "physical",
+            "link_state": "dormant",
+            "carrier_state": "down",
+            "duplex": "unknown",
+            "mtu": 1500,
+            "speed_mbps": null,
+            "mac_address": "52:54:00:65:43:21",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "198.51.100.20",
+                "prefix_len": 24
+              }
+            ]
+          }
+        ],
+        "addressability_summary": {
+          "non_loopback_address_families": [
+            "ipv4"
+          ],
+          "default_route_families": [
+            "ipv4"
+          ]
+        }
+      }
+    },
+    "accelerators": {
+      "state": "observed",
+      "value": {
+        "devices": [
+          {
+            "kind": "gpu",
+            "discovery_source": "drm_platform",
+            "vendor": "broadcom",
+            "driver": "vc4"
+          }
+        ],
+        "operability": {
+          "static_operability": "operable",
+          "driver_bound_devices": 1,
+          "visible_device_nodes": [
+            "/dev/dri/card0",
+            "/dev/dri/renderD128"
+          ]
+        }
+      }
+    },
+    "topology": {
+      "state": "observed",
+      "value": {
+        "numa_nodes": 1,
+        "cpu_packages": 1
+      }
+    }
+  }
+}

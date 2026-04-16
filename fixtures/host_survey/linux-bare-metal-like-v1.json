@@ -1,0 +1,167 @@
+{
+  "schema_id": "fitctl.fixture.host_survey.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-bare-metal-like-v1",
+  "collected_at": "2025-04-21T14:37:19Z",
+  "host_alias": "demo-baremetal-01",
+  "execution_context": {
+    "visibility_scope": "bare_metal_like",
+    "privilege_level": "full",
+    "container_runtime": null,
+    "notes": []
+  },
+  "collectors": [
+    "procfs",
+    "cpuinfo_flags",
+    "sysfs",
+    "sysfs_cpu_topology",
+    "sysfs_cpu_cache",
+    "cgroupfs",
+    "mountinfo",
+    "netdev",
+    "iproute2_addr",
+    "block_and_filesystem"
+  ],
+  "observations": {
+    "hostname": {
+      "state": "observed",
+      "value": "demo-baremetal-01"
+    },
+    "cpu": {
+      "state": "observed",
+      "value": {
+        "architecture": "x86_64",
+        "logical_cores": 8,
+        "model": "Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz",
+        "model_basis": "direct_cpu_model",
+        "physical_cores": 8,
+        "threads_per_core": 1,
+        "feature_flags": [
+          "aes",
+          "avx",
+          "avx2",
+          "sse4_2",
+          "vmx"
+        ],
+        "cache_summary": {
+          "summary_basis": "representative_instance_sizes",
+          "l1_data_bytes": 32768,
+          "l1_instruction_bytes": 32768,
+          "l2_bytes": 262144,
+          "l3_bytes": 12582912
+        }
+      }
+    },
+    "memory": {
+      "state": "observed",
+      "value": {
+        "total_bytes": 17179869184
+      }
+    },
+    "storage": {
+      "state": "partially_observed",
+    "value": {
+      "block_devices": [
+        "nvme0n1"
+      ],
+      "block_device_details": [
+        {
+          "name": "nvme0n1",
+          "class": "solid_state",
+          "removable": false
+        }
+      ],
+      "mounts": [
+        "/",
+        "/var"
+      ],
+      "mount_details": [
+        {
+          "path": "/",
+          "filesystem_type": "ext4",
+          "role": "root"
+        },
+        {
+          "path": "/var",
+          "filesystem_type": "xfs",
+          "role": "var"
+        }
+      ]
+    }
+  },
+    "network": {
+      "state": "observed",
+      "value": {
+        "interfaces": [
+          "enp0s31f6",
+          "lo"
+        ],
+        "interface_details": [
+          {
+            "name": "enp0s31f6",
+            "interface_kind": "ethernet",
+            "interface_virtuality": "physical",
+            "link_state": "up",
+            "carrier_state": "up",
+            "duplex": "full",
+            "mtu": 1500,
+            "speed_mbps": 1000,
+            "mac_address": "52:54:00:12:34:56",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "192.0.2.10",
+                "prefix_len": 24
+              },
+              {
+                "family": "ipv6",
+                "address": "2001:db8::10",
+                "prefix_len": 64
+              }
+            ]
+          },
+          {
+            "name": "lo",
+            "interface_kind": "loopback",
+            "interface_virtuality": "virtual",
+            "link_state": "unknown",
+            "carrier_state": "unknown",
+            "duplex": "unknown",
+            "mtu": 65536,
+            "speed_mbps": null,
+            "mac_address": "00:00:00:00:00:00",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "127.0.0.1",
+                "prefix_len": 8
+              },
+              {
+                "family": "ipv6",
+                "address": "::1",
+                "prefix_len": 128
+              }
+            ]
+          }
+        ],
+        "addressability_summary": {
+          "non_loopback_address_families": [
+            "ipv4",
+            "ipv6"
+          ],
+          "default_route_families": [
+            "ipv4",
+            "ipv6"
+          ]
+        }
+      }
+    },
+    "topology": {
+      "state": "observed",
+      "value": {
+        "numa_nodes": 1,
+        "cpu_packages": 1
+      }
+    }
+  }
+}

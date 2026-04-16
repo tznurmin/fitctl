@@ -1,0 +1,52 @@
+{
+  "schema_id": "fitctl.fixture.host_state.corpus.v1",
+  "schema_version": 1,
+  "corpus_id": "host_state_runtime_v1",
+  "fixtures": [
+    {
+      "fixture_id": "linux-bare-metal-like-fresh-v1",
+      "path": "linux-bare-metal-like-fresh-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state"
+      ],
+      "related_survey_fixtures": [
+        "linux-bare-metal-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-bare-metal-like-stale-v1",
+      "path": "linux-bare-metal-like-stale-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "stale_state"
+      ],
+      "related_survey_fixtures": [
+        "linux-bare-metal-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-bare-metal-like-cgroup-limited-v1",
+      "path": "linux-bare-metal-like-cgroup-limited-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "cgroup_limited"
+      ],
+      "related_survey_fixtures": [
+        "linux-bare-metal-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-container-runtime-missing-v1",
+      "path": "linux-container-runtime-missing-v1.json",
+      "coverage_tags": [
+        "container_restricted",
+        "runtime_collector_gap",
+        "limited_privilege"
+      ],
+      "related_survey_fixtures": [
+        "linux-container-restricted-v1"
+      ]
+    }
+  ]
+}

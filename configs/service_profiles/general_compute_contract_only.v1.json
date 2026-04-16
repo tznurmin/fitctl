@@ -1,0 +1,32 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v1",
+    "schema_version": 1,
+    "artifact_id": "service-profile-general-compute-contract-only-v1",
+    "provenance": {
+      "source": "config:service_profiles/general_compute_contract_only.v1.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "general_compute_contract_only_v1",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like",
+        "container_restricted"
+      ]
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

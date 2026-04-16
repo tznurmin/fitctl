@@ -1,0 +1,44 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v1",
+    "schema_version": 1,
+    "artifact_id": "service-profile-general-compute-python-extension-contract-only-v1",
+    "provenance": {
+      "source": "config:service_profiles/general_compute_python_extension_contract_only.v1.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "general_compute_python_extension_contract_only_v1",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like",
+        "container_restricted"
+      ]
+    },
+    "extension_requirements": {
+      "org.example.runtime.python": {
+        "schema_id": "fitctl.extension.org.example.runtime.python.requirement.v1",
+        "schema_version": 1,
+        "required_runtime": "python3",
+        "require_presence": true,
+        "minimum_version": {
+          "major": 3,
+          "minor": 11,
+          "patch": 0
+        }
+      }
+    },
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

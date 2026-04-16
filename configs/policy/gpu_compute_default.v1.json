@@ -1,0 +1,26 @@
+{
+  "schema_id": "fitctl.policy.document.v1",
+  "schema_version": 1,
+  "policy_id": "gpu_compute_default_v1",
+  "extension_policy": {
+    "allowed_extension_namespaces": [
+      "org.example.runtime.node",
+      "org.example.runtime.python"
+    ]
+  },
+  "layers": [
+    {
+      "layer_id": "defaults/gpu_compute",
+      "kind": "built_in_defaults",
+      "rules": {
+        "capability_class": "gpu_accelerated",
+        "min_cpu_logical_cores": 8,
+        "min_memory_bytes": 17179869184,
+        "allow_container_restricted": false,
+        "require_network_visibility": true,
+        "required_accelerator_kind": "gpu",
+        "min_accelerator_devices": 1
+      }
+    }
+  ]
+}

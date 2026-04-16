@@ -1,0 +1,112 @@
+{
+  "schema_id": "fitctl.fixture.host_survey.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-vm-like-v1",
+  "collected_at": "2025-04-21T14:37:19Z",
+  "host_alias": "demo-vm-01",
+  "execution_context": {
+    "visibility_scope": "vm_like",
+    "privilege_level": "limited",
+    "container_runtime": null,
+    "notes": [
+      "hypervisor-visible topology only"
+    ]
+  },
+  "collectors": [
+    "procfs",
+    "sysfs",
+    "cgroupfs",
+    "mountinfo",
+    "netdev",
+    "iproute2_addr",
+    "block_and_filesystem"
+  ],
+  "observations": {
+    "hostname": {
+      "state": "observed",
+      "value": "demo-vm-01"
+    },
+    "cpu": {
+      "state": "observed",
+      "value": {
+        "architecture": "x86_64",
+        "logical_cores": 4,
+        "model": "QEMU Virtual CPU version 2.5+",
+        "model_basis": "direct_cpu_model"
+      }
+    },
+    "memory": {
+      "state": "observed",
+      "value": {
+        "total_bytes": 8589934592
+      }
+    },
+    "storage": {
+      "state": "observed",
+      "value": {
+        "block_devices": [
+          "vda"
+        ],
+        "mounts": [
+          "/",
+          "/boot"
+        ]
+      }
+    },
+    "network": {
+      "state": "observed",
+      "value": {
+        "interfaces": [
+          "ens3",
+          "lo"
+        ],
+        "interface_details": [
+          {
+            "name": "ens3",
+            "interface_kind": "ethernet",
+            "interface_virtuality": "physical",
+            "link_state": "up",
+            "mtu": 1500,
+            "speed_mbps": 1000,
+            "mac_address": "52:54:00:65:43:21",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "198.51.100.20",
+                "prefix_len": 24
+              }
+            ]
+          },
+          {
+            "name": "lo",
+            "interface_kind": "loopback",
+            "interface_virtuality": "virtual",
+            "link_state": "unknown",
+            "mtu": 65536,
+            "speed_mbps": null,
+            "mac_address": "00:00:00:00:00:00",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "127.0.0.1",
+                "prefix_len": 8
+              },
+              {
+                "family": "ipv6",
+                "address": "::1",
+                "prefix_len": 128
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "topology": {
+      "state": "observed",
+      "value": {
+        "numa_nodes": 1,
+        "cpu_packages": 1
+      }
+    }
+  }
+}
