@@ -33,8 +33,8 @@ fn inspect_renders_host_survey_summary() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("inspect output should be UTF-8");
-    assert!(stdout.contains("Artifact\n  Family: host-survey.v1"));
-    assert!(stdout.contains("Summary\n  Host alias: demo-baremetal-01"));
+    assert!(stdout.contains("Artifact\n  Family: host-survey.v2"));
+    assert!(stdout.contains("Summary\n  Host alias: cpu-host-01"));
     assert!(stdout.contains("  Collection mode: replay"));
     assert!(stdout.contains("  Privilege level: elevated"));
     assert!(stdout.contains("  CPU: observed; x86_64;"));

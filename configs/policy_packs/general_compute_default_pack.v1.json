@@ -1,0 +1,14 @@
+{
+  "schema_id": "fitctl.policy-pack.v1",
+  "schema_version": 1,
+  "pack_id": "general-compute-policy-pack-v1",
+  "pack_version": "1",
+  "summary": "Named selection manifest for the default general-compute gating policy.",
+  "policies": [
+    {
+      "policy_id": "general_compute_default_v1",
+      "summary": "Default general-compute policy document.",
+      "policy_path": "../policy/general_compute_default.v1.json"
+    }
+  ]
+}

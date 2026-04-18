@@ -21,7 +21,9 @@ use crate::artifacts::batch_classification_report_v1::{
 };
 use crate::artifacts::contract_v1::HostContractV1;
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
-use crate::artifacts::schema_ids_v1::BATCH_CLASSIFICATION_REPORT_SCHEMA_ID;
+use crate::artifacts::schema_ids_v1::{
+    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
+};
 use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_contract, semantic_hash_hex_for_service_profile,
 };
@@ -102,6 +104,24 @@ pub struct BatchClassificationRequestV1 {
     pub validated_at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchClassificationExportViewV1 {
+    RowsCsv,
+    ContractSummaryCsv,
+    ServiceProfileSummaryCsv,
+}
+
+impl BatchClassificationExportViewV1 {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "rows_csv" => Some(Self::RowsCsv),
+            "contract_summary_csv" => Some(Self::ContractSummaryCsv),
+            "service_profile_summary_csv" => Some(Self::ServiceProfileSummaryCsv),
+            _ => None,
+        }
+    }
+}
+
 pub fn classify_batch_v1(
     request: BatchClassificationRequestV1,
 ) -> Result<BatchClassificationReportV1, BatchClassificationError> {
@@ -137,6 +157,9 @@ pub fn classify_batch_v1(
                         error.message,
                     )
                 })?,
+                host_alias: contract.host_alias.clone(),
+                display_name: contract.display_name.clone(),
+                short_display_name: contract.short_display_name.clone(),
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -153,6 +176,8 @@ pub fn classify_batch_v1(
                         error.message,
                     )
                 })?,
+                display_name: profile.profile.display_name.clone(),
+                short_display_name: profile.profile.short_display_name.clone(),
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -195,7 +220,7 @@ pub fn classify_batch_v1(
     let report = BatchClassificationReportV1 {
         envelope: ArtifactEnvelopeV1 {
             schema_id: BATCH_CLASSIFICATION_REPORT_SCHEMA_ID.to_string(),
-            schema_version: 1,
+            schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             artifact_id: build_report_artifact_id(
                 &request.validated_at,
                 &ordered_contracts,
@@ -300,6 +325,111 @@ pub fn load_batch_classification_report_from_value(
     })?;
 
     Ok(report)
+}
+
+pub fn render_batch_classification_export_view(
+    report: &BatchClassificationReportV1,
+    view: BatchClassificationExportViewV1,
+) -> String {
+    match view {
+        BatchClassificationExportViewV1::RowsCsv => render_rows_csv(&report.report.rows),
+        BatchClassificationExportViewV1::ContractSummaryCsv => {
+            render_contract_summaries_csv(&report.report.contract_summaries)
+        }
+        BatchClassificationExportViewV1::ServiceProfileSummaryCsv => {
+            render_service_profile_summaries_csv(&report.report.service_profile_summaries)
+        }
+    }
+}
+
+fn render_rows_csv(rows: &[BatchClassificationRowV1]) -> String {
+    let mut output = String::from(
+        "row_id,contract_artifact_id,service_profile_artifact_id,verdict,primary_reason_code,selected_degradation_tier,summary\n",
+    );
+    for row in rows {
+        push_csv_row(
+            &mut output,
+            &[
+                row.row_id.as_str(),
+                row.contract_artifact_id.as_str(),
+                row.service_profile_artifact_id.as_str(),
+                row.verdict.as_str(),
+                row.primary_reason_code.as_str(),
+                row.selected_degradation_tier.as_deref().unwrap_or(""),
+                row.summary.as_str(),
+            ],
+        );
+    }
+    output
+}
+
+fn render_contract_summaries_csv(summaries: &[BatchClassificationContractSummaryV1]) -> String {
+    let mut output = String::from(
+        "contract_artifact_id,fit_profile_ids,degraded_profile_ids,unfit_profile_ids,indeterminate_profile_ids\n",
+    );
+    for summary in summaries {
+        push_csv_row(
+            &mut output,
+            &[
+                summary.contract_artifact_id.as_str(),
+                &summary.fit_profile_ids.join("|"),
+                &summary.degraded_profile_ids.join("|"),
+                &summary.unfit_profile_ids.join("|"),
+                &summary.indeterminate_profile_ids.join("|"),
+            ],
+        );
+    }
+    output
+}
+
+fn render_service_profile_summaries_csv(
+    summaries: &[BatchClassificationServiceProfileSummaryV1],
+) -> String {
+    let mut output = String::from(
+        "service_profile_artifact_id,fit_contract_ids,degraded_contract_ids,unfit_contract_ids,indeterminate_contract_ids\n",
+    );
+    for summary in summaries {
+        push_csv_row(
+            &mut output,
+            &[
+                summary.service_profile_artifact_id.as_str(),
+                &summary.fit_contract_ids.join("|"),
+                &summary.degraded_contract_ids.join("|"),
+                &summary.unfit_contract_ids.join("|"),
+                &summary.indeterminate_contract_ids.join("|"),
+            ],
+        );
+    }
+    output
+}
+
+fn push_csv_row(output: &mut String, fields: &[&str]) {
+    let mut first = true;
+    for field in fields {
+        if !first {
+            output.push(',');
+        }
+        first = false;
+        push_csv_field(output, field);
+    }
+    output.push('\n');
+}
+
+fn push_csv_field(output: &mut String, field: &str) {
+    let needs_quotes = field.contains(',') || field.contains('"') || field.contains('\n');
+    if !needs_quotes {
+        output.push_str(field);
+        return;
+    }
+
+    output.push('"');
+    for ch in field.chars() {
+        if ch == '"' {
+            output.push('"');
+        }
+        output.push(ch);
+    }
+    output.push('"');
 }
 
 fn build_contract_summaries(
@@ -653,7 +783,7 @@ fn validate_batch_classification_report_json(raw: &Value) -> Result<(), BatchCla
         &[
             "source",
             "collected_at",
-            "tool_version",
+            "fitctl_version",
             "command_name",
             "correlation_id",
         ],
@@ -738,4 +868,45 @@ fn reject_explicit_nulls(
 
 pub fn batch_classification_report_schema_id() -> &'static str {
     BATCH_CLASSIFICATION_REPORT_SCHEMA_ID
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::artifacts::validation_report_v1::{ValidationReasonCodeV1, ValidationVerdictV1};
+
+    #[test]
+    fn export_view_parser_accepts_supported_values_only() {
+        assert_eq!(
+            BatchClassificationExportViewV1::parse("rows_csv"),
+            Some(BatchClassificationExportViewV1::RowsCsv)
+        );
+        assert_eq!(
+            BatchClassificationExportViewV1::parse("contract_summary_csv"),
+            Some(BatchClassificationExportViewV1::ContractSummaryCsv)
+        );
+        assert_eq!(
+            BatchClassificationExportViewV1::parse("service_profile_summary_csv"),
+            Some(BatchClassificationExportViewV1::ServiceProfileSummaryCsv)
+        );
+        assert_eq!(BatchClassificationExportViewV1::parse("markdown"), None);
+    }
+
+    #[test]
+    fn rows_csv_export_quotes_commas_and_quotes() {
+        let csv = render_rows_csv(&[BatchClassificationRowV1 {
+            row_id: "row-1".to_string(),
+            contract_artifact_id: "contract-1".to_string(),
+            contract_semantic_hash: "hash-left".to_string(),
+            service_profile_artifact_id: "profile-1".to_string(),
+            service_profile_semantic_hash: "hash-right".to_string(),
+            verdict: ValidationVerdictV1::FitWithDegradation,
+            primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
+            selected_degradation_tier: Some("general_compute".to_string()),
+            summary: "prefers \"gpu\", falls back".to_string(),
+        }]);
+
+        assert!(csv.contains("row_id,contract_artifact_id,service_profile_artifact_id"));
+        assert!(csv.contains("\"prefers \"\"gpu\"\", falls back\""));
+    }
 }

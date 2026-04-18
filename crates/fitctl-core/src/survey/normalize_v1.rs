@@ -1,7 +1,7 @@
 // Copyright 2026 fitctl contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Normalize collected host-survey snapshots into host-survey.v1 artifacts.
+//! Normalize collected host-survey snapshots into host-survey.v2 artifacts.
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -10,7 +10,7 @@ use crate::artifacts::metadata_v1::{
     AssuranceSourceV1, ClaimMetadataV1, CollectorMetadataV1, DerivationStageV1, IdentityClassV1,
     IdentitySummaryV1,
 };
-use crate::artifacts::schema_ids_v1::HOST_SURVEY_SCHEMA_ID;
+use crate::artifacts::schema_ids_v1::{HOST_SURVEY_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION};
 use crate::artifacts::survey_v1::{
     encode_host_survey_payload, HostSurveyCoreEvidenceV1, HostSurveyPayloadV1, HostSurveyV1,
     SurveySectionMetadataV1,
@@ -80,7 +80,7 @@ pub(crate) fn build_host_survey_from_snapshot(
     let artifact = HostSurveyV1 {
         envelope: ArtifactEnvelopeV1 {
             schema_id: HOST_SURVEY_SCHEMA_ID.to_string(),
-            schema_version: 1,
+            schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             artifact_id: artifact_id.clone(),
             provenance: local_artifact_provenance_v1(
                 snapshot.provenance_source,
@@ -336,6 +336,7 @@ fn canonicalise_snapshot(snapshot: &mut CollectedHostSnapshotV1) {
                 .then_with(|| left.vendor_id.cmp(&right.vendor_id))
                 .then_with(|| left.device_id.cmp(&right.device_id))
                 .then_with(|| left.pci_address.cmp(&right.pci_address))
+                .then_with(|| left.numa_node.cmp(&right.numa_node))
         });
         if let Some(operability) = accelerators.operability.as_mut() {
             operability.visible_device_nodes.sort();
@@ -495,6 +496,24 @@ fn validate_accelerator_operability(
     if visible_nodes.len() != original_len || visible_nodes != operability.visible_device_nodes {
         return false;
     }
+    let mut visible_render_nodes = operability.visible_render_nodes.clone();
+    if visible_render_nodes.iter().any(|node| {
+        let trimmed = node.trim();
+        trimmed.is_empty() || !trimmed.starts_with("/dev/dri/renderD")
+    }) {
+        return false;
+    }
+    let original_render_len = visible_render_nodes.len();
+    visible_render_nodes.sort();
+    visible_render_nodes.dedup();
+    if visible_render_nodes.len() != original_render_len
+        || visible_render_nodes != operability.visible_render_nodes
+        || visible_render_nodes
+            .iter()
+            .any(|node| !operability.visible_device_nodes.contains(node))
+    {
+        return false;
+    }
 
     let Ok(total_devices_u32) = u32::try_from(total_devices) else {
         return false;
@@ -507,11 +526,13 @@ fn validate_accelerator_operability(
         StaticOperabilityV1::Operable => {
             operability.driver_bound_devices == total_devices_u32 && !visible_nodes.is_empty()
         }
-        StaticOperabilityV1::NotOperable => operability.driver_bound_devices == 0,
+        StaticOperabilityV1::NotOperable => {
+            operability.driver_bound_devices == 0 || visible_nodes.is_empty()
+        }
         StaticOperabilityV1::Indeterminate => {
             operability.driver_bound_devices > 0
-                && (operability.driver_bound_devices < total_devices_u32
-                    || visible_nodes.is_empty())
+                && operability.driver_bound_devices < total_devices_u32
+                && !visible_nodes.is_empty()
         }
     }
 }
@@ -529,8 +550,24 @@ fn validate_accelerator_device(device: &AcceleratorDeviceV1) -> bool {
             .vendor
             .as_deref()
             .is_none_or(|value| !value.trim().is_empty())
+        && device
+            .family
+            .as_deref()
+            .is_none_or(|value| !value.trim().is_empty())
+        && device
+            .model
+            .as_deref()
+            .is_none_or(|value| !value.trim().is_empty())
         && device.vendor_id.as_deref().is_none_or(is_valid_pci_hex_id)
         && device.device_id.as_deref().is_none_or(is_valid_pci_hex_id)
+        && device.memory_bytes.is_none_or(|value| value > 0)
+        && !matches!(
+            (device.discovery_source, device.integration),
+            (
+                AcceleratorDiscoverySourceV1::DrmPlatform,
+                Some(crate::survey::AcceleratorIntegrationV1::Discrete)
+            )
+        )
         && device
             .pci_address
             .as_deref()
@@ -651,7 +688,7 @@ fn validate_network_address(address: &NetworkAddressV1) -> bool {
 
 fn survey_source_family_for_collector(collector_id: &str) -> &str {
     match collector_id {
-        "cpuinfo_flags" => "procfs",
+        "cpuinfo_flags" | "nvidia_procfs_gpu_info" => "procfs",
         "devfs_accelerator_nodes" => "devfs",
         "drm_class" | "drm_platform_graphics" => "sysfs",
         "iproute2_addr" => "netdev",
@@ -681,4 +718,40 @@ fn sanitize_identifier(value: &str) -> String {
     }
 
     sanitized.trim_matches('-').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::survey_source_family_for_collector;
+    use crate::survey::collector_matrix_v1::is_supported_collector_family;
+
+    #[test]
+    fn live_collector_ids_map_to_supported_source_families() {
+        let live_collectors = [
+            "procfs",
+            "cpuinfo_flags",
+            "sysfs",
+            "sysfs_cpu_topology",
+            "sysfs_cpu_cache",
+            "cgroupfs",
+            "mountinfo",
+            "block_and_filesystem",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "nvidia_procfs_gpu_info",
+            "drm_class",
+            "drm_platform_graphics",
+            "devfs_accelerator_nodes",
+            "netdev",
+            "iproute2_addr",
+            "iproute2_route",
+        ];
+
+        for collector_id in live_collectors {
+            assert!(
+                is_supported_collector_family(survey_source_family_for_collector(collector_id)),
+                "collector {collector_id} should normalize to a supported source family"
+            );
+        }
+    }
 }

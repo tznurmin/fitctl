@@ -1,18 +1,31 @@
 # Artifacts
 
-Fitctl keeps each step of the decision chain as a separate typed JSON artifact.
+Artifacts are typed JSON records produced at each step of the decision flow.
 
-That keeps observed host evidence, policy-bound host claims, runtime state, and validation results distinct.
+The core artifacts are `host-survey.v2`, `host-contract.v2`, `host-state.v2`, and
+`validation-report.v2`.
 
-Optional host state adds runtime-sensitive input when a decision depends on current conditions.
+Each step writes its own artifact with a shared envelope and an artifact-specific payload.
 
-Configuration files such as `policy` and `service profile` are covered in [Configuration](./configuration.md).
+Read any supported artifact with `inspect`:
+```bash
+fitctl inspect --input <artifact.json>
+```
+
+Example shapes are in [fixtures/schema_shapes/ring_split/valid](../fixtures/schema_shapes/ring_split/valid).
+Conformance examples are in [fixtures/conformance/valid](../fixtures/conformance/valid).
+
+[Contracts](./contracts.md) covers contract meaning. [Configuration](./configuration.md) covers
+policies and service profiles.
 
 ## Common envelope
 
 Every supported artifact contains an `envelope` section.
 
-`envelope` carries:
+`envelope` records schema identity, artifact identity, provenance, and optional redaction and
+signatures.
+
+It carries:
 
 - `schema_id`
 - `schema_version`
@@ -21,9 +34,7 @@ Every supported artifact contains an `envelope` section.
 - optional `redaction`
 - optional `signatures`
 
-This gives every artifact a stable outer shape for inspection, diffing, signing, and verification.
-
-## host-survey.v1
+## host-survey.v2
 
 Top-level shape:
 
@@ -36,7 +47,9 @@ Top-level shape:
 
 A survey records observed host evidence.
 
-The `survey` section contains:
+The `survey` section combines collection metadata with `core_evidence`.
+
+It contains:
 
 - `collection_mode`
 - `host_alias`
@@ -44,7 +57,10 @@ The `survey` section contains:
 - `source_ref`
 - `core_evidence`
 
-`core_evidence` contains:
+`core_evidence` combines collector metadata, execution context, section metadata, and recorded
+observations.
+
+It contains:
 
 - `collectors`
 - `execution_context`
@@ -62,7 +78,7 @@ The `survey` section contains:
 - `accelerators`
 - `hostname`
 
-## host-contract.v1
+## host-contract.v2
 
 Top-level shape:
 
@@ -76,12 +92,17 @@ Top-level shape:
 
 A contract records what the host may claim under a selected policy.
 
-`contract_basis` records how the contract was derived. It contains:
+`contract_basis` records how the contract was derived.
+
+It contains:
 
 - `core_semantic_basis`
 - `derivation_provenance`
 
-`core_semantic_basis` records:
+`core_semantic_basis` links the contract back to the source survey, the selected policy, and the
+derivation engine.
+
+It records:
 
 - `source_survey_semantic_hash`
 - `policy_semantic_hash`
@@ -90,19 +111,24 @@ A contract records what the host may claim under a selected policy.
 - `contract_schema_version`
 - `selected_policy_layers`
 
-The `contract` section contains `core_contract`, which carries:
+The `contract` section contains `core_contract` and may also carry optional
+`extension_contract`.
+
+`core_contract` carries:
 
 - `capability_classes`
 - `execution_constraints`
 - `identity_summary`
 - `network_summary`
+- `storage_summary`
+- `accelerator_summary`
 - `topology_summary`
 
-`capability_classes` is a map of policy-bound claims such as `general_compute` or `gpu_accelerated`. Each claim records whether it is admissible and which evidence and rules support it.
+`capability_classes` is a map of policy-bound claims such as `general_compute` or
+`gpu_accelerated`. Each claim records whether it is admissible and which evidence and rules
+support it.
 
-The same survey can be used to derive different contracts under different policies.
-
-## host-state.v1
+## host-state.v2
 
 Top-level shape:
 
@@ -115,7 +141,9 @@ Top-level shape:
 
 Host state records current runtime-sensitive facts separately from the stable contract.
 
-The `state` section contains:
+The `state` section combines collection metadata with `core_state`.
+
+It contains:
 
 - `collection_mode`
 - `host_alias`
@@ -123,7 +151,9 @@ The `state` section contains:
 - `source_ref`
 - `core_state`
 
-`core_state` contains:
+`core_state` captures current runtime-sensitive sections.
+
+It contains:
 
 - `collectors`
 - `section_metadata`
@@ -133,11 +163,7 @@ The `state` section contains:
 - `topology`
 - `operability`
 
-These sections cover things such as allocatable CPU and memory, cgroup and memory limits, visible topology, degraded capability classes, and whether the captured state is still fresh.
-
-Use a separate state artifact when current conditions matter. Keep them out of the stable contract.
-
-## validation-report.v1
+## validation-report.v2
 
 Top-level shape:
 
@@ -151,7 +177,9 @@ Top-level shape:
 
 A validation report records the result of checking a contract against a service profile.
 
-`validation_basis` records which inputs were used. It contains:
+`validation_basis` records which inputs were used.
+
+It contains:
 
 - `validation_mode`
 - `contract_artifact_id`
@@ -166,9 +194,11 @@ A validation report records the result of checking a contract against a service 
 - `validation_engine_id`
 - `validation_engine_version`
 
-When state participates in validation, these optional state fields keep enough context to explain stale-state decisions later.
+When state participates in validation, the optional state fields keep the extra runtime context.
 
-Key `report` fields include:
+The `report` section carries the decision itself.
+
+Key fields include:
 
 - `verdict`
 - `primary_reason_code`
@@ -182,9 +212,3 @@ Key `report` fields include:
 - `explanations`
 - `remediation_hints`
 - `summary`
-
-This is the machine-readable output that later automation can consume.
-
-## Reading artifacts
-
-Use `fitctl inspect --input <path>` to read any supported artifact as a human-oriented summary.

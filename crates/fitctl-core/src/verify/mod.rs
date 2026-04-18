@@ -16,6 +16,7 @@ use serde_json::Value;
 
 mod validation;
 
+pub(crate) use self::validation::validate_trust_policy as validate_trust_policy_document_v1;
 use self::validation::*;
 
 use crate::artifacts::record_v1::{load_artifact_record_from_path, ArtifactRecordV1};
@@ -24,6 +25,8 @@ use crate::sign::{verify_artifact_signatures_v1, SignErrorCode};
 pub const VERIFY_ERROR_MODEL_ID: &str = "fitctl.verify.v1";
 pub const VERIFY_ERROR_MODEL_VERSION: u32 = 1;
 pub const TRUST_POLICY_SCHEMA_ID: &str = "fitctl.trust-policy.v1";
+pub const TRUST_POLICY_BUNDLE_SCHEMA_ID: &str = "fitctl.trust-policy-bundle.v1";
+pub const LOCAL_SIGNER_KEYRING_SCHEMA_ID: &str = "fitctl.local-signer-keyring.v1";
 pub const VERIFY_REPORT_SCHEMA_ID: &str = "fitctl.verify.report.v1";
 pub const EXTERNAL_TRUST_EVIDENCE_SCHEMA_ID: &str = "fitctl.external-trust-evidence.v1";
 pub const VERIFICATION_BUNDLE_SCHEMA_ID: &str = "fitctl.verification-bundle.v1";
@@ -119,6 +122,26 @@ pub struct TrustPolicyV1 {
     pub external_evidence_trust_action: ExternalEvidenceTrustActionV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_external_evidence_age_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalSignerKeyringV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub keyring_id: String,
+    pub trusted_signers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrustPolicyBundleV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub bundle_id: String,
+    pub policy: TrustPolicyV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_keyring: Option<LocalSignerKeyringV1>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,22 +302,55 @@ pub fn load_artifact_record_for_verification(path: &Path) -> Result<ArtifactReco
 }
 
 pub fn load_trust_policy_from_path(path: &Path) -> Result<TrustPolicyV1, VerifyError> {
-    let text = fs::read_to_string(path).map_err(|error| {
-        VerifyError::new(
+    let raw = load_json_value_from_path(
+        path,
+        VerifyErrorCode::TrustPolicyInvalid,
+        "trust_policy_load",
+        "trust policy",
+    )?;
+    let schema_id = raw
+        .get("schema_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            VerifyError::new(
+                VerifyErrorCode::TrustPolicyInvalid,
+                "trust_policy_load",
+                format!("trust policy {} must include schema_id", path.display()),
+            )
+        })?;
+
+    match schema_id {
+        TRUST_POLICY_SCHEMA_ID => {
+            let policy: TrustPolicyV1 = serde_json::from_value(raw).map_err(|error| {
+                VerifyError::new(
+                    VerifyErrorCode::TrustPolicyInvalid,
+                    "trust_policy_load",
+                    format!("failed to decode trust policy {}: {error}", path.display()),
+                )
+            })?;
+            validate_trust_policy(&policy)?;
+            Ok(policy)
+        }
+        TRUST_POLICY_BUNDLE_SCHEMA_ID => {
+            let bundle: TrustPolicyBundleV1 = serde_json::from_value(raw).map_err(|error| {
+                VerifyError::new(
+                    VerifyErrorCode::TrustPolicyInvalid,
+                    "trust_policy_load",
+                    format!(
+                        "failed to decode trust policy bundle {}: {error}",
+                        path.display()
+                    ),
+                )
+            })?;
+            validate_trust_policy_bundle(&bundle)?;
+            Ok(resolve_trust_policy_bundle(bundle))
+        }
+        _ => Err(VerifyError::new(
             VerifyErrorCode::TrustPolicyInvalid,
             "trust_policy_load",
-            format!("failed to read trust policy {}: {error}", path.display()),
-        )
-    })?;
-    let policy: TrustPolicyV1 = serde_json::from_str(&text).map_err(|error| {
-        VerifyError::new(
-            VerifyErrorCode::TrustPolicyInvalid,
-            "trust_policy_load",
-            format!("failed to decode trust policy {}: {error}", path.display()),
-        )
-    })?;
-    validate_trust_policy(&policy)?;
-    Ok(policy)
+            format!("unsupported trust policy schema_id {schema_id}"),
+        )),
+    }
 }
 
 pub fn load_external_trust_evidence_from_path(
@@ -379,6 +435,10 @@ pub fn load_verification_bundle_from_path(
     })?;
     validate_verification_bundle(&bundle)?;
     Ok(bundle)
+}
+
+pub fn validate_verification_bundle_v1(bundle: &VerificationBundleV1) -> Result<(), VerifyError> {
+    validate_verification_bundle(bundle)
 }
 
 pub fn build_verification_bundle_v1(
@@ -720,6 +780,18 @@ fn verification_bundle_as_external_evidence_v1(
         subject_artifact_semantic_hash: Some(bundle.artifact_semantic_hash.clone()),
         summary: bundle.summary.clone(),
     }
+}
+
+fn resolve_trust_policy_bundle(bundle: TrustPolicyBundleV1) -> TrustPolicyV1 {
+    let mut policy = bundle.policy;
+
+    if let Some(keyring) = bundle.local_keyring {
+        let mut trusted_signers = policy.trusted_signers.into_iter().collect::<BTreeSet<_>>();
+        trusted_signers.extend(keyring.trusted_signers);
+        policy.trusted_signers = trusted_signers.into_iter().collect();
+    }
+
+    policy
 }
 
 fn load_json_value_from_path(

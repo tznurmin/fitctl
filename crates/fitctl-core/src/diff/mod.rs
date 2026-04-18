@@ -6,6 +6,8 @@
 //! The diff surface compares semantic content rather than presentation details so operators can
 //! tell whether a change is materially meaningful.
 
+use serde::{Deserialize, Serialize};
+
 pub mod semantic_v1;
 
 pub use semantic_v1::{
@@ -71,3 +73,79 @@ impl std::fmt::Display for DiffError {
 }
 
 impl std::error::Error for DiffError {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompactDriftViewV1 {
+    pub drift_class: DriftClassV1,
+    pub semantic_relation: SemanticRelationV1,
+    pub left_artifact_id: String,
+    pub right_artifact_id: String,
+    pub changed_path_count: usize,
+    pub changed_paths: Vec<String>,
+    pub non_semantic_differences_ignored: bool,
+}
+
+pub fn compact_drift_view_v1(report: &SemanticDiffReportV1) -> CompactDriftViewV1 {
+    CompactDriftViewV1 {
+        drift_class: report.drift_class,
+        semantic_relation: report.semantic_relation,
+        left_artifact_id: report.left_artifact_id.clone(),
+        right_artifact_id: report.right_artifact_id.clone(),
+        changed_path_count: report.changes.len(),
+        changed_paths: report
+            .changes
+            .iter()
+            .map(|change| change.path.clone())
+            .collect(),
+        non_semantic_differences_ignored: report.non_semantic_differences_ignored,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diff::semantic_v1::{DriftClassV1, SemanticDiffReportV1, SemanticRelationV1};
+
+    #[test]
+    fn compact_drift_view_preserves_changed_paths_and_counts() {
+        let report = SemanticDiffReportV1 {
+            schema_id: "fitctl.diff.report.v1".to_string(),
+            schema_version: 1,
+            drift_class: DriftClassV1::ContractDrift,
+            semantic_relation: SemanticRelationV1::SemanticallyDifferent,
+            left_schema_id: "fitctl.host-contract.v2".to_string(),
+            right_schema_id: "fitctl.host-contract.v2".to_string(),
+            left_artifact_id: "left".to_string(),
+            right_artifact_id: "right".to_string(),
+            left_semantic_hash: Some("a".to_string()),
+            right_semantic_hash: Some("b".to_string()),
+            non_semantic_differences_ignored: false,
+            changes: vec![
+                SemanticChangeV1 {
+                    path: "$.contract.capability".to_string(),
+                    change_kind: SemanticChangeKindV1::Changed,
+                    left_value: None,
+                    right_value: None,
+                },
+                SemanticChangeV1 {
+                    path: "$.contract.constraints".to_string(),
+                    change_kind: SemanticChangeKindV1::Additive,
+                    left_value: None,
+                    right_value: None,
+                },
+            ],
+        };
+
+        let view = compact_drift_view_v1(&report);
+        assert_eq!(view.drift_class, DriftClassV1::ContractDrift);
+        assert_eq!(view.changed_path_count, 2);
+        assert_eq!(
+            view.changed_paths,
+            vec![
+                "$.contract.capability".to_string(),
+                "$.contract.constraints".to_string()
+            ]
+        );
+    }
+}

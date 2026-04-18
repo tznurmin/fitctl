@@ -1,0 +1,11 @@
+{
+  "schema_id": "fitctl.recommendation-pack.v1",
+  "schema_version": 1,
+  "pack_id": "general-compute-advisory-v1",
+  "pack_version": "1.0.0",
+  "summary": "Advisory-only general compute recommendation placeholder.",
+  "output_schema_id": "fitctl.recommendation-report.v2",
+  "supported_extension_namespaces": [
+    "org.example.runtime.python"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schema_id": "fitctl.policy.document.v1",
+  "schema_version": 1,
+  "policy_id": "general_compute_default_v1",
+  "extension_policy": {
+    "allowed_extension_namespaces": [
+      "org.example.runtime.python"
+    ]
+  },
+  "layers": [
+    {
+      "layer_id": "defaults/general_compute",
+      "kind": "built_in_defaults",
+      "rules": {
+        "capability_class": "general_compute",
+        "min_cpu_logical_cores": 4,
+        "min_memory_bytes": 8589934592,
+        "allow_container_restricted": false,
+        "require_network_visibility": true
+      }
+    },
+    {
+      "layer_id": "site/general_compute",
+      "kind": "site",
+      "rules": {
+        "min_cpu_logical_cores": 6
+      }
+    }
+  ]
+}

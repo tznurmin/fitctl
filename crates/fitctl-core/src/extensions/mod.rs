@@ -7,10 +7,22 @@
 //! fragments, and requirement evaluation through a registry seam without silently widening the
 //! core host model.
 
+pub mod cuda_runtime_v1;
 pub mod node_runtime_v1;
 pub mod python_runtime_v1;
 pub mod registry_v1;
 
+pub use cuda_runtime_v1::{
+    apply_cuda_runtime_extension_to_survey_v1, decode_cuda_runtime_contract_from_value,
+    decode_cuda_runtime_evidence_from_value, decode_cuda_runtime_requirement_from_value,
+    derive_cuda_runtime_contract_value_from_survey_v1, evaluate_cuda_runtime_requirement_v1,
+    format_cuda_runtime_contract_for_inspect, format_cuda_runtime_evidence_for_inspect,
+    format_cuda_runtime_requirement_for_inspect, redact_cuda_runtime_evidence_export_v1,
+    CudaRuntimeContractV1, CudaRuntimeEvaluationOutcomeV1, CudaRuntimeEvidenceStateV1,
+    CudaRuntimeEvidenceV1, CudaRuntimeExtensionError, CudaRuntimeRequirementV1,
+    CudaRuntimeVersionRangeV1, CudaRuntimeVersionV1, CUDA_RUNTIME_CONTRACT_SCHEMA_ID,
+    CUDA_RUNTIME_EVIDENCE_SCHEMA_ID, CUDA_RUNTIME_NAMESPACE, CUDA_RUNTIME_REQUIREMENT_SCHEMA_ID,
+};
 pub use node_runtime_v1::{
     apply_node_runtime_extension_to_survey_v1, decode_node_runtime_contract_from_value,
     decode_node_runtime_evidence_from_value, decode_node_runtime_requirement_from_value,

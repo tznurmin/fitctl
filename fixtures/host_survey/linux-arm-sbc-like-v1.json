@@ -204,6 +204,9 @@
             "kind": "gpu",
             "discovery_source": "drm_platform",
             "vendor": "broadcom",
+            "family": "videocore",
+            "model": "v3d",
+            "integration": "integrated",
             "driver": "vc4"
           }
         ],

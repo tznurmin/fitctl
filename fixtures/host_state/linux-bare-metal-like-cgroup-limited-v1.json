@@ -3,7 +3,7 @@
   "schema_version": 1,
   "fixture_id": "linux-bare-metal-like-cgroup-limited-v1",
   "collected_at": "2025-04-21T14:37:19Z",
-  "host_alias": "demo-baremetal-01",
+  "host_alias": "cpu-host-01",
   "collectors": [
     "procfs_meminfo",
     "runtime_cpu_capacity",

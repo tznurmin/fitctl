@@ -1,0 +1,79 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1-service-profile-gpu-locality-single-numa-contract-only-v1",
+    "provenance": {
+      "source": "validate:contract_only",
+      "collected_at": "unix:1776429614",
+      "fitctl_version": "0.2.0",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1-service-profile-gpu-locality-single-numa-contract-only-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "contract_only",
+    "contract_artifact_id": "contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1",
+    "service_profile_artifact_id": "service-profile-gpu-locality-single-numa-contract-only-v1",
+    "contract_semantic_hash": "8b653efe304320d50752b0f212ab4632d755f33dd2bfe8bc6f06442ab0ff1aef",
+    "service_profile_semantic_hash": "ea1c111d8ebf8d599f8e7ec1954ec93fc403a74d7fd8a1d5e9143db9fb3d4310",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "unfit",
+    "primary_reason_code": "topology_mismatch",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.primary_capability_class"
+    ],
+    "failed_requirements": [
+      "core_requirements.max_accelerator_numa_nodes"
+    ],
+    "evidence_refs": [
+      "$.contract.accelerator_summary.total_accelerators",
+      "$.contract.accelerator_summary.accelerators_with_known_numa_node",
+      "$.contract.accelerator_summary.accelerator_numa_nodes"
+    ],
+    "policy_refs": [],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "explanations": [
+      {
+        "explanation_id": "explain-topology_mismatch",
+        "reason_code": "topology_mismatch",
+        "summary": "contract accelerator locality spans 2 NUMA nodes, exceeding the allowed maximum 1",
+        "related_requirements": [
+          "core_requirements.max_accelerator_numa_nodes"
+        ],
+        "evidence_refs": [
+          "$.contract.accelerator_summary.accelerator_numa_nodes",
+          "$.contract.accelerator_summary.accelerators_with_known_numa_node",
+          "$.contract.accelerator_summary.total_accelerators"
+        ],
+        "policy_refs": []
+      }
+    ],
+    "remediation_hints": [
+      {
+        "hint_id": "match-topology-constraints",
+        "reason_code": "topology_mismatch",
+        "summary": "Choose a host whose topology summary satisfies the profile, or relax the topology requirement if policy allows it.",
+        "actions": [
+          {
+            "action_id": "inspect-topology-requirements",
+            "summary": "Inspect the failed topology requirement ids in the validation report."
+          },
+          {
+            "action_id": "select-topology-compatible-host",
+            "summary": "Choose a host whose topology summary matches the required topology constraints."
+          }
+        ]
+      }
+    ],
+    "summary": "contract accelerator locality spans 2 NUMA nodes, exceeding the allowed maximum 1"
+  }
+}

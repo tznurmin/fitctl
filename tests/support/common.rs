@@ -44,8 +44,28 @@ pub fn repo_policy_file_path(file_name: &str) -> PathBuf {
     repo_root().join("configs/policy").join(file_name)
 }
 
+pub fn repo_policy_pack_path(file_name: &str) -> PathBuf {
+    repo_root().join("configs/policy_packs").join(file_name)
+}
+
 pub fn repo_service_profile_path(file_name: &str) -> PathBuf {
     repo_root().join("configs/service_profiles").join(file_name)
+}
+
+pub fn repo_service_profile_catalogue_path(file_name: &str) -> PathBuf {
+    repo_root()
+        .join("configs/service_profile_catalogues")
+        .join(file_name)
+}
+
+pub fn repo_invocation_context_path(file_name: &str) -> PathBuf {
+    repo_root()
+        .join("configs/invocation_contexts")
+        .join(file_name)
+}
+
+pub fn repo_recommendation_pack_path(file_name: &str) -> PathBuf {
+    repo_root().join("configs/recommendations").join(file_name)
 }
 
 pub fn unique_temp_dir(prefix: &str) -> PathBuf {

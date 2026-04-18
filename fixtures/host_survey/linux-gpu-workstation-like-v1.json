@@ -3,7 +3,7 @@
   "schema_version": 1,
   "fixture_id": "linux-gpu-workstation-like-v1",
   "collected_at": "2025-04-21T14:37:19Z",
-  "host_alias": "demo-gpu-01",
+  "host_alias": "gpu-host-01",
   "execution_context": {
     "visibility_scope": "bare_metal_like",
     "privilege_level": "full",
@@ -28,7 +28,7 @@
   "observations": {
     "hostname": {
       "state": "observed",
-      "value": "demo-gpu-01"
+      "value": "gpu-host-01"
     },
     "cpu": {
       "state": "observed",
@@ -140,18 +140,26 @@
           {
             "kind": "gpu",
             "vendor": "nvidia",
+            "family": "nvidia_pci",
+            "model": "nvidia-gpu-2206",
             "vendor_id": "10de",
             "device_id": "2206",
+            "memory_bytes": 25769803776,
             "pci_address": "0000:65:00.0",
-            "driver": "nvidia"
+            "driver": "nvidia",
+            "numa_node": 0
           },
           {
             "kind": "gpu",
             "vendor": "nvidia",
+            "family": "nvidia_pci",
+            "model": "nvidia-gpu-2230",
             "vendor_id": "10de",
             "device_id": "2230",
+            "memory_bytes": 51539607552,
             "pci_address": "0000:b3:00.0",
-            "driver": "nvidia"
+            "driver": "nvidia",
+            "numa_node": 0
           }
         ]
       }

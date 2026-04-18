@@ -25,7 +25,7 @@ fn validate_with_state(
             .to_str()
             .expect("contract path should be valid UTF-8"),
         "--profile",
-        common::repo_service_profile_path("general_compute_stateful_thresholds.v1.json")
+        common::repo_service_profile_path("general_compute_stateful_thresholds.v2.json")
             .to_str()
             .expect("profile path should be valid UTF-8"),
         "--validation-mode",

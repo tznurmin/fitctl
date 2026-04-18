@@ -7,7 +7,17 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fitctl_core::config::resolve_service_profile_from_catalogue_path;
+use fitctl_core::config::{
+    load_invocation_context_from_path, resolve_invocation_selected_policy_id_v1,
+    resolve_invocation_selected_service_profile_id_v1, resolve_policy_from_pack_path,
+    resolve_policy_from_pack_with_lock_path, resolve_service_profile_from_catalogue_path,
+};
+use fitctl_core::config_bundle::load_config_bundle_from_path_v1;
+use fitctl_core::contract::{
+    derive_host_contract_v1, load_host_survey_artifact_from_path, ContractDerivationRequestV1,
+    DerivationContextV1,
+};
+use fitctl_core::policy::load_policy_document_from_path;
 use fitctl_core::validate::{
     load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
     load_service_profile_artifact_for_validation, validate_request_v1, ValidationModeV1,
@@ -21,9 +31,16 @@ pub fn run(args: &[String]) -> ExitCode {
     }
 
     let mut contract_path: Option<PathBuf> = None;
+    let mut survey_path: Option<PathBuf> = None;
+    let mut config_bundle_path: Option<PathBuf> = None;
+    let mut policy_path: Option<PathBuf> = None;
+    let mut policy_pack_path: Option<PathBuf> = None;
+    let mut policy_id: Option<String> = None;
+    let mut policy_pack_lock_path: Option<PathBuf> = None;
     let mut profile_path: Option<PathBuf> = None;
     let mut service_profile_catalogue_path: Option<PathBuf> = None;
     let mut profile_id: Option<String> = None;
+    let mut invocation_context_path: Option<PathBuf> = None;
     let mut state_path: Option<PathBuf> = None;
     let mut mode = ValidationModeV1::ContractOnly;
     let mut max_state_age_seconds: Option<u64> = None;
@@ -40,6 +57,54 @@ pub fn run(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 };
                 contract_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--survey" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --survey requires a path");
+                    return ExitCode::from(2);
+                };
+                survey_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--config-bundle" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --config-bundle requires a path");
+                    return ExitCode::from(2);
+                };
+                config_bundle_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--policy" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --policy requires a path");
+                    return ExitCode::from(2);
+                };
+                policy_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--policy-pack" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --policy-pack requires a path");
+                    return ExitCode::from(2);
+                };
+                policy_pack_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--policy-id" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --policy-id requires a value");
+                    return ExitCode::from(2);
+                };
+                policy_id = Some(value.clone());
+                index += 2;
+            }
+            "--policy-pack-lock" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --policy-pack-lock requires a path");
+                    return ExitCode::from(2);
+                };
+                policy_pack_lock_path = Some(PathBuf::from(value));
                 index += 2;
             }
             "--profile" => {
@@ -64,6 +129,14 @@ pub fn run(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 };
                 profile_id = Some(value.clone());
+                index += 2;
+            }
+            "--invocation-context" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --invocation-context requires a path");
+                    return ExitCode::from(2);
+                };
+                invocation_context_path = Some(PathBuf::from(value));
                 index += 2;
             }
             "--state" => {
@@ -149,21 +222,166 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     }
 
-    let Some(contract_path) = contract_path else {
-        eprintln!("fitctl validate: --contract is required");
-        return ExitCode::from(2);
-    };
-    if profile_path.is_some() && service_profile_catalogue_path.is_some() {
-        eprintln!(
-            "fitctl validate: choose either --profile or --service-profile-catalogue/--profile-id"
-        );
+    let explicit_contract_selected = contract_path.is_some();
+    let inline_survey_selected = survey_path.is_some();
+    let config_bundle_selected = config_bundle_path.is_some();
+    let explicit_policy_inputs_selected = policy_path.is_some()
+        || policy_pack_path.is_some()
+        || policy_id.is_some()
+        || policy_pack_lock_path.is_some();
+    let explicit_profile_inputs_selected =
+        profile_path.is_some() || service_profile_catalogue_path.is_some() || profile_id.is_some();
+
+    if explicit_contract_selected && inline_survey_selected {
+        eprintln!("fitctl validate: choose either --contract or --survey");
         return ExitCode::from(2);
     }
-    if service_profile_catalogue_path.is_some() ^ profile_id.is_some() {
-        eprintln!(
-            "fitctl validate: --service-profile-catalogue and --profile-id must be used together"
-        );
+    if !explicit_contract_selected && !inline_survey_selected {
+        eprintln!("fitctl validate: --contract or --survey is required");
         return ExitCode::from(2);
+    }
+
+    let config_bundle = match config_bundle_path {
+        Some(path) => match load_config_bundle_from_path_v1(&path) {
+            Ok(bundle) => Some(bundle),
+            Err(error) => {
+                eprintln!("fitctl validate: {error}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+
+    let (invocation_context, selected_policy_id, selected_profile_id) = if config_bundle_selected {
+        if explicit_policy_inputs_selected
+            || explicit_profile_inputs_selected
+            || invocation_context_path.is_some()
+        {
+            eprintln!(
+                "fitctl validate: --config-bundle must not be combined with explicit policy, policy-pack, profile, service-profile-catalogue, or invocation-context inputs"
+            );
+            return ExitCode::from(2);
+        }
+        (None, None, None)
+    } else {
+        if policy_path.is_some() && policy_pack_path.is_some() {
+            eprintln!("fitctl validate: choose either --policy or --policy-pack");
+            return ExitCode::from(2);
+        }
+        if policy_pack_lock_path.is_some() && policy_pack_path.is_none() {
+            eprintln!("fitctl validate: --policy-pack-lock requires --policy-pack");
+            return ExitCode::from(2);
+        }
+        if policy_id.is_some() && policy_pack_path.is_none() {
+            eprintln!("fitctl validate: --policy-id requires --policy-pack");
+            return ExitCode::from(2);
+        }
+        if policy_id.is_some() && policy_pack_lock_path.is_some() {
+            eprintln!("fitctl validate: choose either --policy-id or --policy-pack-lock");
+            return ExitCode::from(2);
+        }
+        if inline_survey_selected && policy_path.is_none() && policy_pack_path.is_none() {
+            eprintln!("fitctl validate: --survey requires --policy or --policy-pack");
+            return ExitCode::from(2);
+        }
+        if profile_path.is_some() && service_profile_catalogue_path.is_some() {
+            eprintln!(
+                "fitctl validate: choose either --profile or --service-profile-catalogue/--profile-id"
+            );
+            return ExitCode::from(2);
+        }
+
+        let invocation_context = match invocation_context_path {
+            Some(path) => match load_invocation_context_from_path(&path) {
+                Ok(context) => Some(context),
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            },
+            None => None,
+        };
+        let selected_policy_id = match resolve_invocation_selected_policy_id_v1(
+            policy_id.as_deref(),
+            invocation_context.as_ref(),
+        ) {
+            Ok(selection) => selection,
+            Err(error) => {
+                eprintln!("fitctl validate: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        let selected_profile_id = match resolve_invocation_selected_service_profile_id_v1(
+            profile_id.as_deref(),
+            invocation_context.as_ref(),
+        ) {
+            Ok(selection) => selection,
+            Err(error) => {
+                eprintln!("fitctl validate: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        if policy_pack_path.is_none() && selected_policy_id.is_some() {
+            eprintln!(
+                "fitctl validate: invocation-context or --policy-id selection requires --policy-pack"
+            );
+            return ExitCode::from(2);
+        }
+        if policy_pack_lock_path.is_some()
+            && invocation_context
+                .as_ref()
+                .and_then(|context| context.selected_policy_id.as_ref())
+                .is_some()
+        {
+            eprintln!(
+                "fitctl validate: --policy-pack-lock must not be combined with invocation-context policy selection"
+            );
+            return ExitCode::from(2);
+        }
+        if policy_pack_path.is_some()
+            && selected_policy_id.is_none()
+            && policy_pack_lock_path.is_none()
+        {
+            eprintln!(
+                "fitctl validate: --policy-pack requires a selected policy id from --policy-id, --invocation-context, or --policy-pack-lock"
+            );
+            return ExitCode::from(2);
+        }
+        if service_profile_catalogue_path.is_some() && selected_profile_id.is_none() {
+            eprintln!(
+                "fitctl validate: --service-profile-catalogue requires a selected profile id from --profile-id or --invocation-context"
+            );
+            return ExitCode::from(2);
+        }
+        if service_profile_catalogue_path.is_none() && selected_profile_id.is_some() {
+            eprintln!(
+                "fitctl validate: invocation-context or --profile-id selection requires --service-profile-catalogue"
+            );
+            return ExitCode::from(2);
+        }
+        (invocation_context, selected_policy_id, selected_profile_id)
+    };
+
+    if matches!(mode_source, ValidationModeSourceV1::Default) {
+        if let Some(bundle) = config_bundle.as_ref() {
+            if let Some(bundle_mode) = bundle.config_bundle.resolved_config.validation_mode {
+                mode = bundle_mode;
+            }
+        } else if let Some(context_mode) = invocation_context
+            .as_ref()
+            .and_then(|context| context.validation_mode)
+        {
+            mode = context_mode;
+        }
+    }
+    if max_state_age_seconds.is_none() {
+        max_state_age_seconds = if let Some(bundle) = config_bundle.as_ref() {
+            bundle.config_bundle.resolved_config.max_state_age_seconds
+        } else {
+            invocation_context
+                .as_ref()
+                .and_then(|context| context.max_state_age_seconds)
+        };
     }
     if mode == ValidationModeV1::ContractOnly && state_path.is_some() {
         eprintln!("fitctl validate: --state is not allowed in contract_only mode");
@@ -182,35 +400,226 @@ pub fn run(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let contract = match load_contract_artifact_for_validation(&contract_path) {
-        Ok(contract) => contract,
-        Err(error) => {
-            eprintln!("fitctl validate: {error}");
-            return ExitCode::from(2);
-        }
-    };
-    let service_profile = match (profile_path, service_profile_catalogue_path, profile_id) {
-        (Some(path), None, None) => match load_service_profile_artifact_for_validation(&path) {
-            Ok(profile) => profile,
-            Err(error) => {
-                eprintln!("fitctl validate: {error}");
+    let validated_at = validated_at.unwrap_or_else(current_epoch_marker);
+    let contract = if let Some(bundle) = config_bundle.as_ref() {
+        if let Some(path) = contract_path {
+            match load_contract_artifact_for_validation(&path) {
+                Ok(contract) => contract,
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            }
+        } else {
+            let Some(survey_path) = survey_path else {
+                eprintln!("fitctl validate: --survey is required when deriving a contract inline");
+                return ExitCode::from(2);
+            };
+            if config_bundle_requests_extension_support(bundle) {
+                eprintln!(
+                    "fitctl validate: config bundle extension selections are not supported in the first config-bundle validate flow"
+                );
                 return ExitCode::from(2);
             }
-        },
-        (None, Some(catalogue_path), Some(profile_id)) => {
-            match resolve_service_profile_from_catalogue_path(&catalogue_path, &profile_id) {
-                Ok((_, _, profile)) => profile,
+            let survey = match load_host_survey_artifact_from_path(&survey_path) {
+                Ok(survey) => survey,
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            match derive_host_contract_v1(ContractDerivationRequestV1 {
+                survey,
+                policy: bundle.config_bundle.policy.clone(),
+                live_state: None,
+                derivation_context: DerivationContextV1 {
+                    derived_at: validated_at.clone(),
+                    notes: None,
+                },
+            }) {
+                Ok(contract) => contract,
                 Err(error) => {
                     eprintln!("fitctl validate: {error}");
                     return ExitCode::from(2);
                 }
             }
         }
-        _ => {
-            eprintln!(
-                "fitctl validate: --profile or --service-profile-catalogue/--profile-id is required"
-            );
-            return ExitCode::from(2);
+    } else {
+        match (
+            contract_path,
+            survey_path,
+            policy_path,
+            policy_pack_path,
+            policy_pack_lock_path,
+        ) {
+            (Some(path), None, None, None, None) => {
+                match load_contract_artifact_for_validation(&path) {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            (None, Some(survey_path), Some(policy_path), None, None) => {
+                let survey = match load_host_survey_artifact_from_path(&survey_path) {
+                    Ok(survey) => survey,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+                let policy = match load_policy_document_from_path(&policy_path) {
+                    Ok(policy) => policy,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+
+                match derive_host_contract_v1(ContractDerivationRequestV1 {
+                    survey,
+                    policy,
+                    live_state: None,
+                    derivation_context: DerivationContextV1 {
+                        derived_at: validated_at.clone(),
+                        notes: None,
+                    },
+                }) {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            (None, Some(survey_path), None, Some(policy_pack_path), None) => {
+                let survey = match load_host_survey_artifact_from_path(&survey_path) {
+                    Ok(survey) => survey,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+                let Some((policy_id, _)) = selected_policy_id.as_ref() else {
+                    eprintln!(
+                        "fitctl validate: --policy-pack requires a selected policy id from --policy-id or --invocation-context"
+                    );
+                    return ExitCode::from(2);
+                };
+                let policy = match resolve_policy_from_pack_path(&policy_pack_path, policy_id) {
+                    Ok((_, _, policy)) => policy,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+
+                match derive_host_contract_v1(ContractDerivationRequestV1 {
+                    survey,
+                    policy,
+                    live_state: None,
+                    derivation_context: DerivationContextV1 {
+                        derived_at: validated_at.clone(),
+                        notes: None,
+                    },
+                }) {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            (
+                None,
+                Some(survey_path),
+                None,
+                Some(policy_pack_path),
+                Some(policy_pack_lock_path),
+            ) => {
+                let survey = match load_host_survey_artifact_from_path(&survey_path) {
+                    Ok(survey) => survey,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+                let policy = match resolve_policy_from_pack_with_lock_path(
+                    &policy_pack_path,
+                    &policy_pack_lock_path,
+                ) {
+                    Ok((_, _, _, policy)) => policy,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+
+                match derive_host_contract_v1(ContractDerivationRequestV1 {
+                    survey,
+                    policy,
+                    live_state: None,
+                    derivation_context: DerivationContextV1 {
+                        derived_at: validated_at.clone(),
+                        notes: None,
+                    },
+                }) {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            _ => {
+                eprintln!(
+                    "fitctl validate: choose either --contract or --survey with --policy/--policy-pack, or pair them with --config-bundle"
+                );
+                return ExitCode::from(2);
+            }
+        }
+    };
+    let service_profile = if let Some(bundle) = config_bundle.as_ref() {
+        match bundle.config_bundle.service_profile.clone() {
+            Some(profile) => profile,
+            None => {
+                eprintln!(
+                    "fitctl validate: --config-bundle requires an embedded selected service profile"
+                );
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        match (
+            profile_path,
+            service_profile_catalogue_path,
+            selected_profile_id
+                .as_ref()
+                .map(|(profile_id, _)| profile_id.as_str()),
+        ) {
+            (Some(path), None, None) => match load_service_profile_artifact_for_validation(&path) {
+                Ok(profile) => profile,
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            },
+            (None, Some(catalogue_path), Some(profile_id)) => {
+                match resolve_service_profile_from_catalogue_path(&catalogue_path, profile_id) {
+                    Ok((_, _, profile)) => profile,
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            _ => {
+                eprintln!(
+                    "fitctl validate: --profile, --service-profile-catalogue/--profile-id, or --config-bundle is required"
+                );
+                return ExitCode::from(2);
+            }
         }
     };
     let host_state = match state_path {
@@ -229,7 +638,7 @@ pub fn run(args: &[String]) -> ExitCode {
         service_profile,
         host_state,
         mode,
-        validated_at: validated_at.unwrap_or_else(current_epoch_marker),
+        validated_at,
         notes: note,
         max_state_age_seconds,
     }) {
@@ -251,7 +660,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> --profile-id <id>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n"
+    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n"
 }
 
 fn current_epoch_marker() -> String {
@@ -302,6 +711,21 @@ fn parse_max_state_age_seconds(value: &str) -> Result<u64, String> {
     scalar
         .checked_mul(multiplier)
         .ok_or_else(|| format!("max-state-age '{value}' overflows the supported range"))
+}
+
+fn config_bundle_requests_extension_support(
+    bundle: &fitctl_core::artifacts::config_bundle_v1::ConfigBundleV1,
+) -> bool {
+    !bundle
+        .config_bundle
+        .resolved_config
+        .configured_extension_pack_ids
+        .is_empty()
+        || !bundle
+            .config_bundle
+            .resolved_config
+            .enabled_extension_namespaces
+            .is_empty()
 }
 
 enum ValidationModeSourceV1 {

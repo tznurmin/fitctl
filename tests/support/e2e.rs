@@ -73,7 +73,45 @@ pub fn derive_contract(root: &Path, survey_path: &Path, policy_file_name: &str) 
     ]);
     assert_success(&output);
 
-    let path = root.join(format!("{policy_file_name}.contract.json"));
+    let survey_stem = survey_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("survey");
+    let path = root.join(format!("{survey_stem}.{policy_file_name}.contract.json"));
+    write_stdout(&path, &output);
+    path
+}
+
+pub fn emit_config_bundle(
+    root: &Path,
+    policy_file_name: &str,
+    service_profile_file_name: Option<&str>,
+) -> PathBuf {
+    let mut args = vec![
+        "bundle-config".to_string(),
+        "--policy".to_string(),
+        common::repo_policy_file_path(policy_file_name)
+            .to_str()
+            .expect("policy path should be valid UTF-8")
+            .to_string(),
+    ];
+    if let Some(file_name) = service_profile_file_name {
+        args.push("--profile".to_string());
+        args.push(
+            common::repo_service_profile_path(file_name)
+                .to_str()
+                .expect("service-profile path should be valid UTF-8")
+                .to_string(),
+        );
+    }
+    args.push("--bundled-at".to_string());
+    args.push(common::FIXED_TIMESTAMP.to_string());
+
+    let output = run_fitctl(args);
+    assert_success(&output);
+
+    let stem = service_profile_file_name.unwrap_or("policy-only");
+    let path = root.join(format!("{policy_file_name}.{stem}.config-bundle.json"));
     write_stdout(&path, &output);
     path
 }

@@ -13,7 +13,9 @@ use std::path::Path;
 use crate::artifacts::contract_v1::HostContractV1;
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
 use crate::artifacts::metadata_v1::DerivationStageV1;
-use crate::artifacts::schema_ids_v1::VALIDATION_REPORT_SCHEMA_ID;
+use crate::artifacts::schema_ids_v1::{
+    TOP_LEVEL_ARTIFACT_SCHEMA_VERSION, VALIDATION_REPORT_SCHEMA_ID,
+};
 use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_contract, semantic_hash_hex_for_service_profile,
     semantic_hash_hex_for_state,
@@ -203,7 +205,7 @@ pub fn validate_request_v1(
     let report = ValidationReportV1 {
         envelope: ArtifactEnvelopeV1 {
             schema_id: VALIDATION_REPORT_SCHEMA_ID.to_string(),
-            schema_version: 1,
+            schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             artifact_id: artifact_id.clone(),
             provenance: local_artifact_provenance_v1(
                 format!("validate:{}", request.mode.as_str()),
@@ -337,7 +339,7 @@ fn build_validation_remediation_hints(
             actions: vec![
                 ValidationRemediationActionV1 {
                     action_id: "collect-fresh-host-state".to_string(),
-                    summary: "Emit a fresh host-state.v1 artifact for the target host.".to_string(),
+                    summary: "Emit a fresh host-state.v2 artifact for the target host.".to_string(),
                 },
                 ValidationRemediationActionV1 {
                     action_id: "rerun-state-aware-validation".to_string(),
@@ -352,7 +354,7 @@ fn build_validation_remediation_hints(
             actions: vec![
                 ValidationRemediationActionV1 {
                     action_id: "collect-fresh-host-state".to_string(),
-                    summary: "Collect a fresh host-state.v1 artifact for the target host.".to_string(),
+                    summary: "Collect a fresh host-state.v2 artifact for the target host.".to_string(),
                 },
                 ValidationRemediationActionV1 {
                     action_id: "review-state-age-window".to_string(),
@@ -483,15 +485,15 @@ fn build_validation_remediation_hints(
         Reason::DegradationPathUnavailable => ValidationRemediationHintV1 {
             hint_id: "review-degradation-coverage".to_string(),
             reason_code: report.primary_reason_code,
-            summary: "Review the degradation ladder or choose a host that satisfies the primary capability without fallback.".to_string(),
+            summary: "Review the failed fallback tiers named in the validation summary and choose a host, policy, or profile combination that makes either the primary capability or an allowed fallback admissible.".to_string(),
             actions: vec![
                 ValidationRemediationActionV1 {
                     action_id: "inspect-degradation-ladder".to_string(),
-                    summary: "Inspect the failed primary-capability requirement and any available degradation tiers.".to_string(),
+                    summary: "Inspect the failed primary capability and the degradation tiers named in the validation report summary.".to_string(),
                 },
                 ValidationRemediationActionV1 {
-                    action_id: "select-primary-capability-host".to_string(),
-                    summary: "Choose a host whose primary capability is admissible without relying on unavailable degradation paths.".to_string(),
+                    action_id: "select-admissible-host-policy-or-profile".to_string(),
+                    summary: "Choose a host, policy, or profile combination that makes the primary capability or an allowed fallback admissible.".to_string(),
                 },
             ],
         },
@@ -858,9 +860,9 @@ fn evaluate_contract_only(
             assurance_mismatches: vec![],
             selected_degradation_tier: None,
             warnings: vec![
-                "contract_only validation cannot satisfy allocatable runtime thresholds without host-state.v1".to_string(),
+                "contract_only validation cannot satisfy allocatable runtime thresholds without host-state.v2".to_string(),
             ],
-            summary: "contract-only validation requires host-state.v1 for allocatable thresholds"
+            summary: "contract-only validation requires host-state.v2 for allocatable thresholds"
                 .to_string(),
             ..ValidationReportPayloadV1::default()
         };
@@ -1230,8 +1232,9 @@ fn evaluate_static_requirements(
     service_profile: &ServiceProfileV1,
     mut matched_requirements: Vec<String>,
 ) -> ValidationReportPayloadV1 {
-    // The static path is ordered: primary capability first, then explicit assurance/topology/
-    // network checks, then degradation tiers in declared order if the primary path fails.
+    // The static path is ordered: unresolved assurance predicates first, then full-contract
+    // exclusions, then primary capability, then explicit assurance/topology/network checks, and
+    // finally degradation tiers in declared order if the primary path fails.
     let profile = &service_profile.profile;
 
     if !profile.assurance_predicates.is_empty() {
@@ -1258,22 +1261,72 @@ fn evaluate_static_requirements(
         };
     }
 
+    let forbidden_capabilities = collect_forbidden_contract_capabilities(contract, profile);
+    if !forbidden_capabilities.is_empty() {
+        let mut evidence_refs = forbidden_capabilities
+            .iter()
+            .flat_map(|(_, claim)| claim.evidence_refs.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut policy_refs = forbidden_capabilities
+            .iter()
+            .flat_map(|(_, claim)| claim.rule_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        evidence_refs.sort();
+        policy_refs.sort();
+
+        let forbidden_labels = forbidden_capabilities
+            .iter()
+            .map(|(capability_class, _)| (*capability_class).to_string())
+            .collect::<Vec<_>>();
+        let summary = match forbidden_labels.as_slice() {
+            [single] => format!(
+                "service profile forbids capability class {single}, but the host contract exposes it"
+            ),
+            _ => format!(
+                "service profile forbids capability classes {}, but the host contract exposes them",
+                forbidden_labels.join(", ")
+            ),
+        };
+
+        return ValidationReportPayloadV1 {
+            verdict: ValidationVerdictV1::Unfit,
+            primary_reason_code: ValidationReasonCodeV1::RequirementUnsatisfied,
+            matched_requirements,
+            failed_requirements: vec!["exclusions.forbidden_capability_classes".to_string()],
+            evidence_refs,
+            policy_refs,
+            assurance_mismatches: vec![],
+            selected_degradation_tier: None,
+            warnings: vec![],
+            summary,
+            ..ValidationReportPayloadV1::default()
+        };
+    }
+
     let primary_capability = &profile.core_requirements.primary_capability_class;
-    let primary_claim = contract
-        .core_contract
-        .capability_classes
-        .get(primary_capability);
-    if let Some(claim) = primary_claim {
-        if claim.admissible && !is_forbidden(profile, primary_capability) {
+    let primary_match = resolve_capability_match(contract, primary_capability);
+    if let Some(primary_match) = primary_match {
+        if primary_match.claim.admissible && !is_forbidden(profile, primary_capability) {
             matched_requirements.push("core_requirements.primary_capability_class".to_string());
             if let Some(report) = evaluate_explicit_assurance_requirements(
                 service_profile,
-                claim,
+                primary_match.claim,
                 matched_requirements.clone(),
             ) {
                 return report;
             }
             if let Some(report) = evaluate_contract_topology_requirements(
+                contract,
+                service_profile,
+                matched_requirements.clone(),
+            ) {
+                return report;
+            }
+            if let Some(report) = evaluate_contract_accelerator_locality_requirements(
                 contract,
                 service_profile,
                 matched_requirements.clone(),
@@ -1292,20 +1345,20 @@ fn evaluate_static_requirements(
                 primary_reason_code: ValidationReasonCodeV1::RequirementsSatisfied,
                 matched_requirements,
                 failed_requirements: vec![],
-                evidence_refs: claim.evidence_refs.clone(),
-                policy_refs: claim.rule_ids.clone(),
+                evidence_refs: primary_match.claim.evidence_refs.clone(),
+                policy_refs: primary_match.claim.rule_ids.clone(),
                 assurance_mismatches: vec![],
                 selected_degradation_tier: None,
                 warnings: vec![],
-                summary: format!(
-                    "service profile fits the {} capability baseline",
-                    primary_capability
+                summary: requirements_satisfied_summary(
+                    primary_capability,
+                    primary_match.matched_capability_class,
                 ),
                 ..ValidationReportPayloadV1::default()
             };
         }
 
-        if let Some((tier_id, fallback_claim)) = select_degradation_tier(contract, profile) {
+        if let Some((tier_id, fallback_match)) = select_degradation_tier(contract, profile) {
             return ValidationReportPayloadV1 {
                 verdict: ValidationVerdictV1::FitWithDegradation,
                 primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
@@ -1314,8 +1367,8 @@ fn evaluate_static_requirements(
                     format!("degradation_ladder.{tier_id}"),
                 ],
                 failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
-                evidence_refs: fallback_claim.evidence_refs.clone(),
-                policy_refs: fallback_claim.rule_ids.clone(),
+                evidence_refs: fallback_match.claim.evidence_refs.clone(),
+                policy_refs: fallback_match.claim.rule_ids.clone(),
                 assurance_mismatches: vec![],
                 selected_degradation_tier: Some(tier_id.to_string()),
                 warnings: vec![
@@ -1326,31 +1379,31 @@ fn evaluate_static_requirements(
             };
         }
 
-        return ValidationReportPayloadV1 {
-            verdict: ValidationVerdictV1::Unfit,
-            primary_reason_code: if profile.degradation_ladder.is_empty() {
-                ValidationReasonCodeV1::PolicyNotAdmissible
-            } else {
-                ValidationReasonCodeV1::DegradationPathUnavailable
-            },
+        if profile.degradation_ladder.is_empty() {
+            return ValidationReportPayloadV1 {
+                verdict: ValidationVerdictV1::Unfit,
+                primary_reason_code: ValidationReasonCodeV1::PolicyNotAdmissible,
+                matched_requirements,
+                failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
+                evidence_refs: primary_match.claim.evidence_refs.clone(),
+                policy_refs: primary_match.claim.rule_ids.clone(),
+                assurance_mismatches: vec![],
+                selected_degradation_tier: None,
+                warnings: vec![],
+                summary: format_primary_capability_failure(primary_capability, Some(primary_match)),
+                ..ValidationReportPayloadV1::default()
+            };
+        }
+
+        return degradation_path_unavailable_report(
+            contract,
+            profile,
             matched_requirements,
-            failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
-            evidence_refs: claim.evidence_refs.clone(),
-            policy_refs: claim.rule_ids.clone(),
-            assurance_mismatches: vec![],
-            selected_degradation_tier: None,
-            warnings: vec![],
-            summary: if profile.degradation_ladder.is_empty() {
-                "primary capability is present but not admissible under the derived contract"
-                    .to_string()
-            } else {
-                "no admissible degradation path is available for the service profile".to_string()
-            },
-            ..ValidationReportPayloadV1::default()
-        };
+            Some(primary_match),
+        );
     }
 
-    if let Some((tier_id, fallback_claim)) = select_degradation_tier(contract, profile) {
+    if let Some((tier_id, fallback_match)) = select_degradation_tier(contract, profile) {
         return ValidationReportPayloadV1 {
             verdict: ValidationVerdictV1::FitWithDegradation,
             primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
@@ -1359,8 +1412,8 @@ fn evaluate_static_requirements(
                 format!("degradation_ladder.{tier_id}"),
             ],
             failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
-            evidence_refs: fallback_claim.evidence_refs.clone(),
-            policy_refs: fallback_claim.rule_ids.clone(),
+            evidence_refs: fallback_match.claim.evidence_refs.clone(),
+            policy_refs: fallback_match.claim.rule_ids.clone(),
             assurance_mismatches: vec![],
             selected_degradation_tier: Some(tier_id.to_string()),
             warnings: vec![
@@ -1372,27 +1425,23 @@ fn evaluate_static_requirements(
         };
     }
 
-    ValidationReportPayloadV1 {
-        verdict: ValidationVerdictV1::Unfit,
-        primary_reason_code: if profile.degradation_ladder.is_empty() {
-            ValidationReasonCodeV1::CapabilityUnknown
-        } else {
-            ValidationReasonCodeV1::DegradationPathUnavailable
-        },
-        matched_requirements,
-        failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
-        evidence_refs: vec![],
-        policy_refs: vec![],
-        assurance_mismatches: vec![],
-        selected_degradation_tier: None,
-        warnings: vec![],
-        summary: if profile.degradation_ladder.is_empty() {
-            "required capability is not present in the host contract".to_string()
-        } else {
-            "no degradation tier is satisfiable for the service profile".to_string()
-        },
-        ..ValidationReportPayloadV1::default()
+    if profile.degradation_ladder.is_empty() {
+        return ValidationReportPayloadV1 {
+            verdict: ValidationVerdictV1::Unfit,
+            primary_reason_code: ValidationReasonCodeV1::CapabilityUnknown,
+            matched_requirements,
+            failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
+            evidence_refs: vec![],
+            policy_refs: vec![],
+            assurance_mismatches: vec![],
+            selected_degradation_tier: None,
+            warnings: vec![],
+            summary: "required capability is not present in the host contract".to_string(),
+            ..ValidationReportPayloadV1::default()
+        };
     }
+
+    degradation_path_unavailable_report(contract, profile, matched_requirements, None)
 }
 
 fn runtime_thresholds_declared(service_profile: &ServiceProfileV1) -> bool {
@@ -1481,27 +1530,305 @@ fn runtime_threshold_unsatisfied_report(
     base
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DegradationTierFailureReasonV1 {
+    Forbidden,
+    Absent,
+    Inadmissible {
+        matched_capability_class: String,
+        summary: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DegradationTierFailureV1 {
+    tier_id: String,
+    capability_class: String,
+    reason: DegradationTierFailureReasonV1,
+    evidence_refs: Vec<String>,
+    policy_refs: Vec<String>,
+}
+
+fn degradation_path_unavailable_report(
+    contract: &HostContractPayloadV1,
+    profile: &crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+    matched_requirements: Vec<String>,
+    primary_match: Option<CapabilityMatchV1<'_>>,
+) -> ValidationReportPayloadV1 {
+    let failures = collect_degradation_tier_failures(contract, profile);
+    let (evidence_refs, policy_refs) = collect_degradation_failure_refs(&failures);
+    let primary_summary = format_primary_capability_failure(
+        &profile.core_requirements.primary_capability_class,
+        primary_match,
+    );
+    let tier_summaries = failures
+        .iter()
+        .map(format_degradation_tier_failure)
+        .collect::<Vec<_>>();
+    let summary = match tier_summaries.as_slice() {
+        [] => format!("{primary_summary}; no configured degradation tier could be evaluated"),
+        [single] => format!("{primary_summary}; {single}"),
+        _ => format!(
+            "{primary_summary}; no degradation tier is usable: {}",
+            tier_summaries.join("; ")
+        ),
+    };
+
+    ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Unfit,
+        primary_reason_code: ValidationReasonCodeV1::DegradationPathUnavailable,
+        matched_requirements,
+        failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
+        evidence_refs,
+        policy_refs,
+        assurance_mismatches: vec![],
+        selected_degradation_tier: None,
+        warnings: vec![],
+        summary,
+        ..ValidationReportPayloadV1::default()
+    }
+}
+
+fn collect_degradation_tier_failures(
+    contract: &HostContractPayloadV1,
+    profile: &crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+) -> Vec<DegradationTierFailureV1> {
+    let mut failures = Vec::new();
+
+    for tier in &profile.degradation_ladder {
+        if is_forbidden(profile, &tier.acceptable_capability_class) {
+            failures.push(DegradationTierFailureV1 {
+                tier_id: tier.tier_id.clone(),
+                capability_class: tier.acceptable_capability_class.clone(),
+                reason: DegradationTierFailureReasonV1::Forbidden,
+                evidence_refs: vec![],
+                policy_refs: vec![],
+            });
+            continue;
+        }
+
+        let Some(capability_match) =
+            resolve_capability_match(contract, &tier.acceptable_capability_class)
+        else {
+            failures.push(DegradationTierFailureV1 {
+                tier_id: tier.tier_id.clone(),
+                capability_class: tier.acceptable_capability_class.clone(),
+                reason: DegradationTierFailureReasonV1::Absent,
+                evidence_refs: vec![],
+                policy_refs: vec![],
+            });
+            continue;
+        };
+
+        if !capability_match.claim.admissible {
+            failures.push(DegradationTierFailureV1 {
+                tier_id: tier.tier_id.clone(),
+                capability_class: tier.acceptable_capability_class.clone(),
+                reason: DegradationTierFailureReasonV1::Inadmissible {
+                    matched_capability_class: capability_match.matched_capability_class.to_string(),
+                    summary: capability_match.claim.summary.clone(),
+                },
+                evidence_refs: capability_match.claim.evidence_refs.clone(),
+                policy_refs: capability_match.claim.rule_ids.clone(),
+            });
+        }
+    }
+
+    failures
+}
+
+fn collect_degradation_failure_refs(
+    failures: &[DegradationTierFailureV1],
+) -> (Vec<String>, Vec<String>) {
+    let mut evidence_refs = failures
+        .iter()
+        .flat_map(|failure| failure.evidence_refs.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut policy_refs = failures
+        .iter()
+        .flat_map(|failure| failure.policy_refs.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    evidence_refs.sort();
+    policy_refs.sort();
+    (evidence_refs, policy_refs)
+}
+
+fn format_primary_capability_failure(
+    primary_capability: &str,
+    primary_match: Option<CapabilityMatchV1<'_>>,
+) -> String {
+    match primary_match {
+        Some(capability_match) if !capability_match.claim.admissible => {
+            if capability_match.matched_capability_class == primary_capability {
+                format!(
+                    "primary capability {primary_capability} is not admissible under the derived contract: {}",
+                    capability_match.claim.summary
+                )
+            } else {
+                format!(
+                    "primary capability {primary_capability} is only available via {}, but that capability is not admissible under the derived contract: {}",
+                    capability_match.matched_capability_class,
+                    capability_match.claim.summary
+                )
+            }
+        }
+        Some(_) => format!(
+            "primary capability {primary_capability} remained unresolved for degradation reporting"
+        ),
+        None => format!("primary capability {primary_capability} is absent from the host contract"),
+    }
+}
+
+fn format_degradation_tier_failure(failure: &DegradationTierFailureV1) -> String {
+    match &failure.reason {
+        DegradationTierFailureReasonV1::Forbidden => format!(
+            "{} requires {}, but that capability is forbidden by the service profile",
+            failure.tier_id, failure.capability_class
+        ),
+        DegradationTierFailureReasonV1::Absent => format!(
+            "{} requires {}, but that capability is absent from the host contract",
+            failure.tier_id, failure.capability_class
+        ),
+        DegradationTierFailureReasonV1::Inadmissible {
+            matched_capability_class,
+            summary,
+        } => {
+            if matched_capability_class == &failure.capability_class {
+                format!(
+                    "{} requires {}, but that capability is not admissible under the derived contract: {}",
+                    failure.tier_id, failure.capability_class, summary
+                )
+            } else {
+                format!(
+                    "{} requires {}, but only {} is available via subsumption and that capability is not admissible under the derived contract: {}",
+                    failure.tier_id,
+                    failure.capability_class,
+                    matched_capability_class,
+                    summary
+                )
+            }
+        }
+    }
+}
+
 fn select_degradation_tier<'a>(
     contract: &'a HostContractPayloadV1,
     profile: &'a crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
-) -> Option<(&'a str, &'a DerivedCapabilityClaimV1)> {
+) -> Option<(&'a str, CapabilityMatchV1<'a>)> {
     // Degradation ladder order is semantic. The first admissible fallback tier wins.
     for tier in &profile.degradation_ladder {
         if is_forbidden(profile, &tier.acceptable_capability_class) {
             continue;
         }
-        if let Some(claim) = contract
-            .core_contract
-            .capability_classes
-            .get(&tier.acceptable_capability_class)
+        if let Some(capability_match) =
+            resolve_capability_match(contract, &tier.acceptable_capability_class)
         {
-            if claim.admissible {
-                return Some((&tier.tier_id, claim));
+            if capability_match.claim.admissible {
+                return Some((&tier.tier_id, capability_match));
             }
         }
     }
 
     None
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CapabilityMatchV1<'a> {
+    matched_capability_class: &'a str,
+    claim: &'a DerivedCapabilityClaimV1,
+}
+
+fn resolve_capability_match<'a>(
+    contract: &'a HostContractPayloadV1,
+    required_capability_class: &str,
+) -> Option<CapabilityMatchV1<'a>> {
+    let exact_match = contract
+        .core_contract
+        .capability_classes
+        .get_key_value(required_capability_class)
+        .map(|(capability_class, claim)| CapabilityMatchV1 {
+            matched_capability_class: capability_class.as_str(),
+            claim,
+        });
+    if exact_match.is_some_and(|capability_match| capability_match.claim.admissible) {
+        return exact_match;
+    }
+
+    for subsuming_capability_class in subsuming_capability_classes(required_capability_class) {
+        if let Some((capability_class, claim)) = contract
+            .core_contract
+            .capability_classes
+            .get_key_value(*subsuming_capability_class)
+        {
+            if claim.admissible {
+                return Some(CapabilityMatchV1 {
+                    matched_capability_class: capability_class.as_str(),
+                    claim,
+                });
+            }
+        }
+    }
+
+    if exact_match.is_some() {
+        return exact_match;
+    }
+
+    for subsuming_capability_class in subsuming_capability_classes(required_capability_class) {
+        if let Some((capability_class, claim)) = contract
+            .core_contract
+            .capability_classes
+            .get_key_value(*subsuming_capability_class)
+        {
+            return Some(CapabilityMatchV1 {
+                matched_capability_class: capability_class.as_str(),
+                claim,
+            });
+        }
+    }
+
+    None
+}
+
+fn subsuming_capability_classes(required_capability_class: &str) -> &'static [&'static str] {
+    match required_capability_class {
+        "general_compute" => &["gpu_accelerated"],
+        _ => &[],
+    }
+}
+
+fn collect_forbidden_contract_capabilities<'a>(
+    contract: &'a HostContractPayloadV1,
+    profile: &'a crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+) -> Vec<(&'a str, &'a DerivedCapabilityClaimV1)> {
+    contract
+        .core_contract
+        .capability_classes
+        .iter()
+        .filter_map(|(capability_class, claim)| {
+            is_forbidden(profile, capability_class).then_some((capability_class.as_str(), claim))
+        })
+        .collect()
+}
+
+fn requirements_satisfied_summary(
+    required_capability_class: &str,
+    matched_capability_class: &str,
+) -> String {
+    if required_capability_class == matched_capability_class {
+        format!(
+            "service profile fits the {} capability baseline",
+            required_capability_class
+        )
+    } else {
+        format!(
+            "service profile fits the {} capability baseline via {}",
+            required_capability_class, matched_capability_class
+        )
+    }
 }
 
 fn is_forbidden(
@@ -1693,6 +2020,115 @@ fn evaluate_contract_topology_requirements(
     None
 }
 
+fn evaluate_contract_accelerator_locality_requirements(
+    contract: &HostContractPayloadV1,
+    service_profile: &ServiceProfileV1,
+    matched_requirements: Vec<String>,
+) -> Option<ValidationReportPayloadV1> {
+    let requirements = &service_profile.profile.core_requirements;
+    if !requirements.require_accelerator_locality_known
+        && requirements.max_accelerator_numa_nodes.is_none()
+    {
+        return None;
+    }
+
+    let summary = &contract.core_contract.accelerator_summary;
+    let total_accelerators = match summary.total_accelerators {
+        Some(0) => {
+            return Some(accelerator_locality_report(
+                ValidationVerdictV1::Unfit,
+                matched_requirements,
+                if requirements.require_accelerator_locality_known {
+                    "core_requirements.require_accelerator_locality_known"
+                } else {
+                    "core_requirements.max_accelerator_numa_nodes"
+                },
+                "contract accelerator summary reports no accelerators for an accelerator-locality-sensitive profile".to_string(),
+            ));
+        }
+        Some(value) => value,
+        None => {
+            return Some(accelerator_locality_report(
+                ValidationVerdictV1::Indeterminate,
+                matched_requirements,
+                if requirements.require_accelerator_locality_known {
+                    "core_requirements.require_accelerator_locality_known"
+                } else {
+                    "core_requirements.max_accelerator_numa_nodes"
+                },
+                "contract accelerator summary does not expose accelerator locality".to_string(),
+            ));
+        }
+    };
+
+    if requirements.require_accelerator_locality_known {
+        match summary.accelerators_with_known_numa_node {
+            Some(value) if value == total_accelerators => {}
+            Some(value) => {
+                return Some(accelerator_locality_report(
+                    ValidationVerdictV1::Indeterminate,
+                    matched_requirements,
+                    "core_requirements.require_accelerator_locality_known",
+                    format!(
+                        "accelerator locality is known for only {} of {} accelerators",
+                        value, total_accelerators
+                    ),
+                ));
+            }
+            None => {
+                return Some(accelerator_locality_report(
+                    ValidationVerdictV1::Indeterminate,
+                    matched_requirements,
+                    "core_requirements.require_accelerator_locality_known",
+                    "contract accelerator summary does not expose accelerator locality".to_string(),
+                ));
+            }
+        }
+    }
+
+    if let Some(max_accelerator_numa_nodes) = requirements.max_accelerator_numa_nodes {
+        match summary.accelerators_with_known_numa_node {
+            Some(value) if value == total_accelerators => {
+                let distinct_numa_nodes = u32::try_from(summary.accelerator_numa_nodes.len())
+                    .ok()
+                    .unwrap_or(u32::MAX);
+                if distinct_numa_nodes > max_accelerator_numa_nodes {
+                    return Some(accelerator_locality_report(
+                        ValidationVerdictV1::Unfit,
+                        matched_requirements,
+                        "core_requirements.max_accelerator_numa_nodes",
+                        format!(
+                            "contract accelerator locality spans {} NUMA nodes, exceeding the allowed maximum {}",
+                            distinct_numa_nodes, max_accelerator_numa_nodes
+                        ),
+                    ));
+                }
+            }
+            Some(value) => {
+                return Some(accelerator_locality_report(
+                    ValidationVerdictV1::Indeterminate,
+                    matched_requirements,
+                    "core_requirements.max_accelerator_numa_nodes",
+                    format!(
+                        "accelerator locality is known for only {} of {} accelerators, so NUMA spread remains unresolved",
+                        value, total_accelerators
+                    ),
+                ));
+            }
+            None => {
+                return Some(accelerator_locality_report(
+                    ValidationVerdictV1::Indeterminate,
+                    matched_requirements,
+                    "core_requirements.max_accelerator_numa_nodes",
+                    "contract accelerator summary does not expose accelerator locality".to_string(),
+                ));
+            }
+        }
+    }
+
+    None
+}
+
 fn topology_report(
     verdict: ValidationVerdictV1,
     matched_requirements: Vec<String>,
@@ -1705,6 +2141,31 @@ fn topology_report(
         matched_requirements,
         failed_requirements: vec![failed_requirement.to_string()],
         evidence_refs: vec!["$.contract.topology_summary".to_string()],
+        policy_refs: vec![],
+        assurance_mismatches: vec![],
+        selected_degradation_tier: None,
+        warnings: vec![],
+        summary,
+        ..ValidationReportPayloadV1::default()
+    }
+}
+
+fn accelerator_locality_report(
+    verdict: ValidationVerdictV1,
+    matched_requirements: Vec<String>,
+    failed_requirement: &str,
+    summary: String,
+) -> ValidationReportPayloadV1 {
+    ValidationReportPayloadV1 {
+        verdict,
+        primary_reason_code: ValidationReasonCodeV1::TopologyMismatch,
+        matched_requirements,
+        failed_requirements: vec![failed_requirement.to_string()],
+        evidence_refs: vec![
+            "$.contract.accelerator_summary.total_accelerators".to_string(),
+            "$.contract.accelerator_summary.accelerators_with_known_numa_node".to_string(),
+            "$.contract.accelerator_summary.accelerator_numa_nodes".to_string(),
+        ],
         policy_refs: vec![],
         assurance_mismatches: vec![],
         selected_degradation_tier: None,

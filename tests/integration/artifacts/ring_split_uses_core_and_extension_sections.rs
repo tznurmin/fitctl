@@ -31,7 +31,7 @@ fn ring_split_uses_core_and_extension_sections() {
     validate_host_state(&state).expect("state should validate");
 
     let profile = load_service_profile_from_path(&common::repo_service_profile_path(
-        "general_compute_contract_only.v1.json",
+        "general_compute_contract_only.v2.json",
     ))
     .expect("service profile should load");
     let profile_json =

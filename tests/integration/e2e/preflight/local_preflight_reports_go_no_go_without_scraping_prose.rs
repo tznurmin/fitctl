@@ -53,9 +53,11 @@ fn local_preflight_reports_go_no_go_without_scraping_prose() {
     let gpu_contract = e2e::derive_contract(&temp_dir, &gpu_survey, "gpu_compute_default.v1.json");
 
     let continue_report =
-        validate_contract_only(&bare_contract, "general_compute_contract_only.v1.json");
-    let abort_report =
-        validate_contract_only(&gpu_contract, "general_compute_contract_only.v1.json");
+        validate_contract_only(&bare_contract, "general_compute_contract_only.v2.json");
+    let abort_report = validate_contract_only(
+        &gpu_contract,
+        "general_compute_no_gpu_contract_only.v2.json",
+    );
 
     assert_eq!(
         preflight_decision(&continue_report),

@@ -1,6 +1,7 @@
 # fitctl
 
-Survey a live host, keep the results as typed JSON artifacts, and use them to decide whether workloads fit.
+Survey candidate hosts, compare them against workload profiles, and make explicit fit decisions
+from typed local artifacts.
 
 ### Quick live summary
 
@@ -19,66 +20,37 @@ Summary
   Graphics / accelerators: observed; 1 devices; kinds gpu; vendors nvidia
 ```
 
-### Make decisions from recorded evidence
+### Host fitness charting
 
-Create a survey artifact from the live host:
-
-```bash
-fitctl survey > survey.json
-```
-
-Or use a demo fixture:
+Compare candidate machines against workload profiles to determine which hosts fit under different
+usage policies.
 
 ```bash
-fitctl survey --fixture linux-bare-metal-like-v1 > survey.json
+fitctl inspect --input batch.json --view matrix
 ```
 
-Derive a contract from the survey artifact:
-
-```bash
-fitctl contract \
-  --survey survey.json \
-  --policy configs/policy/general_compute_default.v1.json \
-  > contract.json
+```text
+Profile                     | Host        | Contract                | Verdict
+----------------------------+-------------+-------------------------+---------------------
+CPU only                    | cpu-host-01 | General compute default | fit
+CPU only                    | gpu-host-01 | GPU compute default     | unfit
+GPU preferred, CPU fallback | cpu-host-01 | General compute default | fit_with_degradation
+GPU preferred, CPU fallback | gpu-host-01 | GPU compute default     | fit
+GPU required                | cpu-host-01 | General compute default | unfit
+GPU required                | gpu-host-01 | GPU compute default     | fit
 ```
 
-The contract records the host capabilities that may be claimed under the selected policy.
+- `CPU host` – a standard general-purpose compute machine
+- `GPU host` – a machine provisioned with GPU acceleration
+- `Profiles` – workload requirements and constraints, such as GPU is mandatory or only CPU is allowed
+- `Contract` – the capabilities the host is allowed to claim under policy
 
-Validate a contract against a service profile:
+The example above shows how survey results from two machines are turned into fit decisions against
+three workload profiles.
 
-```bash
-fitctl validate \
-  --contract contract.json \
-  --profile configs/service_profiles/general_compute_contract_only.v1.json \
-  > validation.json
-```
-
-The validation report contains a machine-readable verdict that can be used in later automation or deployment decisions.
-
-Inspect the result manually:
-
-```bash
-fitctl inspect --input validation.json
-```
-
-Or use the verdict in automation:
-
-```bash
-jq -r '
-  if .report.verdict == "fit" or .report.verdict == "fit_with_degradation"
-  then "ALLOW"
-  else "DENY"
-  end
-' validation.json
-```
-
-## Use cases
-
-- quick capability view
-- workload fit gating
-- reusable host evidence and validation reports
-
-The core flow works with three main artifacts: a host survey, a host contract, and a validation report. Use `fitctl state` when a decision depends on current runtime conditions.
+Read [Configuration](./docs/configuration.md) for reusable policy and profile inputs,
+[Contracts](./docs/contracts.md) for contract derivation from survey evidence and policy, and
+[Validation](./docs/validation.md) for how fit is decided from a contract and a workload profile.
 
 ## Installation
 
@@ -97,12 +69,13 @@ cargo build --workspace
 
 ## Documentation
 
-- [Validation](./docs/validation.md) — survey, contract, validate, and verdicts
-- [Configuration](./docs/configuration.md) — policies, service profiles, and bundled config layout
-- [Artifacts](./docs/artifacts.md) — surveys, contracts, state, and reports
+- [Configuration](./docs/configuration.md) – policies and service profiles for contract derivation and validation
+- [Contracts](./docs/contracts.md) – deriving host contracts from survey evidence and policy
+- [Validation](./docs/validation.md) – single-host validation and batch comparison against workload profiles
+- [Artifacts](./docs/artifacts.md) – survey, contract, state, and validation-report artifacts
 
 fitctl makes fit decisions. It does not place workloads or manage hosts.
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)

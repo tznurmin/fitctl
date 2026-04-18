@@ -1,0 +1,36 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-general-compute-no-gpu-contract-only-v1",
+    "provenance": {
+      "source": "config:service_profiles/general_compute_no_gpu_contract_only.v2.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "general_compute_no_gpu_contract_only_v1",
+    "display_name": "CPU only",
+    "short_display_name": "CPU only",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like",
+        "container_restricted"
+      ]
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": [
+        "gpu_accelerated"
+      ]
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

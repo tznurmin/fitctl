@@ -1,0 +1,148 @@
+{
+  "envelope": {
+    "schema_id": "host-contract.v2",
+    "schema_version": 2,
+    "artifact_id": "contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1",
+    "provenance": {
+      "source": "policy:gpu_compute_default_v1",
+      "collected_at": "unix:1776429614",
+      "fitctl_version": "0.2.0",
+      "command_name": "contract",
+      "correlation_id": "contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "contract_basis": {
+    "core_semantic_basis": {
+      "source_survey_semantic_hash": "0729809964794b960956872f89874428b9419ac8aec1c1c4a66d6e71681966e0",
+      "policy_semantic_hash": "59986012973e6d2e12da482d7f94c4c9345697dcf944a5d21f4242f674e6fe9f",
+      "derivation_engine_id": "fitctl.contract.v1",
+      "derivation_engine_version": "1",
+      "contract_schema_version": 2,
+      "selected_policy_layers": [
+        "defaults/gpu_compute"
+      ]
+    },
+    "derivation_provenance": {
+      "derived_at": "unix:1776429614",
+      "notes": null
+    }
+  },
+  "contract": {
+    "core_contract": {
+      "accelerator_summary": {
+        "accelerator_kinds": [
+          "gpu"
+        ],
+        "accelerator_numa_nodes": [
+          0,
+          1
+        ],
+        "accelerators_with_known_memory": 2,
+        "accelerators_with_known_numa_node": 2,
+        "families": [
+          "nvidia_pci"
+        ],
+        "gpu_accelerators": 2,
+        "integrated_accelerators": null,
+        "max_memory_bytes": 51539607552,
+        "models": [
+          "nvidia-gpu-2206",
+          "nvidia-gpu-2230"
+        ],
+        "operability": {
+          "driver_bound_devices": 2,
+          "static_operability": "operable",
+          "visible_device_nodes": [
+            "/dev/nvidia-uvm",
+            "/dev/nvidia0",
+            "/dev/nvidia1",
+            "/dev/nvidiactl"
+          ]
+        },
+        "total_accelerators": 2,
+        "vendors": [
+          "nvidia"
+        ]
+      },
+      "capability_classes": {
+        "gpu_accelerated": {
+          "admissible": true,
+          "claim_metadata": {
+            "assurance_source": "self_observed",
+            "derivation_stage": "policy_asserted",
+            "evidence_paths": [
+              "$.survey.core_evidence.observations.cpu",
+              "$.survey.core_evidence.observations.memory",
+              "$.survey.core_evidence.execution_context",
+              "$.survey.core_evidence.observations.network",
+              "$.survey.core_evidence.observations.accelerators"
+            ],
+            "policy_rule_id": "defaults/gpu_compute",
+            "source_collectors": [
+              "procfs",
+              "sysfs",
+              "cgroupfs",
+              "mountinfo",
+              "netdev",
+              "block_and_filesystem",
+              "pci_accelerators"
+            ],
+            "trust_evidence_refs": []
+          },
+          "evidence_refs": [
+            "$.survey.core_evidence.observations.cpu",
+            "$.survey.core_evidence.observations.memory",
+            "$.survey.core_evidence.execution_context",
+            "$.survey.core_evidence.observations.network",
+            "$.survey.core_evidence.observations.accelerators"
+          ],
+          "rule_ids": [
+            "defaults/gpu_compute"
+          ],
+          "summary": "host satisfies the gpu_accelerated capability baseline"
+        }
+      },
+      "execution_constraints": {
+        "container_runtime": null,
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "eece3576225cc456f0b3007995fdda68ac1bbaf56881fb8a7b1ae3dc17d7c0ea",
+        "identity_class": "local_stable",
+        "local_stable_id": "382e64ee7e982cd5c3382b51e17b6bce4ebee523cda4a6986cd7950aadb2abe0",
+        "provenance_fingerprint": "c91ea331ee379fb58fa327df44aae7e61c2949422341c400513ecd78a0d4b417"
+      },
+      "network_summary": {
+        "interface_kinds": [
+          "ethernet",
+          "loopback"
+        ],
+        "max_observed_speed_mbps": 25000,
+        "non_loopback_interfaces": 1,
+        "operability": {
+          "interfaces_with_known_speed": 1,
+          "physical_non_loopback_interfaces": 1,
+          "static_operability": "operable"
+        },
+        "total_interfaces": 2
+      },
+      "storage_summary": {
+        "block_device_classes": [],
+        "filesystem_types": [],
+        "operability": {
+          "root_mount_present": false,
+          "static_operability": "not_operable",
+          "usable_block_devices": 0
+        },
+        "total_block_devices": 2,
+        "total_mounts": 2
+      },
+      "topology_summary": {
+        "cpu_packages": 2,
+        "numa_nodes": 2
+      }
+    }
+  }
+}

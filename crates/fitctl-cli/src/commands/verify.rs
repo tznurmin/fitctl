@@ -155,7 +155,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl verify --input <path> --policy <trust-policy-path> [--trust-evidence <path> ...] [--bundle-out <path>]\n"
+    "Usage:\n  fitctl verify --input <path> --policy <trust-policy-or-bundle-path> [--trust-evidence <path> ...] [--bundle-out <path>]\n"
 }
 
 fn current_epoch_marker() -> String {

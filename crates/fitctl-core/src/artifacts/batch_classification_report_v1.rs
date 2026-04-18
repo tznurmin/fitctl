@@ -34,6 +34,12 @@ pub struct BatchClassificationBasisV1 {
 pub struct BatchClassificationContractRefV1 {
     pub artifact_id: String,
     pub semantic_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_alias: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +47,10 @@ pub struct BatchClassificationContractRefV1 {
 pub struct BatchClassificationServiceProfileRefV1 {
     pub artifact_id: String,
     pub semantic_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

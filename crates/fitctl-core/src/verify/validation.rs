@@ -6,7 +6,7 @@
 use super::*;
 
 /// Validate the trust-policy document before signature verification and policy evaluation begin.
-pub(super) fn validate_trust_policy(policy: &TrustPolicyV1) -> Result<(), VerifyError> {
+pub(crate) fn validate_trust_policy(policy: &TrustPolicyV1) -> Result<(), VerifyError> {
     if policy.schema_id != TRUST_POLICY_SCHEMA_ID {
         return Err(VerifyError::new(
             VerifyErrorCode::TrustPolicyInvalid,
@@ -70,6 +70,87 @@ pub(super) fn validate_trust_policy(policy: &TrustPolicyV1) -> Result<(), Verify
             "trust policy max_external_evidence_age_seconds must be greater than zero",
         ));
     }
+    Ok(())
+}
+
+pub(super) fn validate_local_signer_keyring(
+    keyring: &LocalSignerKeyringV1,
+) -> Result<(), VerifyError> {
+    if keyring.schema_id != LOCAL_SIGNER_KEYRING_SCHEMA_ID {
+        return Err(VerifyError::new(
+            VerifyErrorCode::TrustPolicyInvalid,
+            "trust_policy_load",
+            "local signer keyring schema_id must be fitctl.local-signer-keyring.v1",
+        ));
+    }
+    if keyring.schema_version != 1 {
+        return Err(VerifyError::new(
+            VerifyErrorCode::TrustPolicyInvalid,
+            "trust_policy_load",
+            "local signer keyring schema_version must be 1",
+        ));
+    }
+    if is_blank(&keyring.keyring_id) {
+        return Err(VerifyError::new(
+            VerifyErrorCode::TrustPolicyInvalid,
+            "trust_policy_load",
+            "local signer keyring keyring_id must be populated",
+        ));
+    }
+    ensure_unique_non_blank(
+        &keyring.trusted_signers,
+        "trusted_signers",
+        "trust_policy_load",
+        VerifyErrorCode::TrustPolicyInvalid,
+    )?;
+    Ok(())
+}
+
+pub(super) fn validate_trust_policy_bundle(
+    bundle: &TrustPolicyBundleV1,
+) -> Result<(), VerifyError> {
+    if bundle.schema_id != TRUST_POLICY_BUNDLE_SCHEMA_ID {
+        return Err(VerifyError::new(
+            VerifyErrorCode::TrustPolicyInvalid,
+            "trust_policy_load",
+            "trust policy bundle schema_id must be fitctl.trust-policy-bundle.v1",
+        ));
+    }
+    if bundle.schema_version != 1 {
+        return Err(VerifyError::new(
+            VerifyErrorCode::TrustPolicyInvalid,
+            "trust_policy_load",
+            "trust policy bundle schema_version must be 1",
+        ));
+    }
+    if is_blank(&bundle.bundle_id) {
+        return Err(VerifyError::new(
+            VerifyErrorCode::TrustPolicyInvalid,
+            "trust_policy_load",
+            "trust policy bundle bundle_id must be populated",
+        ));
+    }
+    validate_trust_policy(&bundle.policy)?;
+
+    if let Some(keyring) = bundle.local_keyring.as_ref() {
+        validate_local_signer_keyring(keyring)?;
+        let mut all_signers = bundle
+            .policy
+            .trusted_signers
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for signer in &keyring.trusted_signers {
+            if !all_signers.insert(signer.clone()) {
+                return Err(VerifyError::new(
+                    VerifyErrorCode::TrustPolicyInvalid,
+                    "trust_policy_load",
+                    "trust policy bundle must not duplicate trusted signer ids across the inline policy and local keyring",
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 

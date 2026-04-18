@@ -8,9 +8,10 @@ use std::process::ExitCode;
 
 use fitctl_core::config::{
     load_extension_pack_from_path, load_invocation_context_from_path,
-    load_recommendation_pack_from_path, resolve_configuration_v1, resolve_policy_from_pack_path,
-    resolve_policy_from_pack_with_lock_path, resolve_service_profile_from_catalogue_path,
-    ResolveConfigurationRequestV1,
+    load_recommendation_pack_from_path, resolve_configuration_v1,
+    resolve_invocation_selected_policy_id_v1, resolve_invocation_selected_service_profile_id_v1,
+    resolve_policy_from_pack_path, resolve_policy_from_pack_with_lock_path,
+    resolve_service_profile_from_catalogue_path, ResolveConfigurationRequestV1,
 };
 use fitctl_core::policy::load_policy_document_from_path;
 use fitctl_core::verify::load_trust_policy_from_path;
@@ -134,15 +135,74 @@ pub fn run(args: &[String]) -> ExitCode {
         eprintln!("fitctl inspect-config: choose either --policy-id or --policy-pack-lock");
         return ExitCode::from(2);
     }
-    if policy_pack_path.is_some() && policy_id.is_none() && policy_pack_lock_path.is_none() {
+    if profile_id.is_some() && service_profile_catalogue_path.is_none() {
+        eprintln!("fitctl inspect-config: --profile-id requires --service-profile-catalogue");
+        return ExitCode::from(2);
+    }
+
+    let invocation_context = match invocation_context_path {
+        Some(path) => match load_invocation_context_from_path(&path) {
+            Ok(context) => Some(context),
+            Err(error) => {
+                eprintln!("fitctl inspect-config: {error}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+    let selected_policy_id = match resolve_invocation_selected_policy_id_v1(
+        policy_id.as_deref(),
+        invocation_context.as_ref(),
+    ) {
+        Ok(selection) => selection,
+        Err(error) => {
+            eprintln!("fitctl inspect-config: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let selected_profile_id = match resolve_invocation_selected_service_profile_id_v1(
+        profile_id.as_deref(),
+        invocation_context.as_ref(),
+    ) {
+        Ok(selection) => selection,
+        Err(error) => {
+            eprintln!("fitctl inspect-config: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    if policy_pack_path.is_none() && selected_policy_id.is_some() {
         eprintln!(
-            "fitctl inspect-config: --policy-pack requires either --policy-id or --policy-pack-lock"
+            "fitctl inspect-config: invocation-context or --policy-id selection requires --policy-pack"
         );
         return ExitCode::from(2);
     }
-    if service_profile_catalogue_path.is_some() ^ profile_id.is_some() {
+    if policy_pack_lock_path.is_some()
+        && invocation_context
+            .as_ref()
+            .and_then(|context| context.selected_policy_id.as_ref())
+            .is_some()
+    {
         eprintln!(
-            "fitctl inspect-config: --service-profile-catalogue and --profile-id must be used together"
+            "fitctl inspect-config: --policy-pack-lock must not be combined with invocation-context policy selection"
+        );
+        return ExitCode::from(2);
+    }
+    if policy_pack_path.is_some() && selected_policy_id.is_none() && policy_pack_lock_path.is_none()
+    {
+        eprintln!(
+            "fitctl inspect-config: --policy-pack requires a selected policy id from --policy-id, --invocation-context, or --policy-pack-lock"
+        );
+        return ExitCode::from(2);
+    }
+    if service_profile_catalogue_path.is_some() && selected_profile_id.is_none() {
+        eprintln!(
+            "fitctl inspect-config: --service-profile-catalogue requires a selected profile id from --profile-id or --invocation-context"
+        );
+        return ExitCode::from(2);
+    }
+    if service_profile_catalogue_path.is_none() && selected_profile_id.is_some() {
+        eprintln!(
+            "fitctl inspect-config: invocation-context or --profile-id selection requires --service-profile-catalogue"
         );
         return ExitCode::from(2);
     }
@@ -150,27 +210,29 @@ pub fn run(args: &[String]) -> ExitCode {
     let (
         selected_policy_pack_id,
         selected_policy_entry_id,
+        selected_policy_entry_source,
         selected_policy_pack_lock_id,
         selected_policy_pack_lock_signed,
         policy,
     ) = match (
         policy_path,
         policy_pack_path,
-        policy_id,
+        selected_policy_id,
         policy_pack_lock_path,
     ) {
         (Some(path), None, None, None) => match load_policy_document_from_path(&path) {
-            Ok(policy) => (None, None, None, None, policy),
+            Ok(policy) => (None, None, None, None, None, policy),
             Err(error) => {
                 eprintln!("fitctl inspect-config: {error}");
                 return ExitCode::from(2);
             }
         },
-        (None, Some(pack_path), Some(policy_id), None) => {
+        (None, Some(pack_path), Some((policy_id, selection_source)), None) => {
             match resolve_policy_from_pack_path(&pack_path, &policy_id) {
                 Ok((pack, entry, policy)) => (
                     Some(pack.pack_id),
                     Some(entry.policy_id),
+                    Some(selection_source),
                     None,
                     None,
                     policy,
@@ -186,6 +248,7 @@ pub fn run(args: &[String]) -> ExitCode {
                 Ok((pack, lock, entry, policy)) => (
                     Some(pack.pack_id),
                     Some(entry.policy_id),
+                    None,
                     Some(lock.lock_id),
                     Some(!lock.signatures.is_empty()),
                     policy,
@@ -203,20 +266,25 @@ pub fn run(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let (selected_service_profile_catalogue_id, selected_service_profile_entry_id) = match (
-        service_profile_catalogue_path,
-        profile_id,
-    ) {
-        (Some(catalogue_path), Some(profile_id)) => {
+    let (
+        selected_service_profile_catalogue_id,
+        selected_service_profile_entry_id,
+        selected_service_profile_entry_source,
+    ) = match (service_profile_catalogue_path, selected_profile_id) {
+        (Some(catalogue_path), Some((profile_id, selection_source))) => {
             match resolve_service_profile_from_catalogue_path(&catalogue_path, &profile_id) {
-                Ok((catalogue, entry, _)) => (Some(catalogue.catalogue_id), Some(entry.profile_id)),
+                Ok((catalogue, entry, _)) => (
+                    Some(catalogue.catalogue_id),
+                    Some(entry.profile_id),
+                    Some(selection_source),
+                ),
                 Err(error) => {
                     eprintln!("fitctl inspect-config: {error}");
                     return ExitCode::from(2);
                 }
             }
         }
-        (None, None) => (None, None),
+        (None, None) => (None, None, None),
         _ => {
             eprintln!(
                     "fitctl inspect-config: --service-profile-catalogue and --profile-id must be used together"
@@ -257,42 +325,31 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     }
 
-    let invocation_context = match invocation_context_path {
-        Some(path) => match load_invocation_context_from_path(&path) {
-            Ok(context) => Some(context),
-            Err(error) => {
-                eprintln!("fitctl inspect-config: {error}");
-                return ExitCode::from(2);
-            }
-        },
-        None => None,
-    };
-
     match resolve_configuration_v1(ResolveConfigurationRequestV1 {
         policy,
         trust_policy,
         extension_packs,
         recommendation_packs,
         invocation_context,
+        selected_policy_pack_id,
+        selected_policy_entry_id,
+        selected_policy_entry_source,
+        selected_policy_pack_lock_id,
+        selected_policy_pack_lock_signed,
+        selected_service_profile_catalogue_id,
+        selected_service_profile_entry_id,
+        selected_service_profile_entry_source,
     }) {
-        Ok(mut config) => {
-            config.selected_policy_pack_id = selected_policy_pack_id;
-            config.selected_policy_entry_id = selected_policy_entry_id;
-            config.selected_policy_pack_lock_id = selected_policy_pack_lock_id;
-            config.selected_policy_pack_lock_signed = selected_policy_pack_lock_signed;
-            config.selected_service_profile_catalogue_id = selected_service_profile_catalogue_id;
-            config.selected_service_profile_entry_id = selected_service_profile_entry_id;
-            match serde_json::to_string_pretty(&config) {
-                Ok(text) => {
-                    println!("{text}");
-                    ExitCode::SUCCESS
-                }
-                Err(error) => {
-                    eprintln!("fitctl inspect-config: failed to encode resolved config: {error}");
-                    ExitCode::from(2)
-                }
+        Ok(config) => match serde_json::to_string_pretty(&config) {
+            Ok(text) => {
+                println!("{text}");
+                ExitCode::SUCCESS
             }
-        }
+            Err(error) => {
+                eprintln!("fitctl inspect-config: failed to encode resolved config: {error}");
+                ExitCode::from(2)
+            }
+        },
         Err(error) => {
             eprintln!("fitctl inspect-config: {error}");
             ExitCode::from(2)
@@ -301,5 +358,5 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl inspect-config (--policy <path> | --policy-pack <path> (--policy-id <id> | --policy-pack-lock <path>)) [--service-profile-catalogue <path> --profile-id <id>] [--trust-policy <path>] [--extension-pack <path> ...] [--recommendation-pack <path> ...] [--invocation-context <path>]\n"
+    "Usage:\n  fitctl inspect-config (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>]) [--service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>]] [--trust-policy <path>] [--extension-pack <path> ...] [--recommendation-pack <path> ...] [--invocation-context <path>]\n"
 }

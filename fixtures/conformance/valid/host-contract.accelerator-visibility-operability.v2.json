@@ -1,0 +1,137 @@
+{
+  "envelope": {
+    "schema_id": "host-contract.v2",
+    "schema_version": 2,
+    "artifact_id": "contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1",
+    "provenance": {
+      "source": "policy:gpu_compute_default_v1",
+      "collected_at": "2025-04-22T09:20:00Z",
+      "fitctl_version": "0.2.0",
+      "command_name": "contract",
+      "correlation_id": "contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "contract_basis": {
+    "core_semantic_basis": {
+      "source_survey_semantic_hash": "d3530cbd8438be66939503eb671a3b91354f493ff362e55e0ada3a2623871cea",
+      "policy_semantic_hash": "59986012973e6d2e12da482d7f94c4c9345697dcf944a5d21f4242f674e6fe9f",
+      "derivation_engine_id": "fitctl.contract.v1",
+      "derivation_engine_version": "1",
+      "contract_schema_version": 2,
+      "selected_policy_layers": [
+        "defaults/gpu_compute"
+      ]
+    },
+    "derivation_provenance": {
+      "derived_at": "2025-04-22T09:20:00Z",
+      "notes": null
+    }
+  },
+  "contract": {
+    "core_contract": {
+      "accelerator_summary": {
+        "accelerator_kinds": [
+          "gpu"
+        ],
+        "accelerators_with_known_memory": 2,
+        "families": [
+          "nvidia_pci"
+        ],
+        "gpu_accelerators": 2,
+        "integrated_accelerators": null,
+        "max_memory_bytes": 51539607552,
+        "models": [
+          "nvidia-gpu-2206",
+          "nvidia-gpu-2230"
+        ],
+        "operability": {
+          "driver_bound_devices": 2,
+          "static_operability": "not_operable"
+        },
+        "total_accelerators": 2,
+        "vendors": [
+          "nvidia"
+        ]
+      },
+      "capability_classes": {
+        "gpu_accelerated": {
+          "admissible": false,
+          "claim_metadata": {
+            "assurance_source": "self_observed",
+            "derivation_stage": "policy_asserted",
+            "evidence_paths": [
+              "$.survey.core_evidence.observations.cpu",
+              "$.survey.core_evidence.observations.memory",
+              "$.survey.core_evidence.execution_context",
+              "$.survey.core_evidence.observations.network",
+              "$.survey.core_evidence.observations.accelerators"
+            ],
+            "policy_rule_id": "defaults/gpu_compute",
+            "source_collectors": [
+              "procfs",
+              "sysfs",
+              "cgroupfs",
+              "mountinfo",
+              "netdev",
+              "block_and_filesystem",
+              "pci_accelerators"
+            ],
+            "trust_evidence_refs": []
+          },
+          "evidence_refs": [
+            "$.survey.core_evidence.observations.cpu",
+            "$.survey.core_evidence.observations.memory",
+            "$.survey.core_evidence.execution_context",
+            "$.survey.core_evidence.observations.network",
+            "$.survey.core_evidence.observations.accelerators"
+          ],
+          "rule_ids": [
+            "defaults/gpu_compute"
+          ],
+          "summary": "container-restricted execution is disallowed by policy; gpu hardware is present but no accelerator device nodes are visible under the current execution context; accelerator hardware is present but no accelerator device nodes are visible under the current execution context; visible accelerator count 0 is below the policy floor 1"
+        }
+      },
+      "execution_constraints": {
+        "container_runtime": "docker",
+        "visibility_scope": "container_restricted"
+      },
+      "identity_summary": {
+        "composition_digest": "989aa09500287008291c790cd469e25b21cbbb0baa5f6736411a645c5769ef8c",
+        "identity_class": "local_stable",
+        "local_stable_id": "1f4733965df6d8b24ee64ea2a60bd19d58364ef785b8b36710198900a883f55d",
+        "provenance_fingerprint": "0b0237dba4179bde80ca5e13a7d95b3c4fc7b955917cd96e24cee14de5dde47b"
+      },
+      "network_summary": {
+        "interface_kinds": [
+          "ethernet",
+          "loopback"
+        ],
+        "max_observed_speed_mbps": 2500,
+        "non_loopback_interfaces": 1,
+        "operability": {
+          "interfaces_with_known_speed": 1,
+          "physical_non_loopback_interfaces": 1,
+          "static_operability": "operable"
+        },
+        "total_interfaces": 2
+      },
+      "storage_summary": {
+        "block_device_classes": [],
+        "filesystem_types": [],
+        "operability": {
+          "root_mount_present": false,
+          "static_operability": "not_operable",
+          "usable_block_devices": 0
+        },
+        "total_block_devices": 2,
+        "total_mounts": 2
+      },
+      "topology_summary": {
+        "cpu_packages": 1,
+        "numa_nodes": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schema_id": "fitctl.invocation-context.v1",
+  "schema_version": 1,
+  "invocation_id": "python-extension-state-advisory-v1",
+  "enabled_extension_namespaces": [
+    "org.example.runtime.python"
+  ],
+  "selected_recommendation_pack_ids": [
+    "general-compute-advisory-v1"
+  ],
+  "enabled_simulation_layer_ids": [],
+  "validation_mode": "state_advisory",
+  "max_state_age_seconds": 3600
+}

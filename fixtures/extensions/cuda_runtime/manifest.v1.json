@@ -1,0 +1,11 @@
+{
+  "schema_id": "fitctl.fixture.extension.org.example.runtime.cuda.corpus.v1",
+  "schema_version": 1,
+  "namespace": "org.example.runtime.cuda",
+  "fixtures": [
+    {
+      "fixture_id": "linux-gpu-workstation-like-v1",
+      "path": "linux-gpu-workstation-like-v1.json"
+    }
+  ]
+}

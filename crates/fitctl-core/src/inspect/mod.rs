@@ -18,7 +18,9 @@ mod format;
 use self::format::*;
 
 use crate::artifacts::batch_classification_report_v1::BatchClassificationReportV1;
+use crate::artifacts::config_bundle_v1::ConfigBundleV1;
 use crate::artifacts::contract_v1::HostContractV1;
+use crate::artifacts::decision_bundle_v1::DecisionBundleV1;
 use crate::artifacts::envelope_v1::{ArtifactEnvelopeV1, SignatureEnvelopeV1};
 use crate::artifacts::metadata_v1::CollectorMetadataV1;
 use crate::artifacts::recommendation_report_v1::{
@@ -42,13 +44,16 @@ use crate::classify::{
 };
 use crate::contract::HostContractPayloadV1;
 use crate::extensions::{
-    decode_node_runtime_contract_from_value, decode_node_runtime_evidence_from_value,
-    decode_node_runtime_requirement_from_value, decode_python_runtime_contract_from_value,
-    decode_python_runtime_evidence_from_value, decode_python_runtime_requirement_from_value,
+    decode_cuda_runtime_contract_from_value, decode_cuda_runtime_evidence_from_value,
+    decode_cuda_runtime_requirement_from_value, decode_node_runtime_contract_from_value,
+    decode_node_runtime_evidence_from_value, decode_node_runtime_requirement_from_value,
+    decode_python_runtime_contract_from_value, decode_python_runtime_evidence_from_value,
+    decode_python_runtime_requirement_from_value, format_cuda_runtime_contract_for_inspect,
+    format_cuda_runtime_evidence_for_inspect, format_cuda_runtime_requirement_for_inspect,
     format_node_runtime_contract_for_inspect, format_node_runtime_evidence_for_inspect,
     format_node_runtime_requirement_for_inspect, format_python_runtime_contract_for_inspect,
     format_python_runtime_evidence_for_inspect, format_python_runtime_requirement_for_inspect,
-    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
+    CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
 };
 use crate::recommendation::{
     load_recommendation_report_from_path, load_recommendation_report_from_value,
@@ -121,9 +126,30 @@ impl std::fmt::Display for InspectError {
 impl std::error::Error for InspectError {}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum InspectViewV1 {
+    #[default]
+    Summary,
+    Matrix,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum InspectPaletteV1 {
+    #[default]
+    Default,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InspectStyleOptionsV1 {
+    pub color_enabled: bool,
+    pub palette: InspectPaletteV1,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct InspectRenderOptionsV1 {
     pub verbose: bool,
     pub show_identifiers: bool,
+    pub style: InspectStyleOptionsV1,
+    pub view: InspectViewV1,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -347,7 +373,15 @@ pub fn render_inspect_artifact_summary_with_options_v1(
         )
     })?;
 
-    writeln!(&mut output, "Summary").map_err(|error| {
+    writeln!(
+        &mut output,
+        "{}",
+        match options.view {
+            InspectViewV1::Summary => "Summary",
+            InspectViewV1::Matrix => "Matrix",
+        }
+    )
+    .map_err(|error| {
         InspectError::new(
             InspectErrorCode::InspectRenderFailed,
             "inspect_render",
@@ -355,8 +389,8 @@ pub fn render_inspect_artifact_summary_with_options_v1(
         )
     })?;
 
-    let collectors = match artifact {
-        InspectArtifactV1::Core(artifact) => match artifact.as_ref() {
+    let collectors = match (artifact, options.view) {
+        (InspectArtifactV1::Core(artifact), InspectViewV1::Summary) => match artifact.as_ref() {
             ArtifactRecordV1::Survey(artifact) => {
                 render_survey_summary(&mut output, artifact, options)?;
                 Some(
@@ -390,14 +424,36 @@ pub fn render_inspect_artifact_summary_with_options_v1(
                 render_validation_report_summary(&mut output, artifact, options)?;
                 None
             }
+            ArtifactRecordV1::ConfigBundle(artifact) => {
+                render_config_bundle_summary(&mut output, artifact)?;
+                None
+            }
+            ArtifactRecordV1::DecisionBundle(artifact) => {
+                render_decision_bundle_summary(&mut output, artifact, options)?;
+                None
+            }
         },
-        InspectArtifactV1::BatchClassificationReport(artifact) => {
+        (InspectArtifactV1::BatchClassificationReport(artifact), InspectViewV1::Summary) => {
             render_batch_classification_report_summary(&mut output, artifact, options)?;
             None
         }
-        InspectArtifactV1::RecommendationReport(artifact) => {
+        (InspectArtifactV1::BatchClassificationReport(artifact), InspectViewV1::Matrix) => {
+            render_batch_classification_report_matrix(&mut output, artifact, options)?;
+            None
+        }
+        (InspectArtifactV1::RecommendationReport(artifact), InspectViewV1::Summary) => {
             render_recommendation_report_summary(&mut output, artifact, options)?;
             None
+        }
+        (_, InspectViewV1::Matrix) => {
+            return Err(InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_view_select",
+                format!(
+                    "matrix view is supported only for {} artifacts",
+                    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID
+                ),
+            ));
         }
     };
 
@@ -601,6 +657,20 @@ fn render_survey_summary(
             options,
         ),
     )?;
+    if let Some(value) = payload.extension_evidence.get(CUDA_RUNTIME_NAMESPACE) {
+        let evidence = decode_cuda_runtime_evidence_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        push_line(
+            output,
+            "CUDA runtime extension",
+            format_cuda_runtime_evidence_for_inspect(&evidence, true),
+        )?;
+    }
     if let Some(value) = payload.extension_evidence.get(PYTHON_RUNTIME_NAMESPACE) {
         let evidence = decode_python_runtime_evidence_from_value(value).map_err(|error| {
             InspectError::new(
@@ -649,6 +719,15 @@ fn render_contract_summary(
             )
         })?;
 
+    if let Some(host_alias) = artifact.host_alias.as_deref() {
+        push_line(output, "Host alias", host_alias)?;
+    }
+    if let Some(display_name) = artifact.display_name.as_deref() {
+        push_line(output, "Display name", display_name)?;
+    }
+    if let Some(short_display_name) = artifact.short_display_name.as_deref() {
+        push_line(output, "Short display name", short_display_name)?;
+    }
     push_line(
         output,
         "Capability classes",
@@ -847,6 +926,68 @@ fn render_contract_summary(
                 payload.core_contract.accelerator_summary.vendors.join(", ")
             }
         );
+        if !payload
+            .core_contract
+            .accelerator_summary
+            .families
+            .is_empty()
+        {
+            summary.push_str("; ");
+            summary.push_str(&format!(
+                "families {}",
+                payload
+                    .core_contract
+                    .accelerator_summary
+                    .families
+                    .join(", ")
+            ));
+        }
+        if !payload.core_contract.accelerator_summary.models.is_empty() {
+            summary.push_str("; ");
+            summary.push_str(&format!(
+                "models {}",
+                payload.core_contract.accelerator_summary.models.join(", ")
+            ));
+        }
+        if let Some(integrated_accelerators) = payload
+            .core_contract
+            .accelerator_summary
+            .integrated_accelerators
+        {
+            summary.push_str("; ");
+            summary.push_str(&format!("{integrated_accelerators} integrated"));
+        }
+        if let Some(known_memory_devices) = payload
+            .core_contract
+            .accelerator_summary
+            .accelerators_with_known_memory
+        {
+            summary.push_str("; ");
+            summary.push_str(&format!("{known_memory_devices} known-memory"));
+            if let Some(max_memory_bytes) =
+                payload.core_contract.accelerator_summary.max_memory_bytes
+            {
+                summary.push_str("; ");
+                summary.push_str(&format!(
+                    "max memory {}",
+                    format_bytes_compact(max_memory_bytes)
+                ));
+            }
+        }
+        if let Some(locality) = format_accelerator_locality_for_inspect(
+            payload.core_contract.accelerator_summary.total_accelerators,
+            payload
+                .core_contract
+                .accelerator_summary
+                .accelerators_with_known_numa_node,
+            &payload
+                .core_contract
+                .accelerator_summary
+                .accelerator_numa_nodes,
+        ) {
+            summary.push_str("; ");
+            summary.push_str(&locality);
+        }
         if let Some(operability) = payload
             .core_contract
             .accelerator_summary
@@ -981,6 +1122,20 @@ fn render_contract_summary(
             .map(|basis| join_or_placeholder(&basis.enabled_extension_namespaces))
             .unwrap_or_else(|| "<none>".to_string()),
     )?;
+    if let Some(value) = payload.extension_contract.get(CUDA_RUNTIME_NAMESPACE) {
+        let contract = decode_cuda_runtime_contract_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        push_line(
+            output,
+            "CUDA runtime extension",
+            format_cuda_runtime_contract_for_inspect(&contract),
+        )?;
+    }
     if let Some(value) = payload.extension_contract.get(PYTHON_RUNTIME_NAMESPACE) {
         let contract = decode_python_runtime_contract_from_value(value).map_err(|error| {
             InspectError::new(
@@ -1018,6 +1173,24 @@ fn render_service_profile_summary(
     artifact: &ServiceProfileV1,
 ) -> Result<(), InspectError> {
     push_line(output, "Profile id", artifact.profile.profile_id.clone())?;
+    push_line(
+        output,
+        "Display name",
+        artifact
+            .profile
+            .display_name
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
+        "Short display name",
+        artifact
+            .profile
+            .short_display_name
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
     push_line(
         output,
         "Primary capability class",
@@ -1132,6 +1305,29 @@ fn render_service_profile_summary(
     )?;
     push_line(
         output,
+        "Require accelerator locality known",
+        if artifact
+            .profile
+            .core_requirements
+            .require_accelerator_locality_known
+        {
+            "yes".to_string()
+        } else {
+            "no".to_string()
+        },
+    )?;
+    push_line(
+        output,
+        "Maximum accelerator NUMA nodes",
+        artifact
+            .profile
+            .core_requirements
+            .max_accelerator_numa_nodes
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
         "Extension requirement namespaces",
         if artifact.profile.extension_requirements.is_empty() {
             "<none>".to_string()
@@ -1145,6 +1341,24 @@ fn render_service_profile_summary(
                 .join(", ")
         },
     )?;
+    if let Some(value) = artifact
+        .profile
+        .extension_requirements
+        .get(CUDA_RUNTIME_NAMESPACE)
+    {
+        let requirement = decode_cuda_runtime_requirement_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        push_line(
+            output,
+            "CUDA runtime requirement",
+            format_cuda_runtime_requirement_for_inspect(&requirement),
+        )?;
+    }
     if let Some(value) = artifact
         .profile
         .extension_requirements
@@ -1364,7 +1578,12 @@ fn render_validation_report_summary(
     push_line(
         output,
         "Verdict",
-        format_validation_verdict(artifact.report.verdict),
+        format_validation_verdict(artifact.report.verdict, options),
+    )?;
+    push_line(
+        output,
+        "Operator posture",
+        format_operator_posture(artifact.report.verdict),
     )?;
     push_line(
         output,
@@ -1479,6 +1698,319 @@ fn render_validation_report_summary(
     Ok(())
 }
 
+fn render_decision_bundle_summary(
+    output: &mut String,
+    artifact: &DecisionBundleV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    let report = &artifact.bundle.validation_report;
+
+    push_line(output, "Bundle scope", "single local decision")?;
+    push_line(
+        output,
+        "Validation mode",
+        format_validation_mode(report.validation_basis.validation_mode),
+    )?;
+    push_line(
+        output,
+        "Verdict",
+        format_validation_verdict(report.report.verdict, options),
+    )?;
+    push_line(
+        output,
+        "Operator posture",
+        format_operator_posture(report.report.verdict),
+    )?;
+    push_line(
+        output,
+        "Primary reason code",
+        format_validation_reason_code(report.report.primary_reason_code),
+    )?;
+    push_line(output, "Summary", report.report.summary.clone())?;
+    push_line(output, "Lineage status", "aligned")?;
+
+    let mut contents = vec![
+        "validation-report.v2".to_string(),
+        "host-contract.v2".to_string(),
+    ];
+    if artifact.bundle.state.is_some() {
+        contents.push("host-state.v2".to_string());
+    }
+    if artifact.bundle.resolved_config.is_some() {
+        contents.push("fitctl.resolved-config.v1".to_string());
+    }
+    if artifact.bundle.config_bundle.is_some() {
+        contents.push("fitctl.config-bundle.v2".to_string());
+    }
+    if artifact.bundle.verification_bundle.is_some() {
+        contents.push("fitctl.verification-bundle.v1".to_string());
+    }
+    if artifact.bundle.recommendation_report.is_some() {
+        contents.push("fitctl.recommendation-report.v2".to_string());
+    }
+    push_line(output, "Bundle contents", contents.join(", "))?;
+    push_line(
+        output,
+        "Validation report artifact id",
+        artifact.bundle_basis.validation_report_artifact_id.clone(),
+    )?;
+    push_line(
+        output,
+        "Contract artifact id",
+        artifact.bundle_basis.contract_artifact_id.clone(),
+    )?;
+    push_line(
+        output,
+        "State artifact id",
+        artifact
+            .bundle_basis
+            .state_artifact_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
+        "Config bundle artifact id",
+        artifact
+            .bundle_basis
+            .config_bundle_artifact_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
+        "Verification bundle id",
+        artifact
+            .bundle_basis
+            .verification_bundle_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
+        "Recommendation report artifact id",
+        artifact
+            .bundle_basis
+            .recommendation_report_artifact_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+
+    if let Some(config_bundle) = artifact.bundle.config_bundle.as_ref() {
+        push_line(
+            output,
+            "Config policy id",
+            config_bundle.config_bundle.policy.policy_id.clone(),
+        )?;
+        push_line(
+            output,
+            "Config service profile id",
+            config_bundle
+                .config_bundle_basis
+                .service_profile_id
+                .clone()
+                .unwrap_or_else(|| "<none>".to_string()),
+        )?;
+        push_line(
+            output,
+            "Config trust policy id",
+            config_bundle
+                .config_bundle_basis
+                .trust_policy_id
+                .clone()
+                .unwrap_or_else(|| "<none>".to_string()),
+        )?;
+        push_line(
+            output,
+            "Config validation mode",
+            config_bundle
+                .config_bundle
+                .resolved_config
+                .validation_mode
+                .map(format_validation_mode)
+                .unwrap_or("<none>"),
+        )?;
+        if let Some(verification_bundle) = artifact.bundle.verification_bundle.as_ref() {
+            push_line(
+                output,
+                "Verification trust policy id",
+                verification_bundle.trust_policy_id.clone(),
+            )?;
+            push_line(
+                output,
+                "Verification summary",
+                verification_bundle.summary.clone(),
+            )?;
+        }
+    } else if let Some(resolved_config) = artifact.bundle.resolved_config.as_ref() {
+        push_line(
+            output,
+            "Resolved policy id",
+            resolved_config.policy_id.clone(),
+        )?;
+        push_line(
+            output,
+            "Resolved service profile entry",
+            resolved_config
+                .selected_service_profile_entry_id
+                .clone()
+                .unwrap_or_else(|| "<none>".to_string()),
+        )?;
+        push_line(
+            output,
+            "Resolved validation mode",
+            resolved_config
+                .validation_mode
+                .map(format_validation_mode)
+                .unwrap_or("<none>"),
+        )?;
+        if let Some(verification_bundle) = artifact.bundle.verification_bundle.as_ref() {
+            push_line(
+                output,
+                "Verification trust policy id",
+                verification_bundle.trust_policy_id.clone(),
+            )?;
+            push_line(
+                output,
+                "Verification summary",
+                verification_bundle.summary.clone(),
+            )?;
+        }
+    } else if let Some(verification_bundle) = artifact.bundle.verification_bundle.as_ref() {
+        push_line(
+            output,
+            "Verification trust policy id",
+            verification_bundle.trust_policy_id.clone(),
+        )?;
+        push_line(
+            output,
+            "Verification summary",
+            verification_bundle.summary.clone(),
+        )?;
+    } else {
+        push_line(output, "Config provenance", "<none>")?;
+    }
+
+    if let Some(recommendation_report) = artifact.bundle.recommendation_report.as_ref() {
+        push_line(
+            output,
+            "Recommendation pack",
+            recommendation_report
+                .recommendation_basis
+                .recommendation_pack_id
+                .clone(),
+        )?;
+        push_line(
+            output,
+            "Recommendation summary",
+            recommendation_report.report.summary.clone(),
+        )?;
+    }
+
+    if let Some(state_freshness) = format_validation_state_freshness(
+        &report.validation_basis,
+        &report.envelope.provenance.collected_at,
+        options,
+    ) {
+        push_line(output, "State freshness", state_freshness)?;
+    }
+
+    Ok(())
+}
+
+fn render_config_bundle_summary(
+    output: &mut String,
+    artifact: &ConfigBundleV1,
+) -> Result<(), InspectError> {
+    push_line(output, "Bundle scope", "single local advanced run config")?;
+    push_line(
+        output,
+        "Policy id",
+        artifact.config_bundle_basis.policy_id.clone(),
+    )?;
+    push_line(
+        output,
+        "Service profile id",
+        artifact
+            .config_bundle_basis
+            .service_profile_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
+        "Trust policy id",
+        artifact
+            .config_bundle_basis
+            .trust_policy_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
+        "Validation mode",
+        artifact
+            .config_bundle
+            .resolved_config
+            .validation_mode
+            .map(format_validation_mode)
+            .unwrap_or("<none>"),
+    )?;
+    push_line(
+        output,
+        "Max state age",
+        artifact
+            .config_bundle
+            .resolved_config
+            .max_state_age_seconds
+            .map(format_duration_compact)
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+
+    let mut contents = vec![
+        "fitctl.policy.document.v1".to_string(),
+        "fitctl.resolved-config.v1".to_string(),
+    ];
+    if artifact.config_bundle.service_profile.is_some() {
+        contents.push("service-profile.v2".to_string());
+    }
+    if artifact.config_bundle.trust_policy.is_some() {
+        contents.push("fitctl.trust-policy.v1".to_string());
+    }
+    push_line(output, "Bundle contents", contents.join(", "))?;
+
+    if let Some(source) = artifact
+        .config_bundle
+        .resolved_config
+        .selected_policy_entry_source
+    {
+        push_line(
+            output,
+            "Policy selection source",
+            match source {
+                crate::config::ConfigSelectionSourceV1::Cli => "cli",
+                crate::config::ConfigSelectionSourceV1::InvocationContext => "invocation_context",
+            },
+        )?;
+    }
+    if let Some(source) = artifact
+        .config_bundle
+        .resolved_config
+        .selected_service_profile_entry_source
+    {
+        push_line(
+            output,
+            "Service profile selection source",
+            match source {
+                crate::config::ConfigSelectionSourceV1::Cli => "cli",
+                crate::config::ConfigSelectionSourceV1::InvocationContext => "invocation_context",
+            },
+        )?;
+    }
+
+    Ok(())
+}
+
 fn render_recommendation_report_summary(
     output: &mut String,
     artifact: &RecommendationReportV1,
@@ -1487,7 +2019,7 @@ fn render_recommendation_report_summary(
     push_line(
         output,
         "Referenced validation verdict",
-        format_validation_verdict(artifact.recommendation_basis.validation_verdict),
+        format_validation_verdict(artifact.recommendation_basis.validation_verdict, options),
     )?;
     push_line(
         output,
@@ -1663,6 +2195,21 @@ fn render_batch_classification_report_summary(
     push_line(output, "Indeterminate rows", indeterminate_rows.to_string())?;
     push_line(
         output,
+        "Operator posture counts",
+        format_batch_operator_posture_counts(&artifact.report.rows),
+    )?;
+    push_line(
+        output,
+        "Primary reason tally",
+        format_batch_primary_reason_tally(&artifact.report.rows),
+    )?;
+    push_line(
+        output,
+        "Row summaries",
+        format_batch_row_summaries(&artifact.report.rows, 6),
+    )?;
+    push_line(
+        output,
         "Contract summaries",
         artifact.report.contract_summaries.len().to_string(),
     )?;
@@ -1671,6 +2218,41 @@ fn render_batch_classification_report_summary(
         "Service-profile summaries",
         artifact.report.service_profile_summaries.len().to_string(),
     )?;
+
+    Ok(())
+}
+
+fn render_batch_classification_report_matrix(
+    output: &mut String,
+    artifact: &BatchClassificationReportV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    push_line(
+        output,
+        "Validation mode",
+        format_validation_mode(artifact.classification_basis.validation_mode),
+    )?;
+    push_line(
+        output,
+        "Validated at",
+        format_timestamp_for_inspect(&artifact.classification_basis.validated_at, options),
+    )?;
+    writeln!(output, "  Verdict matrix:").map_err(|error| {
+        InspectError::new(
+            InspectErrorCode::InspectRenderFailed,
+            "inspect_render",
+            format!("failed to render matrix label: {error}"),
+        )
+    })?;
+    for line in format_batch_verdict_matrix(artifact, options)?.lines() {
+        writeln!(output, "    {line}").map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectRenderFailed,
+                "inspect_render",
+                format!("failed to render matrix row: {error}"),
+            )
+        })?;
+    }
 
     Ok(())
 }
@@ -1697,8 +2279,8 @@ fn render_metadata_section(
     )?;
     push_line(
         output,
-        "Tool version",
-        format_optional_str(envelope.provenance.tool_version.as_deref()),
+        "fitctl version",
+        format_optional_str(envelope.provenance.fitctl_version.as_deref()),
     )?;
     if options.verbose {
         push_line(

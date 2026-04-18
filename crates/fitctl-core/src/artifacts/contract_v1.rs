@@ -14,6 +14,12 @@ use crate::artifacts::envelope_v1::ArtifactEnvelopeV1;
 #[serde(deny_unknown_fields)]
 pub struct HostContractV1 {
     pub envelope: ArtifactEnvelopeV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_alias: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_display_name: Option<String>,
     pub contract_basis: ContractBasisV1,
     pub contract: Value,
 }

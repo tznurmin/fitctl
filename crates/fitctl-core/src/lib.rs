@@ -12,8 +12,10 @@
 //!   verification, and optional extension namespaces.
 
 pub mod artifacts;
+pub mod bundle;
 pub mod classify;
 pub mod config;
+pub mod config_bundle;
 pub mod contract;
 pub mod diff;
 pub mod error;
@@ -59,7 +61,7 @@ pub const EXIT_CODE_POLICY_REJECTION: u8 = 1;
 /// Command-line usage or invocation shape was invalid.
 pub const EXIT_CODE_USAGE_ERROR: u8 = 2;
 
-pub const COMMANDS: [CommandSpec; 13] = [
+pub const COMMANDS: [CommandSpec; 17] = [
     CommandSpec {
         name: "survey",
         summary: "Collect raw host evidence",
@@ -72,7 +74,17 @@ pub const COMMANDS: [CommandSpec; 13] = [
     },
     CommandSpec {
         name: "classify",
-        summary: "Classify contracts against one or more service profiles",
+        summary: "Classify contracts against explicit profiles or catalogue selections",
+        tier: CommandTier::Experimental,
+    },
+    CommandSpec {
+        name: "bundle",
+        summary: "Assemble one local decision bundle from validated artifacts",
+        tier: CommandTier::Experimental,
+    },
+    CommandSpec {
+        name: "bundle-config",
+        summary: "Assemble one local config bundle from advanced selections",
         tier: CommandTier::Experimental,
     },
     CommandSpec {
@@ -111,18 +123,28 @@ pub const COMMANDS: [CommandSpec; 13] = [
         tier: CommandTier::StableCore,
     },
     CommandSpec {
+        name: "completion",
+        summary: "Emit a shell completion script",
+        tier: CommandTier::Experimental,
+    },
+    CommandSpec {
         name: "inspect",
         summary: "Render a human-readable artifact summary",
         tier: CommandTier::StableCore,
     },
     CommandSpec {
         name: "inspect-config",
-        summary: "Render the effective resolved configuration",
+        summary: "Render one resolved local config selection",
         tier: CommandTier::Experimental,
     },
     CommandSpec {
         name: "lock-policy-pack",
-        summary: "Emit a locked policy-pack selection",
+        summary: "Emit a locked selection for one policy-pack entry",
+        tier: CommandTier::Experimental,
+    },
+    CommandSpec {
+        name: "recommend",
+        summary: "Emit one advisory recommendation report from validation",
         tier: CommandTier::Experimental,
     },
 ];

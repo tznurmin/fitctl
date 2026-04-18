@@ -15,13 +15,18 @@ use crate::artifacts::batch_classification_report_v1::{
     BatchClassificationReportPayloadV1, BatchClassificationReportV1,
     BatchClassificationServiceProfileRefV1,
 };
+use crate::artifacts::config_bundle_v1::{ConfigBundleBasisV1, ConfigBundleV1};
 use crate::artifacts::contract_v1::ContractExtensionBasisV1;
 use crate::artifacts::contract_v1::HostContractV1;
+use crate::artifacts::decision_bundle_v1::{DecisionBundleBasisV1, DecisionBundleV1};
 use crate::artifacts::recommendation_report_v1::{
     RecommendationBasisV1, RecommendationConfidenceV1, RecommendationFreshnessStateV1,
     RecommendationReportPayloadV1, RecommendationReportV1,
 };
-use crate::artifacts::service_profile_v1::{ServiceProfilePayloadV1, ServiceProfileV1};
+use crate::artifacts::service_profile_v1::{
+    AssurancePredicateV1, DegradationTierV1, ExplicitAssuranceRequirementV1, ServiceExclusionsV1,
+    ServicePreferencesV1, ServiceProfilePayloadV1, ServiceProfileV1, ServiceRequirementsV1,
+};
 use crate::artifacts::state_v1::{
     FreshnessStateV1, HostRuntimeResourcesV1, HostStateExecutionBoundariesV1,
     HostStateOperabilityV1, HostStatePayloadV1, HostStateTopologyV1, HostStateV1,
@@ -32,10 +37,14 @@ use crate::artifacts::validation_report_v1::{
     ValidationBasisV1, ValidationReportPayloadV1, ValidationReportV1,
 };
 use crate::artifacts::validation_v1::{
-    validate_batch_classification_report, validate_host_contract, validate_host_state,
-    validate_host_survey, validate_recommendation_report, validate_service_profile,
-    validate_validation_report, ArtifactValidationError,
+    validate_batch_classification_report, validate_config_bundle, validate_decision_bundle,
+    validate_host_contract, validate_host_state, validate_host_survey,
+    validate_recommendation_report, validate_service_profile, validate_validation_report,
+    ArtifactValidationError,
 };
+use crate::config::ResolvedConfigV1;
+use crate::policy::PolicyDocumentV1;
+use crate::verify::{TrustPolicyV1, VerificationBundleV1};
 
 /// Hash the survey's canonical semantic projection rather than its presentation envelope.
 pub fn semantic_hash_hex_for_survey(
@@ -182,6 +191,24 @@ pub fn semantic_hash_hex_for_batch_classification_report(
     canonical_cbor_sha256_hex(&projection)
 }
 
+pub fn semantic_hash_hex_for_decision_bundle(
+    bundle: &DecisionBundleV1,
+) -> Result<String, ArtifactValidationError> {
+    validate_decision_bundle(bundle)?;
+
+    let projection = DecisionBundleSemanticProjection::from(bundle);
+    canonical_cbor_sha256_hex(&projection)
+}
+
+pub fn semantic_hash_hex_for_config_bundle(
+    bundle: &ConfigBundleV1,
+) -> Result<String, ArtifactValidationError> {
+    validate_config_bundle(bundle)?;
+
+    let projection = ConfigBundleSemanticProjection::from(bundle);
+    canonical_cbor_sha256_hex(&projection)
+}
+
 pub fn semantic_cbor_bytes_for_batch_classification_report(
     report: &BatchClassificationReportV1,
 ) -> Result<Vec<u8>, ArtifactValidationError> {
@@ -197,6 +224,18 @@ pub fn semantic_bytes_for_batch_classification_report(
     canonical_cbor_bytes(&projection)
 }
 
+pub fn semantic_cbor_bytes_for_decision_bundle(
+    bundle: &DecisionBundleV1,
+) -> Result<Vec<u8>, ArtifactValidationError> {
+    semantic_bytes_for_decision_bundle(bundle)
+}
+
+pub fn semantic_cbor_bytes_for_config_bundle(
+    bundle: &ConfigBundleV1,
+) -> Result<Vec<u8>, ArtifactValidationError> {
+    semantic_bytes_for_config_bundle(bundle)
+}
+
 pub fn semantic_cbor_bytes_for_recommendation_report(
     report: &RecommendationReportV1,
 ) -> Result<Vec<u8>, ArtifactValidationError> {
@@ -209,6 +248,24 @@ pub fn semantic_bytes_for_recommendation_report(
     validate_recommendation_report(report)?;
 
     let projection = RecommendationReportSemanticProjection::from(report);
+    canonical_cbor_bytes(&projection)
+}
+
+pub fn semantic_bytes_for_decision_bundle(
+    bundle: &DecisionBundleV1,
+) -> Result<Vec<u8>, ArtifactValidationError> {
+    validate_decision_bundle(bundle)?;
+
+    let projection = DecisionBundleSemanticProjection::from(bundle);
+    canonical_cbor_bytes(&projection)
+}
+
+pub fn semantic_bytes_for_config_bundle(
+    bundle: &ConfigBundleV1,
+) -> Result<Vec<u8>, ArtifactValidationError> {
+    validate_config_bundle(bundle)?;
+
+    let projection = ConfigBundleSemanticProjection::from(bundle);
     canonical_cbor_bytes(&projection)
 }
 
@@ -276,6 +333,20 @@ pub fn semantic_content_json_for_validation_report(
 ) -> Result<Value, ArtifactValidationError> {
     validate_validation_report(report)?;
     semantic_projection_json_value(&ValidationReportSemanticProjection::from(report))
+}
+
+pub fn semantic_content_json_for_decision_bundle(
+    bundle: &DecisionBundleV1,
+) -> Result<Value, ArtifactValidationError> {
+    validate_decision_bundle(bundle)?;
+    semantic_projection_json_value(&DecisionBundleSemanticProjection::from(bundle))
+}
+
+pub fn semantic_content_json_for_config_bundle(
+    bundle: &ConfigBundleV1,
+) -> Result<Value, ArtifactValidationError> {
+    validate_config_bundle(bundle)?;
+    semantic_projection_json_value(&ConfigBundleSemanticProjection::from(bundle))
 }
 
 pub fn semantic_projection_json_for_recommendation_report(
@@ -376,7 +447,7 @@ impl Serialize for CoreSurveySemanticProjection {
 struct ServiceProfileSemanticProjection {
     schema_id: String,
     schema_version: u32,
-    profile: ServiceProfilePayloadV1,
+    profile: ServiceProfilePayloadSemanticProjection,
 }
 
 impl From<&ServiceProfileV1> for ServiceProfileSemanticProjection {
@@ -384,7 +455,34 @@ impl From<&ServiceProfileV1> for ServiceProfileSemanticProjection {
         Self {
             schema_id: profile.envelope.schema_id.clone(),
             schema_version: profile.envelope.schema_version,
-            profile: profile.profile.clone(),
+            profile: ServiceProfilePayloadSemanticProjection::from(&profile.profile),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ServiceProfilePayloadSemanticProjection {
+    profile_id: String,
+    core_requirements: ServiceRequirementsV1,
+    extension_requirements: std::collections::BTreeMap<String, Value>,
+    preferences: ServicePreferencesV1,
+    exclusions: ServiceExclusionsV1,
+    degradation_ladder: Vec<DegradationTierV1>,
+    assurance_predicates: Vec<AssurancePredicateV1>,
+    assurance_requirements: Vec<ExplicitAssuranceRequirementV1>,
+}
+
+impl From<&ServiceProfilePayloadV1> for ServiceProfilePayloadSemanticProjection {
+    fn from(profile: &ServiceProfilePayloadV1) -> Self {
+        Self {
+            profile_id: profile.profile_id.clone(),
+            core_requirements: profile.core_requirements.clone(),
+            extension_requirements: profile.extension_requirements.clone(),
+            preferences: profile.preferences.clone(),
+            exclusions: profile.exclusions.clone(),
+            degradation_ladder: profile.degradation_ladder.clone(),
+            assurance_predicates: profile.assurance_predicates.clone(),
+            assurance_requirements: profile.assurance_requirements.clone(),
         }
     }
 }
@@ -491,6 +589,80 @@ impl From<&ValidationReportV1> for ValidationReportSemanticProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+struct DecisionBundleSemanticProjection {
+    schema_id: String,
+    schema_version: u32,
+    bundle_basis: DecisionBundleBasisV1,
+    validation_report: ValidationReportSemanticProjection,
+    contract: ContractSemanticProjection,
+    state: Option<StateSemanticProjection>,
+    resolved_config: Option<ResolvedConfigV1>,
+    config_bundle: Option<ConfigBundleSemanticProjection>,
+    verification_bundle: Option<VerificationBundleV1>,
+    recommendation_report: Option<RecommendationReportSemanticProjection>,
+}
+
+impl From<&DecisionBundleV1> for DecisionBundleSemanticProjection {
+    fn from(bundle: &DecisionBundleV1) -> Self {
+        Self {
+            schema_id: bundle.envelope.schema_id.clone(),
+            schema_version: bundle.envelope.schema_version,
+            bundle_basis: bundle.bundle_basis.clone(),
+            validation_report: ValidationReportSemanticProjection::from(
+                &bundle.bundle.validation_report,
+            ),
+            contract: ContractSemanticProjection::from(&bundle.bundle.contract),
+            state: bundle
+                .bundle
+                .state
+                .as_ref()
+                .map(StateSemanticProjection::from),
+            resolved_config: bundle.bundle.resolved_config.clone(),
+            config_bundle: bundle
+                .bundle
+                .config_bundle
+                .as_ref()
+                .map(ConfigBundleSemanticProjection::from),
+            verification_bundle: bundle.bundle.verification_bundle.clone(),
+            recommendation_report: bundle
+                .bundle
+                .recommendation_report
+                .as_ref()
+                .map(RecommendationReportSemanticProjection::from),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ConfigBundleSemanticProjection {
+    schema_id: String,
+    schema_version: u32,
+    config_bundle_basis: ConfigBundleBasisV1,
+    policy: PolicyDocumentV1,
+    resolved_config: ResolvedConfigV1,
+    service_profile: Option<ServiceProfileSemanticProjection>,
+    trust_policy: Option<TrustPolicyV1>,
+}
+
+impl From<&ConfigBundleV1> for ConfigBundleSemanticProjection {
+    fn from(bundle: &ConfigBundleV1) -> Self {
+        Self {
+            schema_id: bundle.envelope.schema_id.clone(),
+            schema_version: bundle.envelope.schema_version,
+            config_bundle_basis: bundle.config_bundle_basis.clone(),
+            policy: bundle.config_bundle.policy.clone(),
+            resolved_config: bundle.config_bundle.resolved_config.clone(),
+            service_profile: bundle
+                .config_bundle
+                .service_profile
+                .as_ref()
+                .map(ServiceProfileSemanticProjection::from),
+            trust_policy: bundle.config_bundle.trust_policy.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 struct RecommendationReportSemanticProjection {
     schema_id: String,
     schema_version: u32,
@@ -590,8 +762,8 @@ struct BatchClassificationBasisSemanticProjection {
     validation_mode: crate::artifacts::validation_report_v1::ValidationModeV1,
     validation_engine_id: String,
     validation_engine_version: String,
-    ordered_contracts: Vec<BatchClassificationContractRefV1>,
-    ordered_service_profiles: Vec<BatchClassificationServiceProfileRefV1>,
+    ordered_contracts: Vec<BatchClassificationContractRefSemanticProjection>,
+    ordered_service_profiles: Vec<BatchClassificationServiceProfileRefSemanticProjection>,
 }
 
 impl From<&BatchClassificationBasisV1> for BatchClassificationBasisSemanticProjection {
@@ -600,8 +772,48 @@ impl From<&BatchClassificationBasisV1> for BatchClassificationBasisSemanticProje
             validation_mode: basis.validation_mode,
             validation_engine_id: basis.validation_engine_id.clone(),
             validation_engine_version: basis.validation_engine_version.clone(),
-            ordered_contracts: basis.ordered_contracts.clone(),
-            ordered_service_profiles: basis.ordered_service_profiles.clone(),
+            ordered_contracts: basis
+                .ordered_contracts
+                .iter()
+                .map(BatchClassificationContractRefSemanticProjection::from)
+                .collect(),
+            ordered_service_profiles: basis
+                .ordered_service_profiles
+                .iter()
+                .map(BatchClassificationServiceProfileRefSemanticProjection::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct BatchClassificationContractRefSemanticProjection {
+    artifact_id: String,
+    semantic_hash: String,
+}
+
+impl From<&BatchClassificationContractRefV1> for BatchClassificationContractRefSemanticProjection {
+    fn from(value: &BatchClassificationContractRefV1) -> Self {
+        Self {
+            artifact_id: value.artifact_id.clone(),
+            semantic_hash: value.semantic_hash.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct BatchClassificationServiceProfileRefSemanticProjection {
+    artifact_id: String,
+    semantic_hash: String,
+}
+
+impl From<&BatchClassificationServiceProfileRefV1>
+    for BatchClassificationServiceProfileRefSemanticProjection
+{
+    fn from(value: &BatchClassificationServiceProfileRefV1) -> Self {
+        Self {
+            artifact_id: value.artifact_id.clone(),
+            semantic_hash: value.semantic_hash.clone(),
         }
     }
 }

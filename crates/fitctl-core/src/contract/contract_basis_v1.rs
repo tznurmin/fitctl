@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use crate::artifacts::contract_v1::{
     ContractBasisV1, ContractSemanticBasisV1, DerivationProvenanceV1,
 };
+use crate::artifacts::schema_ids_v1::TOP_LEVEL_ARTIFACT_SCHEMA_VERSION;
 use crate::artifacts::semantic_hash_v1::core_semantic_hash_hex_for_survey;
 use crate::artifacts::survey_v1::HostSurveyV1;
 use crate::contract::{ContractDerivationError, ContractDerivationErrorCode};
@@ -49,7 +50,7 @@ pub(crate) fn build_contract_basis_v1(
             policy_semantic_hash,
             derivation_engine_id: "fitctl.contract.v1".to_string(),
             derivation_engine_version: "1".to_string(),
-            contract_schema_version: 1,
+            contract_schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             selected_policy_layers: effective_policy.selected_policy_layers.clone(),
         },
         extension_basis: None,

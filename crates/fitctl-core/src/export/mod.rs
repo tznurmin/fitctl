@@ -409,7 +409,7 @@ fn export_identity_summary(
             return Err(AdapterError::new(
                 AdapterErrorCode::AdapterInputInvalid,
                 "adapter_source_validate",
-                "identity_summary export requires host-survey.v1 or host-contract.v1 input",
+                "identity_summary export requires host-survey.v2 or host-contract.v2 input",
             ));
         }
     };
@@ -453,7 +453,7 @@ fn expect_contract_input(
             AdapterErrorCode::AdapterInputInvalid,
             "adapter_source_validate",
             format!(
-                "adapter target {} requires host-contract.v1 input",
+                "adapter target {} requires host-contract.v2 input",
                 target.as_str()
             ),
         )),
@@ -470,7 +470,7 @@ fn expect_validation_report_input(
             AdapterErrorCode::AdapterInputInvalid,
             "adapter_source_validate",
             format!(
-                "adapter target {} requires validation-report.v1 input",
+                "adapter target {} requires validation-report.v2 input",
                 target.as_str()
             ),
         )),

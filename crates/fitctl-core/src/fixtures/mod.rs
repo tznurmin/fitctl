@@ -22,6 +22,7 @@ pub enum FixtureCoverageTagV1 {
     DiscreteGpu,
     IntegratedGraphics,
     NoAccelerators,
+    AcceleratorNodesHidden,
     StorageOdd,
     ArmCpuFallback,
     FreshState,

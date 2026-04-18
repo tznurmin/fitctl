@@ -58,7 +58,7 @@ fn verified_gate_requires_trust_success_before_decision() {
             .to_str()
             .expect("signed contract path should be valid UTF-8"),
         "--profile",
-        common::repo_service_profile_path("general_compute_contract_only.v1.json")
+        common::repo_service_profile_path("general_compute_contract_only.v2.json")
             .to_str()
             .expect("profile path should be valid UTF-8"),
         "--validation-mode",

@@ -1,0 +1,307 @@
+{
+  "envelope": {
+    "schema_id": "host-survey.v2",
+    "schema_version": 2,
+    "artifact_id": "survey-linux-bare-metal-like-v1",
+    "provenance": {
+      "source": "fixture_corpus:host_survey_core_linux_v1",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.0",
+      "command_name": "survey",
+      "correlation_id": "survey-linux-bare-metal-like-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "survey": {
+    "collection_mode": "replay",
+    "core_evidence": {
+      "collectors": [
+        {
+          "collector_id": "block_and_filesystem",
+          "collector_version": "1",
+          "source_family": "block_and_filesystem"
+        },
+        {
+          "collector_id": "cgroupfs",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "iproute2_addr",
+          "collector_version": "1",
+          "source_family": "netdev"
+        },
+        {
+          "collector_id": "mountinfo",
+          "collector_version": "1",
+          "source_family": "mountinfo"
+        },
+        {
+          "collector_id": "netdev",
+          "collector_version": "1",
+          "source_family": "netdev"
+        },
+        {
+          "collector_id": "procfs",
+          "collector_version": "1",
+          "source_family": "procfs"
+        },
+        {
+          "collector_id": "sysfs",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        }
+      ],
+      "execution_context": {
+        "container_runtime": null,
+        "notes": [],
+        "privilege_level": "full",
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "a8a5a40c33622bbe23b05a447af313cbad3c77ffa16c85d203e4becfeee1d05d",
+        "identity_class": "local_stable",
+        "local_stable_id": "78417113d2b6b33b934cda3f399c8af76e8d5e120d8445a38acba181fa2bbf9d",
+        "provenance_fingerprint": "4d85f7df8ece4ccffa0a4e6d6d255864227c4bb86a34282684be7dd7431a9840"
+      },
+      "observations": {
+        "accelerators": {
+          "state": "unknown",
+          "value": null
+        },
+        "cpu": {
+          "state": "observed",
+          "value": {
+            "architecture": "x86_64",
+            "logical_cores": 8,
+            "model": "Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz"
+          }
+        },
+        "hostname": {
+          "state": "observed",
+          "value": "cpu-host-01"
+        },
+        "memory": {
+          "state": "observed",
+          "value": {
+            "total_bytes": 17179869184
+          }
+        },
+        "network": {
+          "state": "observed",
+          "value": {
+            "interface_details": [
+              {
+                "addresses": [
+                  {
+                    "address": "192.0.2.10",
+                    "family": "ipv4",
+                    "prefix_len": 24
+                  },
+                  {
+                    "address": "2001:db8::10",
+                    "family": "ipv6",
+                    "prefix_len": 64
+                  }
+                ],
+                "interface_kind": "ethernet",
+                "interface_virtuality": "physical",
+                "link_state": "up",
+                "mac_address": "52:54:00:12:34:56",
+                "mtu": 1500,
+                "name": "enp0s31f6",
+                "speed_mbps": 1000
+              },
+              {
+                "addresses": [
+                  {
+                    "address": "127.0.0.1",
+                    "family": "ipv4",
+                    "prefix_len": 8
+                  },
+                  {
+                    "address": "::1",
+                    "family": "ipv6",
+                    "prefix_len": 128
+                  }
+                ],
+                "interface_kind": "loopback",
+                "interface_virtuality": "virtual",
+                "link_state": "unknown",
+                "mac_address": "00:00:00:00:00:00",
+                "mtu": 65536,
+                "name": "lo",
+                "speed_mbps": null
+              }
+            ],
+            "interfaces": [
+              "enp0s31f6",
+              "lo"
+            ]
+          }
+        },
+        "storage": {
+          "state": "partially_observed",
+          "value": {
+            "block_devices": [
+              "nvme0n1"
+            ],
+            "mounts": [
+              "/",
+              "/var"
+            ]
+          }
+        },
+        "topology": {
+          "state": "observed",
+          "value": {
+            "cpu_packages": 1,
+            "numa_nodes": 1
+          }
+        }
+      },
+      "section_metadata": {
+        "accelerators": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.accelerators"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "cpu": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.cpu"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "execution_context": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.execution_context"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "hostname": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.hostname"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "memory": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.memory"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "network": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.network"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "storage": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.storage"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        },
+        "topology": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.topology"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "procfs",
+            "sysfs"
+          ],
+          "trust_evidence_refs": []
+        }
+      }
+    },
+    "host_alias": "cpu-host-01",
+    "snapshot_id": "linux-bare-metal-like-v1",
+    "source_ref": "fixture_corpus:host_survey_core_linux_v1"
+  }
+}

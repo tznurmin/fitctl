@@ -13,8 +13,7 @@ pub fn fitctl_bin() -> PathBuf {
 }
 
 pub fn ensure_fitctl_built() -> PathBuf {
-    let bin = fitctl_bin();
-    if bin.exists() {
+    if let Some(bin) = std::env::var_os("CARGO_BIN_EXE_fitctl").map(PathBuf::from) {
         return bin;
     }
 
@@ -28,5 +27,5 @@ pub fn ensure_fitctl_built() -> PathBuf {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    fitctl_bin()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/fitctl")
 }

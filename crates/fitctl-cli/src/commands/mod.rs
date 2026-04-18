@@ -8,13 +8,17 @@
 
 use std::process::ExitCode;
 
+mod bundle;
+mod bundle_config;
 mod classify;
+mod completion;
 mod contract;
 mod diff;
 mod export;
 mod inspect;
 mod inspect_config;
 mod lock_policy_pack;
+mod recommend;
 mod redact;
 mod sign;
 mod state;
@@ -29,6 +33,14 @@ pub fn run(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    if args[1] == "--version" || args[1] == "-V" || args[1] == "version" {
+        println!(
+            "fitctl {}",
+            fitctl_core::artifacts::envelope_v1::LOCAL_FITCTL_VERSION_V1
+        );
+        return ExitCode::SUCCESS;
+    }
+
     let raw_subcommand = args[1].as_str();
     let subcommand = fitctl_core::resolve_command_alias(raw_subcommand).unwrap_or(raw_subcommand);
     if subcommand == "survey" {
@@ -39,6 +51,15 @@ pub fn run(args: &[String]) -> ExitCode {
     }
     if subcommand == "classify" {
         return classify::run(&args[2..]);
+    }
+    if subcommand == "bundle" {
+        return bundle::run(&args[2..]);
+    }
+    if subcommand == "bundle-config" {
+        return bundle_config::run(&args[2..]);
+    }
+    if subcommand == "completion" {
+        return completion::run(&args[2..]);
     }
     if subcommand == "state" {
         return state::run(&args[2..]);
@@ -60,6 +81,9 @@ pub fn run(args: &[String]) -> ExitCode {
     }
     if subcommand == "lock-policy-pack" {
         return lock_policy_pack::run(&args[2..]);
+    }
+    if subcommand == "recommend" {
+        return recommend::run(&args[2..]);
     }
     if subcommand == "redact" {
         return redact::run(&args[2..]);

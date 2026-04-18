@@ -7,7 +7,7 @@
 //! excludes live runtime state so the contract remains a stable host-side claim rather than a
 //! snapshot of current conditions.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::artifacts::contract_v1::HostContractV1;
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
-use crate::artifacts::schema_ids_v1::HOST_CONTRACT_SCHEMA_ID;
+use crate::artifacts::schema_ids_v1::{HOST_CONTRACT_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION};
 use crate::artifacts::survey_v1::{decode_host_survey_payload, HostSurveyPayloadV1, HostSurveyV1};
 use crate::artifacts::validation_v1::{validate_host_contract, validate_host_survey};
 use crate::contract::contract_basis_v1::{build_contract_basis_v1, DerivationContextV1};
@@ -26,9 +26,10 @@ use crate::contract::payload_v1::{
 };
 use crate::contract::{ContractDerivationError, ContractDerivationErrorCode};
 use crate::extensions::{
+    derive_cuda_runtime_contract_value_from_survey_v1,
     derive_node_runtime_contract_value_from_survey_v1,
-    derive_python_runtime_contract_value_from_survey_v1, NODE_RUNTIME_NAMESPACE,
-    PYTHON_RUNTIME_NAMESPACE,
+    derive_python_runtime_contract_value_from_survey_v1, CUDA_RUNTIME_NAMESPACE,
+    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
 };
 use crate::policy::capability_classes_v1::{
     derive_policy_shaped_capability_claim, SurveyCapabilityInputV1,
@@ -36,9 +37,10 @@ use crate::policy::capability_classes_v1::{
 use crate::policy::explanation_v1::validate_explanation_links;
 use crate::policy::{merge_policy_document_v1, PolicyDocumentV1};
 use crate::survey::{
-    AcceleratorDetailsV1, AcceleratorKindV1, AcceleratorOperabilityV1, NetworkDetailsV1,
-    NetworkInterfaceKindV1, NetworkInterfaceVirtualityV1, ObservationStateV1, StaticOperabilityV1,
-    StorageBlockDeviceClassV1, StorageDetailsV1, StorageMountRoleV1, SurveyFieldV1,
+    AcceleratorDetailsV1, AcceleratorIntegrationV1, AcceleratorKindV1, AcceleratorOperabilityV1,
+    NetworkDetailsV1, NetworkInterfaceKindV1, NetworkInterfaceVirtualityV1, ObservationStateV1,
+    StaticOperabilityV1, StorageBlockDeviceClassV1, StorageDetailsV1, StorageMountRoleV1,
+    SurveyFieldV1,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -137,6 +139,17 @@ pub fn derive_host_contract_v1(
     {
         extension_contract.insert(NODE_RUNTIME_NAMESPACE.to_string(), node_runtime_contract);
     }
+    if let Some(cuda_runtime_contract) =
+        derive_cuda_runtime_contract_value_from_survey_v1(&request.survey).map_err(|error| {
+            ContractDerivationError::new(
+                ContractDerivationErrorCode::ContractDerivationFailed,
+                "cuda_extension_contract_derive",
+                error.message,
+            )
+        })?
+    {
+        extension_contract.insert(CUDA_RUNTIME_NAMESPACE.to_string(), cuda_runtime_contract);
+    }
 
     let contract = serde_json::to_value(HostContractPayloadV1 {
         core_contract: HostContractCoreV1 {
@@ -198,14 +211,23 @@ pub fn derive_host_contract_v1(
         )
     })?;
 
-    let artifact_id = format!(
-        "contract-{}",
-        sanitize_identifier(&survey_payload.snapshot_id)
-    );
+    let artifact_id =
+        build_contract_artifact_id(&survey_payload.snapshot_id, &request.policy.policy_id);
+    let contract_short_display_name = request
+        .policy
+        .short_display_name
+        .clone()
+        .or_else(|| request.policy.display_name.clone());
+    let contract_display_name = request
+        .policy
+        .display_name
+        .clone()
+        .or_else(|| request.policy.short_display_name.clone())
+        .map(|policy_label| format!("{} / {}", survey_payload.host_alias, policy_label));
     let artifact = HostContractV1 {
         envelope: ArtifactEnvelopeV1 {
             schema_id: HOST_CONTRACT_SCHEMA_ID.to_string(),
-            schema_version: 1,
+            schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             artifact_id: artifact_id.clone(),
             provenance: local_artifact_provenance_v1(
                 format!("policy:{}", request.policy.policy_id),
@@ -216,6 +238,9 @@ pub fn derive_host_contract_v1(
             redaction: None,
             signatures: vec![],
         },
+        host_alias: Some(survey_payload.host_alias.clone()),
+        display_name: contract_display_name,
+        short_display_name: contract_short_display_name,
         contract_basis,
         contract,
     };
@@ -453,11 +478,81 @@ fn derive_accelerator_summary(
     vendors.sort();
     vendors.dedup();
 
+    let mut families = accelerators
+        .devices
+        .iter()
+        .filter_map(|device| device.family.clone())
+        .collect::<Vec<_>>();
+    families.sort();
+    families.dedup();
+
+    let mut models = accelerators
+        .devices
+        .iter()
+        .filter_map(|device| device.model.clone())
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+
+    let integrated_accelerators = if accelerators
+        .devices
+        .iter()
+        .all(|device| device.integration.is_some())
+    {
+        u32::try_from(
+            accelerators
+                .devices
+                .iter()
+                .filter(|device| device.integration == Some(AcceleratorIntegrationV1::Integrated))
+                .count(),
+        )
+        .ok()
+    } else {
+        None
+    };
+    let accelerators_with_known_memory = u32::try_from(
+        accelerators
+            .devices
+            .iter()
+            .filter(|device| device.memory_bytes.is_some())
+            .count(),
+    )
+    .ok()
+    .filter(|count| *count > 0);
+    let accelerators_with_known_numa_node = u32::try_from(
+        accelerators
+            .devices
+            .iter()
+            .filter(|device| device.numa_node.is_some())
+            .count(),
+    )
+    .ok()
+    .filter(|count| *count > 0);
+    let accelerator_numa_nodes = accelerators
+        .devices
+        .iter()
+        .filter_map(|device| device.numa_node)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let max_memory_bytes = accelerators
+        .devices
+        .iter()
+        .filter_map(|device| device.memory_bytes)
+        .max();
+
     ContractAcceleratorSummaryV1 {
         total_accelerators,
         gpu_accelerators,
+        integrated_accelerators,
+        accelerators_with_known_memory,
+        accelerators_with_known_numa_node,
+        max_memory_bytes,
+        accelerator_numa_nodes,
         accelerator_kinds,
         vendors,
+        families,
+        models,
         operability: accelerators
             .operability
             .clone()
@@ -468,9 +563,9 @@ fn derive_accelerator_summary(
 fn derive_fallback_accelerator_operability(
     accelerators: &AcceleratorDetailsV1,
 ) -> Option<AcceleratorOperabilityV1> {
-    // When survey collection did not populate explicit operability, fall back to the weakest
-    // useful static signal: driver binding. That separates clearly broken from still unresolved
-    // cases without inventing runtime readiness.
+    // When survey collection did not populate explicit operability, only retain the clearly
+    // broken no-driver case. Once visible-node access becomes part of the operability contract,
+    // synthesizing an indeterminate value without node evidence would overstate what we know.
     if accelerators.devices.is_empty() {
         return None;
     }
@@ -483,16 +578,15 @@ fn derive_fallback_accelerator_operability(
             .count(),
     )
     .ok()?;
-    let static_operability = if driver_bound_devices == 0 {
-        StaticOperabilityV1::NotOperable
-    } else {
-        StaticOperabilityV1::Indeterminate
-    };
+    if driver_bound_devices > 0 {
+        return None;
+    }
 
     Some(AcceleratorOperabilityV1 {
-        static_operability,
+        static_operability: StaticOperabilityV1::NotOperable,
         driver_bound_devices,
         visible_device_nodes: Vec::new(),
+        visible_render_nodes: Vec::new(),
     })
 }
 
@@ -540,4 +634,12 @@ fn sanitize_identifier(value: &str) -> String {
     }
 
     sanitized.trim_matches('-').to_string()
+}
+
+fn build_contract_artifact_id(snapshot_id: &str, policy_id: &str) -> String {
+    format!(
+        "contract-{}-{}",
+        sanitize_identifier(snapshot_id),
+        sanitize_identifier(policy_id)
+    )
 }

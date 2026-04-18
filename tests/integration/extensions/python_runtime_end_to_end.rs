@@ -15,8 +15,8 @@ fn python_extension_pack_path() -> std::path::PathBuf {
 fn python_runtime_extension_end_to_end() {
     let fitctl_bin = cli::ensure_fitctl_built();
     let temp_dir = common::unique_temp_dir("integration-python-extension");
-    let survey_path = temp_dir.join("host-survey.v1.json");
-    let contract_path = temp_dir.join("host-contract.v1.json");
+    let survey_path = temp_dir.join("host-survey.v2.json");
+    let contract_path = temp_dir.join("host-contract.v2.json");
 
     let survey_output = Command::new(&fitctl_bin)
         .current_dir(common::repo_root())
@@ -80,7 +80,7 @@ fn python_runtime_extension_end_to_end() {
                 .expect("contract path should be valid UTF-8"),
             "--profile",
             common::repo_service_profile_path(
-                "general_compute_python_extension_contract_only.v1.json",
+                "general_compute_python_extension_contract_only.v2.json",
             )
             .to_str()
             .expect("profile path should be valid UTF-8"),
@@ -107,8 +107,8 @@ fn python_runtime_extension_end_to_end() {
         &unfit_profile_path,
         &serde_json::json!({
             "envelope": {
-              "schema_id": "service-profile.v1",
-              "schema_version": 1,
+              "schema_id": "service-profile.v2",
+              "schema_version": 2,
               "artifact_id": "service-profile-python-minor-12-v1",
               "provenance": {
                 "source": "test:integration",

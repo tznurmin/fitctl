@@ -3,13 +3,17 @@
 
 //! Canonical schema ids for the supported top-level artifact families.
 
-pub const HOST_SURVEY_SCHEMA_ID: &str = "host-survey.v1";
-pub const HOST_CONTRACT_SCHEMA_ID: &str = "host-contract.v1";
-pub const HOST_STATE_SCHEMA_ID: &str = "host-state.v1";
-pub const SERVICE_PROFILE_SCHEMA_ID: &str = "service-profile.v1";
-pub const VALIDATION_REPORT_SCHEMA_ID: &str = "validation-report.v1";
-pub const RECOMMENDATION_REPORT_SCHEMA_ID: &str = "fitctl.recommendation-report.v1";
-pub const BATCH_CLASSIFICATION_REPORT_SCHEMA_ID: &str = "fitctl.batch-classification-report.v1";
+pub const TOP_LEVEL_ARTIFACT_SCHEMA_VERSION: u32 = 2;
+
+pub const HOST_SURVEY_SCHEMA_ID: &str = "host-survey.v2";
+pub const HOST_CONTRACT_SCHEMA_ID: &str = "host-contract.v2";
+pub const HOST_STATE_SCHEMA_ID: &str = "host-state.v2";
+pub const SERVICE_PROFILE_SCHEMA_ID: &str = "service-profile.v2";
+pub const VALIDATION_REPORT_SCHEMA_ID: &str = "validation-report.v2";
+pub const RECOMMENDATION_REPORT_SCHEMA_ID: &str = "fitctl.recommendation-report.v2";
+pub const BATCH_CLASSIFICATION_REPORT_SCHEMA_ID: &str = "fitctl.batch-classification-report.v2";
+pub const CONFIG_BUNDLE_SCHEMA_ID: &str = "fitctl.config-bundle.v2";
+pub const DECISION_BUNDLE_SCHEMA_ID: &str = "fitctl.decision-bundle.v2";
 
 pub const CORE_TOP_LEVEL_SCHEMA_IDS: [&str; 5] = [
     HOST_SURVEY_SCHEMA_ID,

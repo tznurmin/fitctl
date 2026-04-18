@@ -1,0 +1,29 @@
+{
+  "schema_id": "fitctl.service-profile-catalogue.v1",
+  "schema_version": 1,
+  "catalogue_id": "general-compute-service-profiles-v1",
+  "catalogue_version": "1",
+  "summary": "Named selection manifest for the built-in general-compute service profiles.",
+  "profiles": [
+    {
+      "profile_id": "general_compute_contract_only_v1",
+      "summary": "Contract-only general-compute gating profile.",
+      "profile_path": "../service_profiles/general_compute_contract_only.v2.json"
+    },
+    {
+      "profile_id": "general_compute_stateful_thresholds_v1",
+      "summary": "State-required general-compute gating profile.",
+      "profile_path": "../service_profiles/general_compute_stateful_thresholds.v2.json"
+    },
+    {
+      "profile_id": "general_compute_python_extension_contract_only_v1",
+      "summary": "Contract-only general-compute profile with the Python extension namespace enabled.",
+      "profile_path": "../service_profiles/general_compute_python_extension_contract_only.v2.json"
+    },
+    {
+      "profile_id": "general_compute_node_extension_contract_only_v1",
+      "summary": "Contract-only general-compute profile with the Node runtime extension namespace enabled.",
+      "profile_path": "../service_profiles/general_compute_node_extension_contract_only.v2.json"
+    }
+  ]
+}

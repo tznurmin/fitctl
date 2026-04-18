@@ -149,9 +149,23 @@ pub struct ContractAcceleratorSummaryV1 {
     #[serde(default)]
     pub gpu_accelerators: Option<u32>,
     #[serde(default)]
+    pub integrated_accelerators: Option<u32>,
+    #[serde(default)]
+    pub accelerators_with_known_memory: Option<u32>,
+    #[serde(default)]
+    pub accelerators_with_known_numa_node: Option<u32>,
+    #[serde(default)]
+    pub max_memory_bytes: Option<u64>,
+    #[serde(default)]
+    pub accelerator_numa_nodes: Vec<u32>,
+    #[serde(default)]
     pub accelerator_kinds: Vec<AcceleratorKindV1>,
     #[serde(default)]
     pub vendors: Vec<String>,
+    #[serde(default)]
+    pub families: Vec<String>,
+    #[serde(default)]
+    pub models: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operability: Option<AcceleratorOperabilityV1>,
 }
@@ -160,8 +174,15 @@ impl ContractAcceleratorSummaryV1 {
     fn is_empty(&self) -> bool {
         self.total_accelerators.is_none()
             && self.gpu_accelerators.is_none()
+            && self.integrated_accelerators.is_none()
+            && self.accelerators_with_known_memory.is_none()
+            && self.accelerators_with_known_numa_node.is_none()
+            && self.max_memory_bytes.is_none()
+            && self.accelerator_numa_nodes.is_empty()
             && self.accelerator_kinds.is_empty()
             && self.vendors.is_empty()
+            && self.families.is_empty()
+            && self.models.is_empty()
             && self.operability.is_none()
     }
 }

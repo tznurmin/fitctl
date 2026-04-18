@@ -3,7 +3,7 @@
   "schema_version": 1,
   "fixture_id": "linux-bare-metal-like-v1",
   "collected_at": "2025-04-21T14:37:19Z",
-  "host_alias": "demo-baremetal-01",
+  "host_alias": "cpu-host-01",
   "execution_context": {
     "visibility_scope": "bare_metal_like",
     "privilege_level": "full",
@@ -25,7 +25,7 @@
   "observations": {
     "hostname": {
       "state": "observed",
-      "value": "demo-baremetal-01"
+      "value": "cpu-host-01"
     },
     "cpu": {
       "state": "observed",

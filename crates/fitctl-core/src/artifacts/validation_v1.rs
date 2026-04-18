@@ -11,16 +11,24 @@ mod report_semantics;
 use self::report_semantics::*;
 
 use crate::artifacts::batch_classification_report_v1::BatchClassificationReportV1;
+use crate::artifacts::config_bundle_v1::ConfigBundleV1;
 use crate::artifacts::contract_v1::{ContractBasisV1, HostContractV1};
+use crate::artifacts::decision_bundle_v1::DecisionBundleV1;
 use crate::artifacts::envelope_v1::{
     ArtifactEnvelopeV1, ArtifactProvenanceV1, SignatureEnvelopeV1,
 };
 use crate::artifacts::metadata_v1::{ClaimMetadataV1, CollectorMetadataV1, IdentitySummaryV1};
 use crate::artifacts::recommendation_report_v1::RecommendationReportV1;
 use crate::artifacts::schema_ids_v1::{
-    is_supported_core_schema_id, BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, HOST_CONTRACT_SCHEMA_ID,
-    HOST_STATE_SCHEMA_ID, HOST_SURVEY_SCHEMA_ID, RECOMMENDATION_REPORT_SCHEMA_ID,
-    SERVICE_PROFILE_SCHEMA_ID, VALIDATION_REPORT_SCHEMA_ID,
+    is_supported_core_schema_id, BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, CONFIG_BUNDLE_SCHEMA_ID,
+    DECISION_BUNDLE_SCHEMA_ID, HOST_CONTRACT_SCHEMA_ID, HOST_STATE_SCHEMA_ID,
+    HOST_SURVEY_SCHEMA_ID, RECOMMENDATION_REPORT_SCHEMA_ID, SERVICE_PROFILE_SCHEMA_ID,
+    TOP_LEVEL_ARTIFACT_SCHEMA_VERSION, VALIDATION_REPORT_SCHEMA_ID,
+};
+use crate::artifacts::semantic_hash_v1::{
+    semantic_hash_hex_for_config_bundle, semantic_hash_hex_for_contract,
+    semantic_hash_hex_for_recommendation_report, semantic_hash_hex_for_service_profile,
+    semantic_hash_hex_for_state, semantic_hash_hex_for_validation_report,
 };
 use crate::artifacts::service_profile_v1::ServiceProfileV1;
 use crate::artifacts::state_v1::{HostStateV1, StateFieldV1};
@@ -31,16 +39,20 @@ use crate::artifacts::validation_report_v1::{
     ValidationRemediationActionV1, ValidationRemediationHintV1, ValidationReportPayloadV1,
     ValidationVerdictV1,
 };
+use crate::config::{semantic_hash_hex_for_resolved_config, validate_resolved_config};
 use crate::contract::payload_v1::{
     ContractAcceleratorSummaryV1, ContractNetworkOperabilityV1, ContractNetworkSummaryV1,
     ContractStorageOperabilityV1, ContractStorageSummaryV1,
 };
 use crate::extensions::{
-    decode_node_runtime_contract_from_value, decode_node_runtime_evidence_from_value,
-    decode_node_runtime_requirement_from_value, decode_python_runtime_contract_from_value,
-    decode_python_runtime_evidence_from_value, decode_python_runtime_requirement_from_value,
-    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
+    decode_cuda_runtime_contract_from_value, decode_cuda_runtime_evidence_from_value,
+    decode_cuda_runtime_requirement_from_value, decode_node_runtime_contract_from_value,
+    decode_node_runtime_evidence_from_value, decode_node_runtime_requirement_from_value,
+    decode_python_runtime_contract_from_value, decode_python_runtime_evidence_from_value,
+    decode_python_runtime_requirement_from_value, CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE,
+    PYTHON_RUNTIME_NAMESPACE,
 };
+use crate::policy::schema_v1::validate_policy_document;
 use crate::survey::{
     validate_observation_field_coherence_v1, AcceleratorDetailsV1, AcceleratorDeviceV1,
     AcceleratorDiscoverySourceV1, AcceleratorKindV1, AcceleratorOperabilityV1, CpuCacheSummaryV1,
@@ -49,6 +61,8 @@ use crate::survey::{
     StaticOperabilityV1, StorageBlockDeviceV1, StorageDetailsV1, StorageMountV1, SurveyFieldV1,
     TopologyDetailsV1,
 };
+use crate::verify::validate_trust_policy_document_v1;
+use crate::verify::validate_verification_bundle_v1;
 
 pub const ARTIFACT_ERROR_MODEL_ID: &str = "fitctl.artifact_contracts.v1";
 pub const ARTIFACT_ERROR_MODEL_VERSION: u32 = 1;
@@ -122,6 +136,7 @@ pub fn validate_host_survey(survey: &HostSurveyV1) -> Result<(), ArtifactValidat
             "iproute2_route",
             "pci_accelerators",
             "pci_driver_binding",
+            "nvidia_procfs_gpu_info",
             "drm_class",
             "drm_platform_graphics",
             "devfs_accelerator_nodes",
@@ -375,6 +390,24 @@ pub fn validate_host_contract(contract: &HostContractV1) -> Result<(), ArtifactV
     validate_envelope(&contract.envelope, HOST_CONTRACT_SCHEMA_ID)?;
     validate_local_execution_provenance(&contract.envelope.provenance)?;
     validate_contract_basis(&contract.contract_basis, contract.envelope.schema_version)?;
+    if contract
+        .host_alias
+        .as_ref()
+        .is_some_and(|value| is_blank(value))
+        || contract
+            .display_name
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || contract
+            .short_display_name
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract optional host and display labels must stay non-blank when present",
+        ));
+    }
 
     if !contract.contract.is_object() || contract.contract.is_null() {
         return Err(ArtifactValidationError::new(
@@ -456,6 +489,24 @@ fn validate_accelerator_operability(
     if visible_nodes.len() != original_len || visible_nodes != operability.visible_device_nodes {
         return false;
     }
+    let mut visible_render_nodes = operability.visible_render_nodes.clone();
+    if visible_render_nodes.iter().any(|node| {
+        let trimmed = node.trim();
+        trimmed.is_empty() || !trimmed.starts_with("/dev/dri/renderD")
+    }) {
+        return false;
+    }
+    let original_render_len = visible_render_nodes.len();
+    visible_render_nodes.sort();
+    visible_render_nodes.dedup();
+    if visible_render_nodes.len() != original_render_len
+        || visible_render_nodes != operability.visible_render_nodes
+        || visible_render_nodes
+            .iter()
+            .any(|node| !operability.visible_device_nodes.contains(node))
+    {
+        return false;
+    }
 
     let Ok(total_devices_u32) = u32::try_from(total_devices) else {
         return false;
@@ -468,11 +519,13 @@ fn validate_accelerator_operability(
         StaticOperabilityV1::Operable => {
             operability.driver_bound_devices == total_devices_u32 && !visible_nodes.is_empty()
         }
-        StaticOperabilityV1::NotOperable => operability.driver_bound_devices == 0,
+        StaticOperabilityV1::NotOperable => {
+            operability.driver_bound_devices == 0 || visible_nodes.is_empty()
+        }
         StaticOperabilityV1::Indeterminate => {
             operability.driver_bound_devices > 0
-                && (operability.driver_bound_devices < total_devices_u32
-                    || visible_nodes.is_empty())
+                && operability.driver_bound_devices < total_devices_u32
+                && !visible_nodes.is_empty()
         }
     }
 }
@@ -490,8 +543,21 @@ fn validate_accelerator_device(device: &AcceleratorDeviceV1) -> bool {
             .vendor
             .as_deref()
             .is_none_or(|vendor| !is_blank(vendor))
+        && device
+            .family
+            .as_deref()
+            .is_none_or(|family| !is_blank(family))
+        && device.model.as_deref().is_none_or(|model| !is_blank(model))
         && device.vendor_id.as_deref().is_none_or(is_valid_pci_hex_id)
         && device.device_id.as_deref().is_none_or(is_valid_pci_hex_id)
+        && device.memory_bytes.is_none_or(|value| value > 0)
+        && !matches!(
+            (device.discovery_source, device.integration),
+            (
+                AcceleratorDiscoverySourceV1::DrmPlatform,
+                Some(crate::survey::AcceleratorIntegrationV1::Discrete)
+            )
+        )
         && device
             .pci_address
             .as_deref()
@@ -594,6 +660,16 @@ pub fn validate_service_profile(profile: &ServiceProfileV1) -> Result<(), Artifa
     validate_envelope(&profile.envelope, SERVICE_PROFILE_SCHEMA_ID)?;
 
     if is_blank(&profile.profile.profile_id)
+        || profile
+            .profile
+            .display_name
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || profile
+            .profile
+            .short_display_name
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
         || is_blank(&profile.profile.core_requirements.primary_capability_class)
         || profile
             .profile
@@ -603,7 +679,7 @@ pub fn validate_service_profile(profile: &ServiceProfileV1) -> Result<(), Artifa
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "service profile must include a profile id, primary capability, and visibility allowlist",
+            "service profile must include a profile id, non-blank optional display labels, a primary capability, and visibility allowlist",
         ));
     }
 
@@ -612,6 +688,17 @@ pub fn validate_service_profile(profile: &ServiceProfileV1) -> Result<(), Artifa
         "service profile extension requirements",
     )?;
     validate_known_extension_requirements(&profile.profile.extension_requirements)?;
+    if profile
+        .profile
+        .core_requirements
+        .max_accelerator_numa_nodes
+        .is_some_and(|value| value == 0)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "service profile accelerator locality limits must stay positive when populated",
+        ));
+    }
 
     Ok(())
 }
@@ -807,8 +894,15 @@ fn validate_contract_accelerator_summary(
 ) -> Result<(), ArtifactValidationError> {
     if summary.total_accelerators.is_none()
         && summary.gpu_accelerators.is_none()
+        && summary.integrated_accelerators.is_none()
+        && summary.accelerators_with_known_memory.is_none()
+        && summary.accelerators_with_known_numa_node.is_none()
+        && summary.max_memory_bytes.is_none()
+        && summary.accelerator_numa_nodes.is_empty()
         && summary.accelerator_kinds.is_empty()
         && summary.vendors.is_empty()
+        && summary.families.is_empty()
+        && summary.models.is_empty()
     {
         return Ok(());
     }
@@ -829,6 +923,57 @@ fn validate_contract_accelerator_summary(
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "host contract accelerator summary gpu count must not exceed total accelerator count",
+        ));
+    }
+    if summary
+        .integrated_accelerators
+        .is_some_and(|value| value > total_accelerators)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary integrated count must not exceed total accelerator count",
+        ));
+    }
+    if summary
+        .accelerators_with_known_memory
+        .is_some_and(|value| value > total_accelerators)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary known-memory count must not exceed total accelerator count",
+        ));
+    }
+    if summary
+        .accelerators_with_known_memory
+        .is_some_and(|value| value == 0)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary known-memory count must stay positive when populated",
+        ));
+    }
+    if summary
+        .accelerators_with_known_numa_node
+        .is_some_and(|value| value > total_accelerators)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary known-locality count must not exceed total accelerator count",
+        ));
+    }
+    if summary
+        .accelerators_with_known_numa_node
+        .is_some_and(|value| value == 0)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary known-locality count must stay positive when populated",
+        ));
+    }
+    if summary.max_memory_bytes.is_some_and(|value| value == 0) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary max memory must stay positive when populated",
         ));
     }
 
@@ -861,13 +1006,56 @@ fn validate_contract_accelerator_summary(
             "host contract accelerator summary vendors must be unique",
         ));
     }
+    let mut families = summary.families.clone();
+    if families.iter().any(|family| is_blank(family)) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary families must stay non-blank when populated",
+        ));
+    }
+    families.sort();
+    families.dedup();
+    if families.len() != summary.families.len() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary families must be unique",
+        ));
+    }
+    let mut models = summary.models.clone();
+    if models.iter().any(|model| is_blank(model)) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary models must stay non-blank when populated",
+        ));
+    }
+    models.sort();
+    models.dedup();
+    if models.len() != summary.models.len() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary models must be unique",
+        ));
+    }
 
     if total_accelerators == 0
-        && (!summary.accelerator_kinds.is_empty() || !summary.vendors.is_empty())
+        && (!summary.accelerator_kinds.is_empty()
+            || !summary.vendors.is_empty()
+            || !summary.families.is_empty()
+            || !summary.models.is_empty()
+            || summary.integrated_accelerators.is_some()
+            || summary.accelerators_with_known_memory.is_some()
+            || summary.accelerators_with_known_numa_node.is_some()
+            || summary.max_memory_bytes.is_some())
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "host contract accelerator summary must stay empty when accelerator count is zero",
+        ));
+    }
+    if total_accelerators == 0 && !summary.accelerator_numa_nodes.is_empty() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary must not list accelerator NUMA nodes when accelerator count is zero",
         ));
     }
     if total_accelerators > 0 && summary.accelerator_kinds.is_empty() {
@@ -887,6 +1075,53 @@ fn validate_contract_accelerator_summary(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "host contract accelerator summary gpu kind requires a positive gpu count",
         ));
+    }
+    if summary.max_memory_bytes.is_some() && summary.accelerators_with_known_memory.is_none() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary max memory requires a known-memory device count",
+        ));
+    }
+    if !summary.accelerator_numa_nodes.is_empty()
+        && summary.accelerators_with_known_numa_node.is_none()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary NUMA node list requires a known-locality device count",
+        ));
+    }
+    if summary
+        .accelerator_numa_nodes
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .len()
+        != summary.accelerator_numa_nodes.len()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary NUMA nodes must be unique",
+        ));
+    }
+    if let Some(known_locality_devices) = summary.accelerators_with_known_numa_node {
+        let distinct_nodes = u32::try_from(summary.accelerator_numa_nodes.len()).map_err(|_| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host contract accelerator summary NUMA node count overflowed u32",
+            )
+        })?;
+        if distinct_nodes == 0 {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host contract accelerator summary known-locality device count requires NUMA nodes",
+            ));
+        }
+        if distinct_nodes > known_locality_devices {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host contract accelerator summary NUMA node count must not exceed known-locality device count",
+            ));
+        }
     }
     if let Some(operability) = summary.operability.as_ref() {
         validate_contract_accelerator_operability(operability, total_accelerators)?;
@@ -931,16 +1166,42 @@ fn validate_contract_accelerator_operability(
             "host contract accelerator operability visible nodes must stay sorted and unique",
         ));
     }
+    let mut visible_render_nodes = operability.visible_render_nodes.clone();
+    if visible_render_nodes.iter().any(|node| {
+        let trimmed = node.trim();
+        trimmed.is_empty() || !trimmed.starts_with("/dev/dri/renderD")
+    }) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator operability render nodes must stay rooted under /dev/dri/renderD*",
+        ));
+    }
+    let original_render_len = visible_render_nodes.len();
+    visible_render_nodes.sort();
+    visible_render_nodes.dedup();
+    if visible_render_nodes.len() != original_render_len
+        || visible_render_nodes != operability.visible_render_nodes
+        || visible_render_nodes
+            .iter()
+            .any(|node| !operability.visible_device_nodes.contains(node))
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator operability render nodes must stay sorted, unique, and included in visible nodes",
+        ));
+    }
 
     let valid = match operability.static_operability {
         StaticOperabilityV1::Operable => {
             operability.driver_bound_devices == total_accelerators && !visible_nodes.is_empty()
         }
-        StaticOperabilityV1::NotOperable => operability.driver_bound_devices == 0,
+        StaticOperabilityV1::NotOperable => {
+            operability.driver_bound_devices == 0 || visible_nodes.is_empty()
+        }
         StaticOperabilityV1::Indeterminate => {
             operability.driver_bound_devices > 0
-                && (operability.driver_bound_devices < total_accelerators
-                    || visible_nodes.is_empty())
+                && operability.driver_bound_devices < total_accelerators
+                && !visible_nodes.is_empty()
         }
     };
     if !valid {
@@ -1264,6 +1525,50 @@ pub fn validate_batch_classification_report(
             .map(|value| (value.artifact_id.as_str(), value.semantic_hash.as_str())),
         "batch classification ordered_service_profiles",
     )?;
+    if report
+        .classification_basis
+        .ordered_service_profiles
+        .iter()
+        .any(|value| {
+            value
+                .display_name
+                .as_ref()
+                .is_some_and(|label| is_blank(label))
+                || value
+                    .short_display_name
+                    .as_ref()
+                    .is_some_and(|label| is_blank(label))
+        })
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "batch classification ordered_service_profiles must not contain blank display labels",
+        ));
+    }
+    if report
+        .classification_basis
+        .ordered_contracts
+        .iter()
+        .any(|value| {
+            value
+                .host_alias
+                .as_ref()
+                .is_some_and(|label| is_blank(label))
+                || value
+                    .display_name
+                    .as_ref()
+                    .is_some_and(|label| is_blank(label))
+                || value
+                    .short_display_name
+                    .as_ref()
+                    .is_some_and(|label| is_blank(label))
+        })
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "batch classification ordered_contracts must not contain blank host or display labels",
+        ));
+    }
 
     let allowed_contract_ids = report
         .classification_basis
@@ -1372,6 +1677,518 @@ pub fn validate_batch_classification_report(
     Ok(())
 }
 
+/// Validate a decision-bundle artifact and fail closed on embedded lineage mismatches.
+pub fn validate_config_bundle(bundle: &ConfigBundleV1) -> Result<(), ArtifactValidationError> {
+    validate_auxiliary_envelope(&bundle.envelope, CONFIG_BUNDLE_SCHEMA_ID)?;
+    validate_policy_document(&bundle.config_bundle.policy).map_err(|error| {
+        ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            error.message,
+        )
+    })?;
+    validate_resolved_config(&bundle.config_bundle.resolved_config).map_err(|error| {
+        ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            error.message,
+        )
+    })?;
+    if let Some(profile) = bundle.config_bundle.service_profile.as_ref() {
+        validate_service_profile(profile)?;
+    }
+    if let Some(policy) = bundle.config_bundle.trust_policy.as_ref() {
+        validate_trust_policy_document_v1(policy).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                error.message,
+            )
+        })?;
+    }
+
+    if is_blank(&bundle.config_bundle_basis.policy_id)
+        || is_blank(&bundle.config_bundle_basis.resolved_config_semantic_hash)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle basis must include non-blank policy and resolved-config lineage",
+        ));
+    }
+    if bundle
+        .config_bundle_basis
+        .service_profile_id
+        .as_ref()
+        .is_some_and(|value| is_blank(value))
+        || bundle
+            .config_bundle_basis
+            .trust_policy_id
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle optional basis ids must be non-blank when present",
+        ));
+    }
+    if bundle.config_bundle_basis.policy_id != bundle.config_bundle.policy.policy_id {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle basis policy_id must match the embedded selected policy",
+        ));
+    }
+    if bundle.config_bundle_basis.service_profile_id.as_deref()
+        != bundle
+            .config_bundle
+            .service_profile
+            .as_ref()
+            .map(|profile| profile.profile.profile_id.as_str())
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle basis service_profile_id must match the embedded selected service profile when present",
+        ));
+    }
+    if bundle.config_bundle_basis.trust_policy_id.as_deref()
+        != bundle
+            .config_bundle
+            .trust_policy
+            .as_ref()
+            .map(|policy| policy.policy_id.as_str())
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle basis trust_policy_id must match the embedded trust policy when present",
+        ));
+    }
+
+    let resolved_config_semantic_hash = semantic_hash_hex_for_resolved_config(
+        &bundle.config_bundle.resolved_config,
+    )
+    .map_err(|error| {
+        ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            error.message,
+        )
+    })?;
+    if bundle.config_bundle_basis.resolved_config_semantic_hash != resolved_config_semantic_hash {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle resolved-config semantic hash must match the embedded resolved config",
+        ));
+    }
+    if bundle.config_bundle.policy.policy_id != bundle.config_bundle.resolved_config.policy_id {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle embedded selected policy must match the resolved-config policy id",
+        ));
+    }
+    if let Some(profile) = bundle.config_bundle.service_profile.as_ref() {
+        if let Some(selected_profile_id) = bundle
+            .config_bundle
+            .resolved_config
+            .selected_service_profile_entry_id
+            .as_ref()
+        {
+            if selected_profile_id != &profile.profile.profile_id {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "config bundle embedded selected service profile must match the resolved-config selected service-profile entry when present",
+                ));
+            }
+        }
+    }
+    if let Some(policy) = bundle.config_bundle.trust_policy.as_ref() {
+        if bundle
+            .config_bundle
+            .resolved_config
+            .trust_policy_id
+            .as_deref()
+            != Some(policy.policy_id.as_str())
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "config bundle embedded trust policy must match the resolved-config trust policy id",
+            ));
+        }
+    } else if bundle
+        .config_bundle
+        .resolved_config
+        .trust_policy_id
+        .is_some()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "config bundle resolved-config trust policy id requires an embedded trust policy",
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validate a decision-bundle artifact and fail closed on embedded lineage mismatches.
+pub fn validate_decision_bundle(bundle: &DecisionBundleV1) -> Result<(), ArtifactValidationError> {
+    validate_auxiliary_envelope(&bundle.envelope, DECISION_BUNDLE_SCHEMA_ID)?;
+    validate_validation_report(&bundle.bundle.validation_report)?;
+    validate_host_contract(&bundle.bundle.contract)?;
+    if let Some(state) = bundle.bundle.state.as_ref() {
+        validate_host_state(state)?;
+    }
+    if let Some(resolved_config) = bundle.bundle.resolved_config.as_ref() {
+        validate_resolved_config(resolved_config).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                error.message,
+            )
+        })?;
+    }
+    if let Some(config_bundle) = bundle.bundle.config_bundle.as_ref() {
+        validate_config_bundle(config_bundle)?;
+    }
+    if let Some(verification_bundle) = bundle.bundle.verification_bundle.as_ref() {
+        validate_verification_bundle_v1(verification_bundle).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                error.message,
+            )
+        })?;
+    }
+    if let Some(recommendation_report) = bundle.bundle.recommendation_report.as_ref() {
+        validate_recommendation_report(recommendation_report)?;
+    }
+    if bundle.bundle.resolved_config.is_some() && bundle.bundle.config_bundle.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle must not embed both raw resolved config and config bundle",
+        ));
+    }
+
+    if is_blank(&bundle.bundle_basis.validation_report_artifact_id)
+        || is_blank(&bundle.bundle_basis.validation_report_semantic_hash)
+        || is_blank(&bundle.bundle_basis.contract_artifact_id)
+        || is_blank(&bundle.bundle_basis.contract_semantic_hash)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle basis must include non-blank validation-report and contract lineage",
+        ));
+    }
+    if bundle
+        .bundle_basis
+        .state_artifact_id
+        .as_ref()
+        .is_some_and(|value| is_blank(value))
+        || bundle
+            .bundle_basis
+            .state_semantic_hash
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || bundle
+            .bundle_basis
+            .config_bundle_artifact_id
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || bundle
+            .bundle_basis
+            .config_bundle_semantic_hash
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || bundle
+            .bundle_basis
+            .verification_bundle_id
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || bundle
+            .bundle_basis
+            .recommendation_report_artifact_id
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || bundle
+            .bundle_basis
+            .recommendation_report_semantic_hash
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle optional lineage fields must be non-blank when present",
+        ));
+    }
+    if bundle.bundle_basis.validation_report_artifact_id
+        != bundle.bundle.validation_report.envelope.artifact_id
+        || bundle.bundle_basis.contract_artifact_id != bundle.bundle.contract.envelope.artifact_id
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle basis artifact ids must match the embedded validation report and contract",
+        ));
+    }
+
+    let validation_report_semantic_hash =
+        semantic_hash_hex_for_validation_report(&bundle.bundle.validation_report)?;
+    let contract_semantic_hash = semantic_hash_hex_for_contract(&bundle.bundle.contract)?;
+    if bundle.bundle_basis.validation_report_semantic_hash != validation_report_semantic_hash
+        || bundle.bundle_basis.contract_semantic_hash != contract_semantic_hash
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle basis semantic hashes must match the embedded validation report and contract",
+        ));
+    }
+
+    let validation_basis = &bundle.bundle.validation_report.validation_basis;
+    if validation_basis.contract_artifact_id != bundle.bundle.contract.envelope.artifact_id
+        || validation_basis.contract_semantic_hash != contract_semantic_hash
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle embedded contract must match the validation basis contract lineage",
+        ));
+    }
+
+    let report_has_state_lineage = validation_basis.state_artifact_id.is_some()
+        || validation_basis.state_semantic_hash.is_some();
+    let bundle_has_state_lineage = bundle.bundle_basis.state_artifact_id.is_some()
+        || bundle.bundle_basis.state_semantic_hash.is_some();
+    if report_has_state_lineage != bundle.bundle.state.is_some()
+        || report_has_state_lineage != bundle_has_state_lineage
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle state presence must align with validation-basis and bundle-basis state lineage",
+        ));
+    }
+    if let Some(state) = bundle.bundle.state.as_ref() {
+        let state_semantic_hash = semantic_hash_hex_for_state(state)?;
+        if validation_basis.state_artifact_id.as_deref() != Some(&state.envelope.artifact_id)
+            || validation_basis.state_semantic_hash.as_deref() != Some(state_semantic_hash.as_str())
+            || bundle.bundle_basis.state_artifact_id.as_deref() != Some(&state.envelope.artifact_id)
+            || bundle.bundle_basis.state_semantic_hash.as_deref()
+                != Some(state_semantic_hash.as_str())
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle embedded state must match the validation-basis and bundle-basis state lineage",
+            ));
+        }
+    }
+    let bundle_has_config_bundle_lineage = bundle.bundle_basis.config_bundle_artifact_id.is_some()
+        || bundle.bundle_basis.config_bundle_semantic_hash.is_some();
+    if bundle_has_config_bundle_lineage != bundle.bundle.config_bundle.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle config-bundle presence must align with bundle-basis config-bundle lineage",
+        ));
+    }
+    if let Some(config_bundle) = bundle.bundle.config_bundle.as_ref() {
+        let config_bundle_semantic_hash = semantic_hash_hex_for_config_bundle(config_bundle)?;
+        if bundle.bundle_basis.config_bundle_artifact_id.as_deref()
+            != Some(config_bundle.envelope.artifact_id.as_str())
+            || bundle.bundle_basis.config_bundle_semantic_hash.as_deref()
+                != Some(config_bundle_semantic_hash.as_str())
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle embedded config bundle must match the bundle-basis config-bundle lineage",
+            ));
+        }
+
+        let service_profile = config_bundle
+            .config_bundle
+            .service_profile
+            .as_ref()
+            .ok_or_else(|| {
+                ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "decision bundle config bundle must embed the selected service profile used by the validation report",
+                )
+            })?;
+        let service_profile_semantic_hash = semantic_hash_hex_for_service_profile(service_profile)?;
+        if validation_basis.service_profile_artifact_id != service_profile.envelope.artifact_id
+            || validation_basis.service_profile_semantic_hash != service_profile_semantic_hash
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle config bundle selected service profile must match the embedded validation report basis",
+            ));
+        }
+
+        let resolved_config = &config_bundle.config_bundle.resolved_config;
+        if resolved_config
+            .validation_mode
+            .is_some_and(|mode| mode != validation_basis.validation_mode)
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle config bundle validation_mode must match the embedded validation report when present",
+            ));
+        }
+        if resolved_config.max_state_age_seconds.is_some()
+            && resolved_config.max_state_age_seconds != validation_basis.max_state_age_seconds
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle config bundle max_state_age_seconds must match the embedded validation report when present",
+            ));
+        }
+    }
+    let bundle_has_verification_bundle_lineage =
+        bundle.bundle_basis.verification_bundle_id.is_some();
+    if bundle_has_verification_bundle_lineage != bundle.bundle.verification_bundle.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle verification-bundle presence must align with bundle-basis verification-bundle lineage",
+        ));
+    }
+    if let Some(verification_bundle) = bundle.bundle.verification_bundle.as_ref() {
+        if bundle.bundle_basis.verification_bundle_id.as_deref()
+            != Some(verification_bundle.bundle_id.as_str())
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle embedded verification bundle must match the bundle-basis verification-bundle lineage",
+            ));
+        }
+        if verification_bundle.artifact_schema_id != bundle.bundle.contract.envelope.schema_id
+            || verification_bundle.artifact_id != bundle.bundle.contract.envelope.artifact_id
+            || verification_bundle.artifact_semantic_hash != contract_semantic_hash
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle embedded verification bundle must target the embedded contract lineage",
+            ));
+        }
+        if let Some(config_bundle) = bundle.bundle.config_bundle.as_ref() {
+            if config_bundle.config_bundle_basis.trust_policy_id.as_deref()
+                != Some(verification_bundle.trust_policy_id.as_str())
+            {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "decision bundle config bundle trust policy must match the embedded verification bundle when both are present",
+                ));
+            }
+        }
+    }
+    let bundle_has_recommendation_report_lineage = bundle
+        .bundle_basis
+        .recommendation_report_artifact_id
+        .is_some()
+        || bundle
+            .bundle_basis
+            .recommendation_report_semantic_hash
+            .is_some();
+    if bundle
+        .bundle_basis
+        .recommendation_report_artifact_id
+        .is_some()
+        != bundle
+            .bundle_basis
+            .recommendation_report_semantic_hash
+            .is_some()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle recommendation-report lineage fields must appear together",
+        ));
+    }
+    if bundle_has_recommendation_report_lineage != bundle.bundle.recommendation_report.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "decision bundle recommendation-report presence must align with bundle-basis recommendation-report lineage",
+        ));
+    }
+    if let Some(recommendation_report) = bundle.bundle.recommendation_report.as_ref() {
+        let recommendation_report_semantic_hash =
+            semantic_hash_hex_for_recommendation_report(recommendation_report)?;
+        if bundle
+            .bundle_basis
+            .recommendation_report_artifact_id
+            .as_deref()
+            != Some(recommendation_report.envelope.artifact_id.as_str())
+            || bundle
+                .bundle_basis
+                .recommendation_report_semantic_hash
+                .as_deref()
+                != Some(recommendation_report_semantic_hash.as_str())
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle embedded recommendation report must match the bundle-basis recommendation-report lineage",
+            ));
+        }
+        if recommendation_report
+            .recommendation_basis
+            .validation_report_artifact_id
+            != bundle.bundle.validation_report.envelope.artifact_id
+            || recommendation_report
+                .recommendation_basis
+                .validation_report_semantic_hash
+                != validation_report_semantic_hash
+            || recommendation_report
+                .recommendation_basis
+                .validation_verdict
+                != bundle.bundle.validation_report.report.verdict
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle embedded recommendation report must target the embedded validation-report lineage",
+            ));
+        }
+
+        let recommendation_has_state_lineage = recommendation_report
+            .recommendation_basis
+            .state_artifact_id
+            .is_some()
+            || recommendation_report
+                .recommendation_basis
+                .state_semantic_hash
+                .is_some();
+        if recommendation_has_state_lineage {
+            let Some(state) = bundle.bundle.state.as_ref() else {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "decision bundle embedded recommendation report state lineage requires the embedded state",
+                ));
+            };
+            let state_semantic_hash = semantic_hash_hex_for_state(state)?;
+            if recommendation_report
+                .recommendation_basis
+                .state_artifact_id
+                .as_deref()
+                != Some(state.envelope.artifact_id.as_str())
+                || recommendation_report
+                    .recommendation_basis
+                    .state_semantic_hash
+                    .as_deref()
+                    != Some(state_semantic_hash.as_str())
+            {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "decision bundle embedded recommendation report state lineage must match the embedded state lineage",
+                ));
+            }
+        }
+    }
+    if let Some(resolved_config) = bundle.bundle.resolved_config.as_ref() {
+        if resolved_config
+            .validation_mode
+            .is_some_and(|mode| mode != validation_basis.validation_mode)
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle resolved config validation_mode must match the embedded validation report",
+            ));
+        }
+        if resolved_config.max_state_age_seconds.is_some()
+            && resolved_config.max_state_age_seconds != validation_basis.max_state_age_seconds
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "decision bundle resolved config max_state_age_seconds must match the embedded validation report when present",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_validation_basis_semantics(
     report: &ValidationReportV1,
 ) -> Result<(), ArtifactValidationError> {
@@ -1458,7 +2275,7 @@ fn validate_envelope(
         ));
     }
 
-    if envelope.schema_version != 1 {
+    if envelope.schema_version != TOP_LEVEL_ARTIFACT_SCHEMA_VERSION {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactSchemaVersionInvalid,
             format!(
@@ -1526,7 +2343,7 @@ fn validate_auxiliary_envelope(
         ));
     }
 
-    if envelope.schema_version != 1 {
+    if envelope.schema_version != TOP_LEVEL_ARTIFACT_SCHEMA_VERSION {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactSchemaVersionInvalid,
             format!(
@@ -1546,12 +2363,12 @@ fn validate_auxiliary_envelope(
         ));
     }
 
-    if option_is_blank(envelope.provenance.tool_version.as_deref())
-        && envelope.provenance.tool_version.is_some()
+    if option_is_blank(envelope.provenance.fitctl_version.as_deref())
+        && envelope.provenance.fitctl_version.is_some()
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "artifact tool_version must be non-blank when present",
+            "artifact fitctl_version must be non-blank when present",
         ));
     }
     if option_is_blank(envelope.provenance.command_name.as_deref())
@@ -1607,13 +2424,13 @@ fn validate_auxiliary_envelope(
 fn validate_local_execution_provenance(
     provenance: &ArtifactProvenanceV1,
 ) -> Result<(), ArtifactValidationError> {
-    if option_is_blank(provenance.tool_version.as_deref())
+    if option_is_blank(provenance.fitctl_version.as_deref())
         || option_is_blank(provenance.command_name.as_deref())
         || option_is_blank(provenance.correlation_id.as_deref())
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "local execution provenance must include tool_version, command_name, and correlation_id",
+            "local execution provenance must include fitctl_version, command_name, and correlation_id",
         ));
     }
 
@@ -1778,6 +2595,56 @@ fn validate_signature_entry(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::validate_collector_metadata;
+    use crate::artifacts::metadata_v1::CollectorMetadataV1;
+
+    #[test]
+    fn survey_collector_metadata_accepts_nvidia_procfs_gpu_info() {
+        let collectors = [CollectorMetadataV1 {
+            collector_id: "nvidia_procfs_gpu_info".to_string(),
+            collector_version: "1".to_string(),
+            source_family: "procfs".to_string(),
+        }];
+
+        let result = validate_collector_metadata(
+            &collectors,
+            &[
+                "procfs",
+                "cpuinfo_flags",
+                "sysfs",
+                "sysfs_cpu_topology",
+                "sysfs_cpu_cache",
+                "cgroupfs",
+                "mountinfo",
+                "netdev",
+                "iproute2_addr",
+                "iproute2_route",
+                "pci_accelerators",
+                "pci_driver_binding",
+                "nvidia_procfs_gpu_info",
+                "drm_class",
+                "drm_platform_graphics",
+                "devfs_accelerator_nodes",
+                "block_and_filesystem",
+            ],
+            &[
+                "procfs",
+                "sysfs",
+                "cgroupfs",
+                "mountinfo",
+                "netdev",
+                "block_and_filesystem",
+                "devfs",
+            ],
+        );
+
+        assert!(result.is_ok());
+    }
 }
 
 fn validate_contract_basis(
@@ -1958,6 +2825,17 @@ fn validate_namespaced_json_map(
 fn validate_known_extension_evidence(
     values: &BTreeMap<String, serde_json::Value>,
 ) -> Result<(), ArtifactValidationError> {
+    if let Some(value) = values.get(CUDA_RUNTIME_NAMESPACE) {
+        decode_cuda_runtime_evidence_from_value(value).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "host survey CUDA runtime extension evidence is invalid: {}",
+                    error.message
+                ),
+            )
+        })?;
+    }
     if let Some(value) = values.get(NODE_RUNTIME_NAMESPACE) {
         decode_node_runtime_evidence_from_value(value).map_err(|error| {
             ArtifactValidationError::new(
@@ -1986,6 +2864,17 @@ fn validate_known_extension_evidence(
 fn validate_known_extension_contract(
     values: &BTreeMap<String, serde_json::Value>,
 ) -> Result<(), ArtifactValidationError> {
+    if let Some(value) = values.get(CUDA_RUNTIME_NAMESPACE) {
+        decode_cuda_runtime_contract_from_value(value).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "host contract CUDA runtime extension contract is invalid: {}",
+                    error.message
+                ),
+            )
+        })?;
+    }
     if let Some(value) = values.get(NODE_RUNTIME_NAMESPACE) {
         decode_node_runtime_contract_from_value(value).map_err(|error| {
             ArtifactValidationError::new(
@@ -2014,6 +2903,17 @@ fn validate_known_extension_contract(
 fn validate_known_extension_requirements(
     values: &BTreeMap<String, serde_json::Value>,
 ) -> Result<(), ArtifactValidationError> {
+    if let Some(value) = values.get(CUDA_RUNTIME_NAMESPACE) {
+        decode_cuda_runtime_requirement_from_value(value).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "service profile CUDA runtime extension requirement is invalid: {}",
+                    error.message
+                ),
+            )
+        })?;
+    }
     if let Some(value) = values.get(NODE_RUNTIME_NAMESPACE) {
         decode_node_runtime_requirement_from_value(value).map_err(|error| {
             ArtifactValidationError::new(

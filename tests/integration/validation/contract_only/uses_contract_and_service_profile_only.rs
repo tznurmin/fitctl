@@ -14,7 +14,7 @@ use fitctl_core::validate::{
 fn contract_only_uses_contract_and_service_profile_only() {
     let contract = common::derive_contract_from_fixture("linux-bare-metal-like-v1");
     let service_profile =
-        common::load_service_profile_file("general_compute_contract_only.v1.json");
+        common::load_service_profile_file("general_compute_contract_only.v2.json");
 
     let contract_artifact_id = contract.envelope.artifact_id.clone();
     let service_profile_artifact_id = service_profile.envelope.artifact_id.clone();

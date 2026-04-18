@@ -1,0 +1,9 @@
+{
+  "schema_id": "fitctl.invocation-context.v1",
+  "schema_version": 1,
+  "invocation_id": "ring1-default-v1",
+  "enabled_extension_namespaces": [],
+  "selected_recommendation_pack_ids": [],
+  "enabled_simulation_layer_ids": [],
+  "validation_mode": "contract_only"
+}

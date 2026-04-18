@@ -1,0 +1,86 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1-service-profile-gpu-preferred-with-general-compute-fallback-contract-only-v1",
+    "provenance": {
+      "source": "validate:contract_only",
+      "collected_at": "2025-04-22T09:21:00Z",
+      "fitctl_version": "0.2.0",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1-service-profile-gpu-preferred-with-general-compute-fallback-contract-only-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "contract_only",
+    "contract_artifact_id": "contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1",
+    "service_profile_artifact_id": "service-profile-gpu-preferred-with-general-compute-fallback-contract-only-v1",
+    "contract_semantic_hash": "03fde5105d5ee2c4902804de925202bd6a3f5258e80393b2c3b59e77d05ad69b",
+    "service_profile_semantic_hash": "e6dd18f5458f74acd546c12ef4ab56a3bafdeecf25d305ab9a3be0b69e9f728f",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "unfit",
+    "primary_reason_code": "policy_not_admissible",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes"
+    ],
+    "failed_requirements": [
+      "core_requirements.primary_capability_class"
+    ],
+    "evidence_refs": [
+      "$.survey.core_evidence.observations.cpu",
+      "$.survey.core_evidence.observations.memory",
+      "$.survey.core_evidence.execution_context",
+      "$.survey.core_evidence.observations.network",
+      "$.survey.core_evidence.observations.accelerators"
+    ],
+    "policy_refs": [
+      "defaults/gpu_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "explanations": [
+      {
+        "explanation_id": "explain-policy_not_admissible",
+        "reason_code": "policy_not_admissible",
+        "summary": "primary capability gpu_accelerated is not admissible under the derived contract: container-restricted execution is disallowed by policy; gpu hardware is present but no accelerator device nodes are visible under the current execution context; accelerator hardware is present but no accelerator device nodes are visible under the current execution context; visible accelerator count 0 is below the policy floor 1",
+        "related_requirements": [
+          "core_requirements.primary_capability_class"
+        ],
+        "evidence_refs": [
+          "$.survey.core_evidence.execution_context",
+          "$.survey.core_evidence.observations.accelerators",
+          "$.survey.core_evidence.observations.cpu",
+          "$.survey.core_evidence.observations.memory",
+          "$.survey.core_evidence.observations.network"
+        ],
+        "policy_refs": [
+          "defaults/gpu_compute"
+        ]
+      }
+    ],
+    "remediation_hints": [
+      {
+        "hint_id": "review-policy-admissibility",
+        "reason_code": "policy_not_admissible",
+        "summary": "Review the selected policy or choose a host whose derived contract marks the required capability admissible.",
+        "actions": [
+          {
+            "action_id": "inspect-policy-refs",
+            "summary": "Inspect the policy refs attached to the validation report before widening policy."
+          },
+          {
+            "action_id": "select-admissible-host-or-policy",
+            "summary": "Choose a host or policy pack that derives the required capability as admissible."
+          }
+        ]
+      }
+    ],
+    "summary": "primary capability gpu_accelerated is not admissible under the derived contract: container-restricted execution is disallowed by policy; gpu hardware is present but no accelerator device nodes are visible under the current execution context; accelerator hardware is present but no accelerator device nodes are visible under the current execution context; visible accelerator count 0 is below the policy floor 1"
+  }
+}

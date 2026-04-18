@@ -1,0 +1,95 @@
+{
+  "envelope": {
+    "schema_id": "host-contract.v2",
+    "schema_version": 2,
+    "artifact_id": "contract-linux-bare-metal-like-v1-general-compute-default-v1",
+    "provenance": {
+      "source": "policy:general_compute_default_v1",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.0",
+      "command_name": "contract",
+      "correlation_id": "contract-linux-bare-metal-like-v1-general-compute-default-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "contract_basis": {
+    "core_semantic_basis": {
+      "source_survey_semantic_hash": "6b58e19e1759ae3b15fe786ce3615c5cd9452fae41556e1c6f236c059eb2b863",
+      "policy_semantic_hash": "3ad4beaa05baaea5ae9a605a60fb4869d47859ad949bd618b770c5534ff8c15f",
+      "derivation_engine_id": "fitctl.contract.v1",
+      "derivation_engine_version": "1",
+      "contract_schema_version": 2,
+      "selected_policy_layers": [
+        "defaults/general_compute",
+        "site/general_compute"
+      ]
+    },
+    "derivation_provenance": {
+      "derived_at": "2025-04-21T14:37:19Z",
+      "notes": null
+    }
+  },
+  "contract": {
+    "core_contract": {
+      "capability_classes": {
+        "general_compute": {
+          "admissible": true,
+          "claim_metadata": {
+            "assurance_source": "self_observed",
+            "derivation_stage": "policy_asserted",
+            "evidence_paths": [
+              "$.survey.core_evidence.observations.cpu",
+              "$.survey.core_evidence.observations.memory",
+              "$.survey.core_evidence.execution_context"
+            ],
+            "policy_rule_id": "site/general_compute",
+            "source_collectors": [
+              "procfs",
+              "sysfs",
+              "cgroupfs",
+              "mountinfo",
+              "netdev",
+              "block_and_filesystem"
+            ],
+            "trust_evidence_refs": []
+          },
+          "evidence_refs": [
+            "$.survey.core_evidence.observations.cpu",
+            "$.survey.core_evidence.observations.memory",
+            "$.survey.core_evidence.execution_context",
+            "$.survey.core_evidence.observations.network"
+          ],
+          "rule_ids": [
+            "defaults/general_compute",
+            "site/general_compute"
+          ],
+          "summary": "host satisfies the general_compute capability baseline"
+        }
+      },
+      "execution_constraints": {
+        "container_runtime": null,
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "a8a5a40c33622bbe23b05a447af313cbad3c77ffa16c85d203e4becfeee1d05d",
+        "identity_class": "local_stable",
+        "local_stable_id": "78417113d2b6b33b934cda3f399c8af76e8d5e120d8445a38acba181fa2bbf9d",
+        "provenance_fingerprint": "4d85f7df8ece4ccffa0a4e6d6d255864227c4bb86a34282684be7dd7431a9840"
+      },
+      "network_summary": {
+        "interface_kinds": [
+          "ethernet",
+          "loopback"
+        ],
+        "max_observed_speed_mbps": 1000,
+        "non_loopback_interfaces": 1,
+        "total_interfaces": 2
+      },
+      "topology_summary": {
+        "cpu_packages": 1,
+        "numa_nodes": 1
+      }
+    }
+  }
+}

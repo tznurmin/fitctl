@@ -1,13 +1,13 @@
 // Copyright 2026 fitctl contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Normalize collected runtime-state snapshots into host-state.v1 artifacts.
+//! Normalize collected runtime-state snapshots into host-state.v2 artifacts.
 
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
 use crate::artifacts::metadata_v1::{
     AssuranceSourceV1, ClaimMetadataV1, CollectorMetadataV1, DerivationStageV1,
 };
-use crate::artifacts::schema_ids_v1::HOST_STATE_SCHEMA_ID;
+use crate::artifacts::schema_ids_v1::{HOST_STATE_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION};
 use crate::artifacts::state_v1::{
     HostStateCoreV1, HostStatePayloadV1, HostStateV1, StateCollectionModeV1, StateFieldV1,
     StateSectionMetadataV1,
@@ -126,7 +126,7 @@ pub(crate) fn build_host_state_from_snapshot(
     let artifact = HostStateV1 {
         envelope: ArtifactEnvelopeV1 {
             schema_id: HOST_STATE_SCHEMA_ID.to_string(),
-            schema_version: 1,
+            schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             artifact_id: artifact_id.clone(),
             provenance: local_artifact_provenance_v1(
                 snapshot.provenance_source,

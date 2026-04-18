@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "fitctl-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "fitctl-core",
  "serde",
@@ -63,7 +63,7 @@ dependencies = [
 
 [[package]]
 name = "fitctl-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "serde",

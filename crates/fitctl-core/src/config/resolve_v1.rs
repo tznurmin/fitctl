@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::artifacts::contract_v1::ContractExtensionBasisV1;
 use crate::config::schema_v1::{
-    semantic_hash_hex_for_extension_pack, ConfigError, ConfigErrorCode,
+    semantic_hash_hex_for_extension_pack, ConfigError, ConfigErrorCode, ConfigSelectionSourceV1,
     DisabledExtensionNamespaceV1, DisabledExtensionReasonV1, ExtensionPackV1, InvocationContextV1,
     RecommendationPackV1, ResolvedConfigV1, RESOLVED_CONFIG_SCHEMA_ID,
 };
@@ -19,6 +19,14 @@ pub struct ResolveConfigurationRequestV1 {
     pub extension_packs: Vec<ExtensionPackV1>,
     pub recommendation_packs: Vec<RecommendationPackV1>,
     pub invocation_context: Option<InvocationContextV1>,
+    pub selected_policy_pack_id: Option<String>,
+    pub selected_policy_entry_id: Option<String>,
+    pub selected_policy_entry_source: Option<ConfigSelectionSourceV1>,
+    pub selected_policy_pack_lock_id: Option<String>,
+    pub selected_policy_pack_lock_signed: Option<bool>,
+    pub selected_service_profile_catalogue_id: Option<String>,
+    pub selected_service_profile_entry_id: Option<String>,
+    pub selected_service_profile_entry_source: Option<ConfigSelectionSourceV1>,
 }
 
 /// Resolve policy, packs, and invocation choices into one conflict-checked runtime view.
@@ -36,6 +44,21 @@ pub fn resolve_configuration_v1(
             error.message,
         )
     })?;
+
+    validate_selection_provenance(
+        request.selected_policy_pack_id.as_deref(),
+        request.selected_policy_entry_id.as_deref(),
+        request.selected_policy_entry_source,
+        request.selected_policy_pack_lock_id.as_deref(),
+        "policy pack",
+    )?;
+    validate_selection_provenance(
+        request.selected_service_profile_catalogue_id.as_deref(),
+        request.selected_service_profile_entry_id.as_deref(),
+        request.selected_service_profile_entry_source,
+        None,
+        "service-profile catalogue",
+    )?;
 
     let policy_allowed_extension_namespaces = request
         .policy
@@ -220,10 +243,11 @@ pub fn resolve_configuration_v1(
         schema_id: RESOLVED_CONFIG_SCHEMA_ID.to_string(),
         schema_version: 1,
         policy_id: effective_policy.policy_id,
-        selected_policy_pack_id: None,
-        selected_policy_entry_id: None,
-        selected_policy_pack_lock_id: None,
-        selected_policy_pack_lock_signed: None,
+        selected_policy_pack_id: request.selected_policy_pack_id,
+        selected_policy_entry_id: request.selected_policy_entry_id,
+        selected_policy_entry_source: request.selected_policy_entry_source,
+        selected_policy_pack_lock_id: request.selected_policy_pack_lock_id,
+        selected_policy_pack_lock_signed: request.selected_policy_pack_lock_signed,
         selected_policy_layers: effective_policy.selected_policy_layers,
         policy_allowed_extension_namespaces,
         configured_extension_pack_ids,
@@ -236,8 +260,9 @@ pub fn resolve_configuration_v1(
         invocation_id: invocation
             .as_ref()
             .map(|context| context.invocation_id.clone()),
-        selected_service_profile_catalogue_id: None,
-        selected_service_profile_entry_id: None,
+        selected_service_profile_catalogue_id: request.selected_service_profile_catalogue_id,
+        selected_service_profile_entry_id: request.selected_service_profile_entry_id,
+        selected_service_profile_entry_source: request.selected_service_profile_entry_source,
         validation_mode: invocation
             .as_ref()
             .and_then(|context| context.validation_mode),
@@ -284,4 +309,113 @@ pub fn build_extension_basis_v1(
         enabled_extension_namespaces: resolved.enabled_extension_namespaces.clone(),
         extension_semantic_hashes,
     }))
+}
+
+pub fn resolve_invocation_selected_policy_id_v1(
+    direct_policy_id: Option<&str>,
+    invocation_context: Option<&InvocationContextV1>,
+) -> Result<Option<(String, ConfigSelectionSourceV1)>, ConfigError> {
+    resolve_single_selection_v1(
+        direct_policy_id,
+        invocation_context.and_then(|context| context.selected_policy_id.as_deref()),
+        "policy-pack entry",
+    )
+}
+
+pub fn resolve_invocation_selected_service_profile_id_v1(
+    direct_profile_id: Option<&str>,
+    invocation_context: Option<&InvocationContextV1>,
+) -> Result<Option<(String, ConfigSelectionSourceV1)>, ConfigError> {
+    resolve_single_selection_v1(
+        direct_profile_id,
+        invocation_context.and_then(|context| context.selected_service_profile_id.as_deref()),
+        "service-profile catalogue entry",
+    )
+}
+
+pub fn resolve_invocation_selected_recommendation_pack_id_v1(
+    direct_pack_id: Option<&str>,
+    invocation_context: Option<&InvocationContextV1>,
+) -> Result<Option<(String, ConfigSelectionSourceV1)>, ConfigError> {
+    let invocation_selection = match invocation_context {
+        Some(context) if context.selected_recommendation_pack_ids.is_empty() => None,
+        Some(context) if context.selected_recommendation_pack_ids.len() == 1 => {
+            Some(context.selected_recommendation_pack_ids[0].as_str())
+        }
+        Some(_) => {
+            return Err(ConfigError::new(
+                ConfigErrorCode::ConfigResolveConflict,
+                "config_resolve",
+                "recommendation-pack selection for the current single-report flow must resolve to exactly one invocation-selected id",
+            ));
+        }
+        None => None,
+    };
+
+    resolve_single_selection_v1(direct_pack_id, invocation_selection, "recommendation-pack")
+}
+
+fn resolve_single_selection_v1(
+    direct_selection: Option<&str>,
+    invocation_selection: Option<&str>,
+    label: &str,
+) -> Result<Option<(String, ConfigSelectionSourceV1)>, ConfigError> {
+    match (direct_selection, invocation_selection) {
+        (Some(value), None) if value.trim().is_empty() => Err(ConfigError::new(
+            ConfigErrorCode::ConfigInputInvalid,
+            "config_resolve",
+            format!("{label} id must be non-empty when provided through direct CLI input"),
+        )),
+        (Some(_), Some(_)) => Err(ConfigError::new(
+            ConfigErrorCode::ConfigResolveConflict,
+            "config_resolve",
+            format!(
+                "{label} id must come from either direct CLI input or invocation context, not both"
+            ),
+        )),
+        (Some(value), None) => Ok(Some((value.to_string(), ConfigSelectionSourceV1::Cli))),
+        (None, Some(value)) => Ok(Some((
+            value.to_string(),
+            ConfigSelectionSourceV1::InvocationContext,
+        ))),
+        (None, None) => Ok(None),
+    }
+}
+
+fn validate_selection_provenance(
+    selection_group_id: Option<&str>,
+    selection_entry_id: Option<&str>,
+    selection_source: Option<ConfigSelectionSourceV1>,
+    selection_lock_id: Option<&str>,
+    label: &str,
+) -> Result<(), ConfigError> {
+    if selection_source.is_some() && selection_entry_id.is_none() {
+        return Err(ConfigError::new(
+            ConfigErrorCode::ConfigResolveConflict,
+            "config_resolve",
+            format!("{label} selection source must appear exactly when a selected entry id exists"),
+        ));
+    }
+    if selection_entry_id.is_some() && selection_source.is_none() && selection_lock_id.is_none() {
+        return Err(ConfigError::new(
+            ConfigErrorCode::ConfigResolveConflict,
+            "config_resolve",
+            format!("{label} selection must record either a direct selection source or a lock id"),
+        ));
+    }
+    if selection_entry_id.is_some() && selection_group_id.is_none() {
+        return Err(ConfigError::new(
+            ConfigErrorCode::ConfigResolveConflict,
+            "config_resolve",
+            format!("{label} entry selection requires the owning group id"),
+        ));
+    }
+    if selection_lock_id.is_some() && selection_group_id.is_none() {
+        return Err(ConfigError::new(
+            ConfigErrorCode::ConfigResolveConflict,
+            "config_resolve",
+            format!("{label} lock selection requires the owning group id"),
+        ));
+    }
+    Ok(())
 }

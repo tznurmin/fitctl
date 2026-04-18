@@ -22,15 +22,18 @@ pub use catalogue_v1::{
     SERVICE_PROFILE_CATALOGUE_SCHEMA_ID,
 };
 pub use resolve_v1::{
-    build_extension_basis_v1, resolve_configuration_v1, ResolveConfigurationRequestV1,
+    build_extension_basis_v1, resolve_configuration_v1, resolve_invocation_selected_policy_id_v1,
+    resolve_invocation_selected_recommendation_pack_id_v1,
+    resolve_invocation_selected_service_profile_id_v1, ResolveConfigurationRequestV1,
 };
 pub use schema_v1::{
     load_extension_pack_from_path, load_invocation_context_from_path,
-    load_recommendation_pack_from_path, semantic_hash_hex_for_extension_pack, ConfigError,
-    ConfigErrorCode, DisabledExtensionNamespaceV1, DisabledExtensionReasonV1,
-    ExtensionFailureSemanticsV1, ExtensionFreshnessModelV1, ExtensionPackPrivilegeV1,
-    ExtensionPackV1, ExtensionSectionKindV1, ExtensionSectionSchemaV1, InvocationContextV1,
-    RecommendationPackV1, ResolvedConfigV1, CONFIG_ERROR_MODEL_ID, CONFIG_ERROR_MODEL_VERSION,
-    EXTENSION_PACK_SCHEMA_ID, INVOCATION_CONTEXT_SCHEMA_ID, RECOMMENDATION_PACK_SCHEMA_ID,
-    RESOLVED_CONFIG_SCHEMA_ID,
+    load_recommendation_pack_from_path, load_resolved_config_from_path,
+    semantic_hash_hex_for_extension_pack, semantic_hash_hex_for_resolved_config,
+    validate_resolved_config, ConfigError, ConfigErrorCode, ConfigSelectionSourceV1,
+    DisabledExtensionNamespaceV1, DisabledExtensionReasonV1, ExtensionFailureSemanticsV1,
+    ExtensionFreshnessModelV1, ExtensionPackPrivilegeV1, ExtensionPackV1, ExtensionSectionKindV1,
+    ExtensionSectionSchemaV1, InvocationContextV1, RecommendationPackV1, ResolvedConfigV1,
+    CONFIG_ERROR_MODEL_ID, CONFIG_ERROR_MODEL_VERSION, EXTENSION_PACK_SCHEMA_ID,
+    INVOCATION_CONTEXT_SCHEMA_ID, RECOMMENDATION_PACK_SCHEMA_ID, RESOLVED_CONFIG_SCHEMA_ID,
 };

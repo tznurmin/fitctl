@@ -7,6 +7,10 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
+use crate::extensions::cuda_runtime_v1::{
+    decode_cuda_runtime_contract_from_value, decode_cuda_runtime_requirement_from_value,
+    evaluate_cuda_runtime_requirement_v1, CudaRuntimeEvaluationOutcomeV1, CUDA_RUNTIME_NAMESPACE,
+};
 use crate::extensions::node_runtime_v1::{
     decode_node_runtime_contract_from_value, decode_node_runtime_requirement_from_value,
     evaluate_node_runtime_requirement_v1, NodeRuntimeEvaluationOutcomeV1, NODE_RUNTIME_NAMESPACE,
@@ -77,6 +81,10 @@ pub struct RegisteredExtensionEvaluatorV1 {
 }
 
 const REGISTERED_EXTENSION_EVALUATORS_V1: &[RegisteredExtensionEvaluatorV1] = &[
+    RegisteredExtensionEvaluatorV1 {
+        namespace: CUDA_RUNTIME_NAMESPACE,
+        evaluate_requirement: evaluate_cuda_runtime_requirement_from_values_v1,
+    },
     RegisteredExtensionEvaluatorV1 {
         namespace: NODE_RUNTIME_NAMESPACE,
         evaluate_requirement: evaluate_node_runtime_requirement_from_values_v1,
@@ -173,6 +181,45 @@ fn evaluate_python_runtime_requirement_from_values_v1(
             ExtensionRequirementEvaluationOutcomeV1::Satisfied
         }
         PythonRuntimeEvaluationOutcomeV1::Unsatisfied { summary } => {
+            ExtensionRequirementEvaluationOutcomeV1::Unsatisfied { summary }
+        }
+    })
+}
+
+fn evaluate_cuda_runtime_requirement_from_values_v1(
+    contract_value: &Value,
+    requirement_value: &Value,
+) -> Result<ExtensionRequirementEvaluationOutcomeV1, ExtensionEvaluatorRegistryErrorV1> {
+    let contract = decode_cuda_runtime_contract_from_value(contract_value).map_err(|error| {
+        ExtensionEvaluatorRegistryErrorV1::new(
+            ExtensionEvaluatorRegistryErrorKindV1::ExtensionPayloadInvalid,
+            "extension_registry_cuda_contract_decode",
+            error.message,
+        )
+    })?;
+    let requirement =
+        decode_cuda_runtime_requirement_from_value(requirement_value).map_err(|error| {
+            ExtensionEvaluatorRegistryErrorV1::new(
+                ExtensionEvaluatorRegistryErrorKindV1::ExtensionPayloadInvalid,
+                "extension_registry_cuda_requirement_decode",
+                error.message,
+            )
+        })?;
+
+    let outcome =
+        evaluate_cuda_runtime_requirement_v1(&contract, &requirement).map_err(|error| {
+            ExtensionEvaluatorRegistryErrorV1::new(
+                ExtensionEvaluatorRegistryErrorKindV1::ExtensionPayloadInvalid,
+                "extension_registry_cuda_evaluate",
+                error.message,
+            )
+        })?;
+
+    Ok(match outcome {
+        CudaRuntimeEvaluationOutcomeV1::Satisfied => {
+            ExtensionRequirementEvaluationOutcomeV1::Satisfied
+        }
+        CudaRuntimeEvaluationOutcomeV1::Unsatisfied { summary } => {
             ExtensionRequirementEvaluationOutcomeV1::Unsatisfied { summary }
         }
     })

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const LOCAL_TOOL_VERSION_V1: &str = env!("CARGO_PKG_VERSION");
+pub const LOCAL_FITCTL_VERSION_V1: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactEnvelopeV1 {
@@ -19,11 +19,12 @@ pub struct ArtifactEnvelopeV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactProvenanceV1 {
     pub source: String,
     pub collected_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_version: Option<String>,
+    pub fitctl_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -66,7 +67,7 @@ pub fn local_artifact_provenance_v1(
     ArtifactProvenanceV1 {
         source: source.into(),
         collected_at: collected_at.into(),
-        tool_version: Some(LOCAL_TOOL_VERSION_V1.to_string()),
+        fitctl_version: Some(LOCAL_FITCTL_VERSION_V1.to_string()),
         command_name: Some(command_name.into()),
         correlation_id: Some(correlation_id.into()),
     }

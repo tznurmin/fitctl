@@ -1,8 +1,19 @@
 # Validation
 
-Fitctl checks whether a recorded host fits a workload.
+Validation checks whether a host contract fits a service profile. The result is written as a typed
+JSON validation report.
 
-The usual flow is simple: survey a host, derive a contract from that survey with a policy, then validate that contract against a service profile. The result is a typed validation report that can be inspected by a person or read by automation.
+The core inputs are a contract and a service profile:
+
+```bash
+fitctl validate --contract <contract.json> --profile <profile.json> > validation.json
+```
+
+[Contracts](./contracts.md) covers contract derivation. [Configuration](./configuration.md) covers
+policies and service profiles.
+
+Examples are in [configs/service_profiles](../configs/service_profiles) and
+[fixtures/host_survey](../fixtures/host_survey).
 
 ## Default flow
 
@@ -11,8 +22,6 @@ Survey the current host:
 ```bash
 fitctl survey > survey.json
 ```
-
-`survey.json` records observed host evidence.
 
 Derive a contract from the survey:
 
@@ -23,22 +32,25 @@ fitctl contract \
   > contract.json
 ```
 
-The selected policy turns observed survey evidence into contract claims.
-
-`contract.json` records the capabilities the host may claim under the selected policy.
-
 Validate that contract against a service profile:
 
 ```bash
 fitctl validate \
   --contract contract.json \
-  --profile configs/service_profiles/general_compute_contract_only.v1.json \
+  --profile configs/service_profiles/general_compute_contract_only.v2.json \
   > validation.json
 ```
 
-The selected service profile defines what the workload needs.
+If you do not need to keep the intermediate contract, you can validate directly from a survey and
+policy:
 
-`validation.json` records the verdict and the reasons behind it.
+```bash
+fitctl validate \
+  --survey survey.json \
+  --policy configs/policy/general_compute_default.v1.json \
+  --profile configs/service_profiles/general_compute_contract_only.v2.json \
+  > validation.json
+```
 
 Read the decision:
 
@@ -46,60 +58,47 @@ Read the decision:
 jq -r '.report.verdict' validation.json
 ```
 
-Inspect the full report when you want reason codes and summaries:
+Inspect the full report for more information:
 
 ```bash
 fitctl inspect --input validation.json
 ```
 
-## Default mode
+## Batch comparison
 
-The default mode is `contract_only`.
-
-Use it when the decision depends on stable host properties already carried by the contract, such as CPU, memory, storage, accelerators, visibility scope, or extension evidence.
-
-No current runtime state is required.
-
-## When state matters
-
-Some decisions depend on what is true right now, not only on what the host can generally provide.
-
-Capture current state separately:
+Use `classify` to check several contracts against several service profiles:
 
 ```bash
-fitctl state > state.json
+fitctl survey --fixture linux-bare-metal-like-v1 > cpu.survey.json
+fitctl survey --fixture linux-gpu-workstation-like-v1 > gpu.survey.json
+
+fitctl contract \
+  --survey cpu.survey.json \
+  --policy configs/policy/general_compute_default.v1.json \
+  > cpu.contract.json
+
+fitctl contract \
+  --survey gpu.survey.json \
+  --policy configs/policy/gpu_compute_default.v1.json \
+  > gpu.contract.json
+
+fitctl classify \
+  --contract cpu.contract.json \
+  --contract gpu.contract.json \
+  --profile configs/service_profiles/general_compute_no_gpu_contract_only.v2.json \
+  --profile configs/service_profiles/gpu_preferred_with_general_compute_fallback_contract_only.v2.json \
+  --profile configs/service_profiles/gpu_required_contract_only.v2.json \
+  > batch.json
+
+fitctl inspect --input batch.json --view matrix
 ```
 
-`state.json` records current runtime-sensitive facts kept separate from the stable contract.
-
-Then validate with a state-aware mode:
-
-```bash
-fitctl validate \
-  --contract contract.json \
-  --profile configs/service_profiles/general_compute_stateful_thresholds.v1.json \
-  --validation-mode state_required \
-  --state state.json \
-  --max-state-age 15m \
-  > validation.json
-```
-
-Use `state_required` when missing or stale state must stop the decision.
-
-Use `state_advisory` when current state should inform the result but should not be mandatory.
-
-When state is stale, the validation report stays explicit about it. `fitctl inspect` will show the recorded state time and the applied age window when that context is available.
+`classify` emits a typed `batch-classification-report.v2` artifact. `fitctl inspect --view matrix`
+renders that report as a shortlist table.
 
 ## Verdicts
 
-- `fit` — the host satisfies the profile
-- `fit_with_degradation` — the profile fits through an allowed fallback path
-- `unfit` — the host does not satisfy the profile
-- `indeterminate` — fitctl cannot make a safe decision from the available inputs
-
-A common rule is:
-
-- allow on `fit`
-- allow on `fit_with_degradation` when that fallback is acceptable
-- deny on `unfit`
-- deny on `indeterminate`
+- `fit` – the host satisfies the profile
+- `fit_with_degradation` – the profile fits through an allowed fallback path
+- `unfit` – the host does not satisfy the profile
+- `indeterminate` – fitctl cannot make a safe decision from the available inputs

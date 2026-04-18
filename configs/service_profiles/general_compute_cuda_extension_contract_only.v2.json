@@ -1,0 +1,46 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-general-compute-cuda-extension-contract-only-v1",
+    "provenance": {
+      "source": "config:service_profiles/general_compute_cuda_extension_contract_only.v2.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "general_compute_cuda_extension_contract_only_v1",
+    "display_name": "General compute with CUDA runtime extension",
+    "short_display_name": "General compute + CUDA",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like",
+        "container_restricted"
+      ]
+    },
+    "extension_requirements": {
+      "org.example.runtime.cuda": {
+        "schema_id": "fitctl.extension.org.example.runtime.cuda.requirement.v1",
+        "schema_version": 1,
+        "required_runtime": "cuda",
+        "require_presence": true,
+        "minimum_version": {
+          "major": 12,
+          "minor": 0,
+          "patch": 0
+        }
+      }
+    },
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

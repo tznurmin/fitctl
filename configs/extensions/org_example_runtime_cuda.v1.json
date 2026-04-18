@@ -1,0 +1,26 @@
+{
+  "schema_id": "fitctl.extension-pack.v1",
+  "schema_version": 1,
+  "pack_id": "org-example-runtime-cuda-v1",
+  "namespace": "org.example.runtime.cuda",
+  "namespace_owner": "org.example",
+  "pack_version": "1.0.0",
+  "collector_ids": [
+    "org.example.runtime.cuda.collector.v1"
+  ],
+  "emitted_sections": [
+    {
+      "section_kind": "survey_evidence",
+      "schema_id": "fitctl.extension.org.example.runtime.cuda.evidence.v1",
+      "schema_version": 1
+    },
+    {
+      "section_kind": "extension_contract",
+      "schema_id": "fitctl.extension.org.example.runtime.cuda.contract.v1",
+      "schema_version": 1
+    }
+  ],
+  "required_privilege": "unprivileged",
+  "freshness_model": "static_until_recollected",
+  "failure_semantics": "fail_closed"
+}

@@ -22,14 +22,14 @@ pub use execution_context_v1::{
     VisibilityScopeV1,
 };
 pub use live_v1::{
-    AcceleratorDetailsV1, AcceleratorDeviceV1, AcceleratorDiscoverySourceV1, AcceleratorKindV1,
-    AcceleratorOperabilityV1, CollectedHostSnapshotV1, CpuCacheSummaryBasisV1, CpuCacheSummaryV1,
-    CpuDetailsV1, CpuModelBasisV1, IpAddressFamilyV1, LocalLiveProbeV1, MemoryDetailsV1,
-    NetworkAddressV1, NetworkAddressabilitySummaryV1, NetworkCarrierStateV1, NetworkDetailsV1,
-    NetworkDuplexV1, NetworkInterfaceKindV1, NetworkInterfaceV1, NetworkInterfaceVirtualityV1,
-    NetworkLinkStateV1, NoopLiveProbeV1, StaticOperabilityV1, StorageBlockDeviceClassV1,
-    StorageBlockDeviceV1, StorageDetailsV1, StorageMountRoleV1, StorageMountV1, SurveyFieldV1,
-    SurveyObservationsV1, TopologyDetailsV1,
+    AcceleratorDetailsV1, AcceleratorDeviceV1, AcceleratorDiscoverySourceV1,
+    AcceleratorIntegrationV1, AcceleratorKindV1, AcceleratorOperabilityV1, CollectedHostSnapshotV1,
+    CpuCacheSummaryBasisV1, CpuCacheSummaryV1, CpuDetailsV1, CpuModelBasisV1, IpAddressFamilyV1,
+    LocalLiveProbeV1, MemoryDetailsV1, NetworkAddressV1, NetworkAddressabilitySummaryV1,
+    NetworkCarrierStateV1, NetworkDetailsV1, NetworkDuplexV1, NetworkInterfaceKindV1,
+    NetworkInterfaceV1, NetworkInterfaceVirtualityV1, NetworkLinkStateV1, NoopLiveProbeV1,
+    StaticOperabilityV1, StorageBlockDeviceClassV1, StorageBlockDeviceV1, StorageDetailsV1,
+    StorageMountRoleV1, StorageMountV1, SurveyFieldV1, SurveyObservationsV1, TopologyDetailsV1,
 };
 pub use replay_v1::{
     load_fixture_corpus_manifest, FixtureCorpusEntryV1, FixtureCorpusManifestV1,

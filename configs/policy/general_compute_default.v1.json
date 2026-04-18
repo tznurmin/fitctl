@@ -2,8 +2,11 @@
   "schema_id": "fitctl.policy.document.v1",
   "schema_version": 1,
   "policy_id": "general_compute_default_v1",
+  "display_name": "General compute default policy",
+  "short_display_name": "General compute default",
   "extension_policy": {
     "allowed_extension_namespaces": [
+      "org.example.runtime.cuda",
       "org.example.runtime.node",
       "org.example.runtime.python"
     ]

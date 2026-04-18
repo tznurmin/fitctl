@@ -46,5 +46,5 @@ fn verify_emits_machine_readable_report() {
     assert_eq!(report["schema_id"], "fitctl.verify.report.v1");
     assert_eq!(report["outcome"], "verified_and_trusted");
     assert_eq!(report["accepted_by_policy"], true);
-    assert_eq!(report["artifact_schema_id"], "host-survey.v1");
+    assert_eq!(report["artifact_schema_id"], "host-survey.v2");
 }

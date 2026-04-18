@@ -28,6 +28,10 @@ pub struct ServiceProfileV1 {
 /// capabilities from host evidence themselves.
 pub struct ServiceProfilePayloadV1 {
     pub profile_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_display_name: Option<String>,
     pub core_requirements: ServiceRequirementsV1,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extension_requirements: BTreeMap<String, Value>,
@@ -61,6 +65,10 @@ pub struct ServiceRequirementsV1 {
     pub max_numa_nodes: Option<u32>,
     #[serde(default)]
     pub min_cpu_packages: Option<u32>,
+    #[serde(default)]
+    pub require_accelerator_locality_known: bool,
+    #[serde(default)]
+    pub max_accelerator_numa_nodes: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

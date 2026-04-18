@@ -5,9 +5,17 @@
 
 use std::path::Path;
 
+use crate::artifacts::config_bundle_v1::ConfigBundleV1;
 use crate::artifacts::contract_v1::HostContractV1;
+use crate::artifacts::decision_bundle_v1::DecisionBundleV1;
 use crate::artifacts::envelope_v1::{ArtifactEnvelopeV1, RedactionEnvelopeV1};
+use crate::artifacts::recommendation_report_v1::RecommendationReportV1;
 use crate::artifacts::record_v1::{load_artifact_record_from_path, ArtifactRecordV1};
+use crate::artifacts::semantic_hash_v1::{
+    semantic_hash_hex_for_config_bundle, semantic_hash_hex_for_contract,
+    semantic_hash_hex_for_recommendation_report, semantic_hash_hex_for_state,
+    semantic_hash_hex_for_validation_report,
+};
 use crate::artifacts::service_profile_v1::ServiceProfileV1;
 use crate::artifacts::state_v1::HostStateV1;
 use crate::artifacts::survey_v1::{
@@ -15,17 +23,20 @@ use crate::artifacts::survey_v1::{
 };
 use crate::artifacts::validation_report_v1::ValidationReportV1;
 use crate::artifacts::validation_v1::{
-    validate_host_contract, validate_host_state, validate_host_survey, validate_service_profile,
+    validate_config_bundle, validate_decision_bundle, validate_host_contract, validate_host_state,
+    validate_host_survey, validate_recommendation_report, validate_service_profile,
     validate_validation_report,
 };
 use crate::extensions::{
-    decode_node_runtime_evidence_from_value, decode_python_runtime_evidence_from_value,
+    decode_cuda_runtime_evidence_from_value, decode_node_runtime_evidence_from_value,
+    decode_python_runtime_evidence_from_value, redact_cuda_runtime_evidence_export_v1,
     redact_node_runtime_evidence_export_v1, redact_python_runtime_evidence_export_v1,
-    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
+    CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
 };
 use crate::redact::profile_v1::BuiltInRedactionProfileV1;
 use crate::redact::{RedactionError, RedactionErrorCode};
 use crate::survey::SurveyFieldV1;
+use crate::verify::{validate_verification_bundle_v1, VerificationBundleV1};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedactionRequestV1 {
@@ -78,6 +89,14 @@ pub fn redact_artifact_v1(request: RedactionRequestV1) -> Result<ArtifactRecordV
             redact_validation_report_artifact(artifact, request.profile, &request.redacted_at)
                 .map(ArtifactRecordV1::ValidationReport)
         }
+        ArtifactRecordV1::ConfigBundle(artifact) => {
+            redact_config_bundle_artifact(artifact, request.profile, &request.redacted_at)
+                .map(ArtifactRecordV1::ConfigBundle)
+        }
+        ArtifactRecordV1::DecisionBundle(artifact) => {
+            redact_decision_bundle_artifact(artifact, request.profile, &request.redacted_at)
+                .map(ArtifactRecordV1::DecisionBundle)
+        }
     }
 }
 
@@ -88,6 +107,8 @@ fn preflight_input(artifact: &ArtifactRecordV1) -> Result<(), RedactionError> {
         ArtifactRecordV1::ServiceProfile(artifact) => &artifact.envelope,
         ArtifactRecordV1::State(artifact) => &artifact.envelope,
         ArtifactRecordV1::ValidationReport(artifact) => &artifact.envelope,
+        ArtifactRecordV1::ConfigBundle(artifact) => &artifact.envelope,
+        ArtifactRecordV1::DecisionBundle(artifact) => &artifact.envelope,
     };
 
     if envelope.redaction.is_some() {
@@ -168,6 +189,23 @@ fn redact_survey_artifact(
             cpu.model = profile.cpu_model_placeholder();
         }
     }
+    if let Some(value) = payload.extension_evidence.get_mut(CUDA_RUNTIME_NAMESPACE) {
+        let mut evidence = decode_cuda_runtime_evidence_from_value(value).map_err(|error| {
+            RedactionError::new(
+                RedactionErrorCode::ArtifactInputInvalid,
+                "redaction_apply",
+                error.message,
+            )
+        })?;
+        redact_cuda_runtime_evidence_export_v1(&mut evidence, profile);
+        *value = serde_json::to_value(evidence).map_err(|error| {
+            RedactionError::new(
+                RedactionErrorCode::RedactionApplyFailed,
+                "redaction_apply",
+                format!("failed to encode redacted CUDA runtime extension evidence: {error}"),
+            )
+        })?;
+    }
     if let Some(value) = payload.extension_evidence.get_mut(PYTHON_RUNTIME_NAMESPACE) {
         let mut evidence = decode_python_runtime_evidence_from_value(value).map_err(|error| {
             RedactionError::new(
@@ -237,7 +275,13 @@ fn redact_contract_artifact(
         })?;
 
     if profile.applies_fleet_redactions() {
+        let host_placeholder = profile.host_placeholder();
         artifact.envelope.artifact_id = profile.artifact_id_placeholder("contract");
+        artifact.host_alias = Some(host_placeholder.clone());
+        artifact.display_name = artifact
+            .short_display_name
+            .as_ref()
+            .map(|label| format!("{host_placeholder} / {label}"));
     }
     if profile.applies_external_redactions() {
         replace_each_string(
@@ -355,6 +399,288 @@ fn redact_validation_report_artifact(
     })?;
 
     Ok(artifact)
+}
+
+fn redact_config_bundle_artifact(
+    mut artifact: ConfigBundleV1,
+    profile: BuiltInRedactionProfileV1,
+    redacted_at: &str,
+) -> Result<ConfigBundleV1, RedactionError> {
+    validate_config_bundle(&artifact).map_err(map_redaction_input_validation_error)?;
+
+    if let Some(service_profile) = artifact.config_bundle.service_profile.take() {
+        artifact.config_bundle.service_profile = Some(redact_service_profile_artifact(
+            service_profile,
+            profile,
+            redacted_at,
+        )?);
+    }
+
+    if profile.applies_fleet_redactions() {
+        artifact.envelope.artifact_id = profile.artifact_id_placeholder("config-bundle");
+    }
+
+    apply_redaction_metadata(&mut artifact.envelope, profile, redacted_at);
+    validate_config_bundle(&artifact).map_err(map_redaction_output_validation_error)?;
+
+    Ok(artifact)
+}
+
+fn redact_decision_bundle_artifact(
+    mut artifact: DecisionBundleV1,
+    profile: BuiltInRedactionProfileV1,
+    redacted_at: &str,
+) -> Result<DecisionBundleV1, RedactionError> {
+    validate_decision_bundle(&artifact).map_err(map_redaction_input_validation_error)?;
+
+    artifact.bundle.contract =
+        redact_contract_artifact(artifact.bundle.contract, profile, redacted_at)?;
+    artifact.bundle.validation_report = redact_embedded_validation_report_artifact(
+        artifact.bundle.validation_report,
+        &artifact.bundle.contract,
+        artifact.bundle.state.as_ref(),
+        profile,
+        redacted_at,
+    )?;
+    artifact.bundle.state = match artifact.bundle.state.take() {
+        Some(state) => Some(redact_state_artifact(state, profile, redacted_at)?),
+        None => None,
+    };
+    artifact.bundle.validation_report = retarget_validation_report_lineage(
+        artifact.bundle.validation_report,
+        &artifact.bundle.contract,
+        artifact.bundle.state.as_ref(),
+    )?;
+
+    artifact.bundle.config_bundle = match artifact.bundle.config_bundle.take() {
+        Some(config_bundle) => Some(redact_config_bundle_artifact(
+            config_bundle,
+            profile,
+            redacted_at,
+        )?),
+        None => None,
+    };
+    artifact.bundle.verification_bundle = match artifact.bundle.verification_bundle.take() {
+        Some(verification_bundle) => Some(redact_embedded_verification_bundle(
+            verification_bundle,
+            &artifact.bundle.contract,
+            profile,
+        )?),
+        None => None,
+    };
+    artifact.bundle.recommendation_report = match artifact.bundle.recommendation_report.take() {
+        Some(recommendation_report) => Some(redact_embedded_recommendation_report_artifact(
+            recommendation_report,
+            &artifact.bundle.validation_report,
+            artifact.bundle.state.as_ref(),
+            profile,
+            redacted_at,
+        )?),
+        None => None,
+    };
+
+    artifact.bundle_basis.validation_report_artifact_id = artifact
+        .bundle
+        .validation_report
+        .envelope
+        .artifact_id
+        .clone();
+    artifact.bundle_basis.validation_report_semantic_hash =
+        semantic_hash_hex_for_validation_report(&artifact.bundle.validation_report)
+            .map_err(map_redaction_artifact_projection_error)?;
+    artifact.bundle_basis.contract_artifact_id =
+        artifact.bundle.contract.envelope.artifact_id.clone();
+    artifact.bundle_basis.contract_semantic_hash =
+        semantic_hash_hex_for_contract(&artifact.bundle.contract)
+            .map_err(map_redaction_artifact_projection_error)?;
+    artifact.bundle_basis.state_artifact_id = artifact
+        .bundle
+        .state
+        .as_ref()
+        .map(|state| state.envelope.artifact_id.clone());
+    artifact.bundle_basis.state_semantic_hash = match artifact.bundle.state.as_ref() {
+        Some(state) => Some(
+            semantic_hash_hex_for_state(state).map_err(map_redaction_artifact_projection_error)?,
+        ),
+        None => None,
+    };
+    artifact.bundle_basis.config_bundle_artifact_id = artifact
+        .bundle
+        .config_bundle
+        .as_ref()
+        .map(|bundle| bundle.envelope.artifact_id.clone());
+    artifact.bundle_basis.config_bundle_semantic_hash = match artifact.bundle.config_bundle.as_ref()
+    {
+        Some(bundle) => Some(
+            semantic_hash_hex_for_config_bundle(bundle)
+                .map_err(map_redaction_artifact_projection_error)?,
+        ),
+        None => None,
+    };
+    artifact.bundle_basis.verification_bundle_id = artifact
+        .bundle
+        .verification_bundle
+        .as_ref()
+        .map(|bundle| bundle.bundle_id.clone());
+    artifact.bundle_basis.recommendation_report_artifact_id = artifact
+        .bundle
+        .recommendation_report
+        .as_ref()
+        .map(|report| report.envelope.artifact_id.clone());
+    artifact.bundle_basis.recommendation_report_semantic_hash =
+        match artifact.bundle.recommendation_report.as_ref() {
+            Some(report) => Some(
+                semantic_hash_hex_for_recommendation_report(report)
+                    .map_err(map_redaction_artifact_projection_error)?,
+            ),
+            None => None,
+        };
+
+    if profile.applies_fleet_redactions() {
+        artifact.envelope.artifact_id = profile.artifact_id_placeholder("decision-bundle");
+    }
+
+    apply_redaction_metadata(&mut artifact.envelope, profile, redacted_at);
+    validate_decision_bundle(&artifact).map_err(map_redaction_output_validation_error)?;
+
+    Ok(artifact)
+}
+
+fn redact_embedded_validation_report_artifact(
+    artifact: ValidationReportV1,
+    contract: &HostContractV1,
+    state: Option<&HostStateV1>,
+    profile: BuiltInRedactionProfileV1,
+    redacted_at: &str,
+) -> Result<ValidationReportV1, RedactionError> {
+    let redacted = redact_validation_report_artifact(artifact, profile, redacted_at)?;
+    retarget_validation_report_lineage(redacted, contract, state)
+}
+
+fn retarget_validation_report_lineage(
+    mut artifact: ValidationReportV1,
+    contract: &HostContractV1,
+    state: Option<&HostStateV1>,
+) -> Result<ValidationReportV1, RedactionError> {
+    artifact.validation_basis.contract_artifact_id = contract.envelope.artifact_id.clone();
+    artifact.validation_basis.contract_semantic_hash = semantic_hash_hex_for_contract(contract)
+        .map_err(map_redaction_artifact_projection_error)?;
+
+    match state {
+        Some(state) => {
+            artifact.validation_basis.state_artifact_id = Some(state.envelope.artifact_id.clone());
+            artifact.validation_basis.state_semantic_hash = Some(
+                semantic_hash_hex_for_state(state)
+                    .map_err(map_redaction_artifact_projection_error)?,
+            );
+        }
+        None => {
+            artifact.validation_basis.state_artifact_id = None;
+            artifact.validation_basis.state_semantic_hash = None;
+        }
+    }
+
+    validate_validation_report(&artifact).map_err(map_redaction_output_validation_error)?;
+    Ok(artifact)
+}
+
+fn redact_embedded_recommendation_report_artifact(
+    mut artifact: RecommendationReportV1,
+    validation_report: &ValidationReportV1,
+    state: Option<&HostStateV1>,
+    profile: BuiltInRedactionProfileV1,
+    redacted_at: &str,
+) -> Result<RecommendationReportV1, RedactionError> {
+    if profile.applies_fleet_redactions() {
+        artifact.envelope.artifact_id = profile.artifact_id_placeholder("recommendation-report");
+    }
+
+    artifact.recommendation_basis.validation_report_artifact_id =
+        validation_report.envelope.artifact_id.clone();
+    artifact
+        .recommendation_basis
+        .validation_report_semantic_hash =
+        semantic_hash_hex_for_validation_report(validation_report)
+            .map_err(map_redaction_artifact_projection_error)?;
+    artifact.recommendation_basis.validation_verdict = validation_report.report.verdict;
+
+    match state {
+        Some(state) => {
+            artifact.recommendation_basis.state_artifact_id =
+                Some(state.envelope.artifact_id.clone());
+            artifact.recommendation_basis.state_semantic_hash = Some(
+                semantic_hash_hex_for_state(state)
+                    .map_err(map_redaction_artifact_projection_error)?,
+            );
+        }
+        None => {
+            artifact.recommendation_basis.state_artifact_id = None;
+            artifact.recommendation_basis.state_semantic_hash = None;
+        }
+    }
+
+    apply_redaction_metadata(&mut artifact.envelope, profile, redacted_at);
+    validate_recommendation_report(&artifact).map_err(map_redaction_output_validation_error)?;
+
+    Ok(artifact)
+}
+
+fn redact_embedded_verification_bundle(
+    mut bundle: VerificationBundleV1,
+    contract: &HostContractV1,
+    profile: BuiltInRedactionProfileV1,
+) -> Result<VerificationBundleV1, RedactionError> {
+    if profile.applies_fleet_redactions() {
+        bundle.bundle_id = profile.artifact_id_placeholder("verification-bundle");
+    }
+
+    let contract_semantic_hash = semantic_hash_hex_for_contract(contract)
+        .map_err(map_redaction_artifact_projection_error)?;
+    bundle.artifact_schema_id = contract.envelope.schema_id.clone();
+    bundle.artifact_id = contract.envelope.artifact_id.clone();
+    bundle.artifact_semantic_hash = contract_semantic_hash.clone();
+    bundle.verification_report.artifact_schema_id = contract.envelope.schema_id.clone();
+    bundle.verification_report.artifact_id = contract.envelope.artifact_id.clone();
+
+    validate_verification_bundle_v1(&bundle).map_err(|error| {
+        RedactionError::new(
+            RedactionErrorCode::RedactionOutputInvalid,
+            "redaction_emit",
+            error.message,
+        )
+    })?;
+
+    Ok(bundle)
+}
+
+fn map_redaction_input_validation_error(
+    error: crate::artifacts::validation_v1::ArtifactValidationError,
+) -> RedactionError {
+    RedactionError::new(
+        RedactionErrorCode::ArtifactInputInvalid,
+        "redaction_apply",
+        error.message,
+    )
+}
+
+fn map_redaction_output_validation_error(
+    error: crate::artifacts::validation_v1::ArtifactValidationError,
+) -> RedactionError {
+    RedactionError::new(
+        RedactionErrorCode::RedactionOutputInvalid,
+        "redaction_emit",
+        error.message,
+    )
+}
+
+fn map_redaction_artifact_projection_error(
+    error: crate::artifacts::validation_v1::ArtifactValidationError,
+) -> RedactionError {
+    RedactionError::new(
+        RedactionErrorCode::RedactionApplyFailed,
+        "redaction_apply",
+        error.message,
+    )
 }
 
 fn apply_redaction_metadata(

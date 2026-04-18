@@ -251,6 +251,23 @@ fn accelerator_discovery_source_is_default(value: &AcceleratorDiscoverySourceV1)
     *value == AcceleratorDiscoverySourceV1::Pci
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Integration class retained only when the collector can distinguish integrated from discrete.
+pub enum AcceleratorIntegrationV1 {
+    Integrated,
+    Discrete,
+}
+
+impl AcceleratorIntegrationV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Integrated => "integrated",
+            Self::Discrete => "discrete",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// Near-static operability signal.
@@ -280,6 +297,8 @@ pub struct AcceleratorOperabilityV1 {
     pub driver_bound_devices: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub visible_device_nodes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub visible_render_nodes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -294,13 +313,23 @@ pub struct AcceleratorDeviceV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vendor: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vendor_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integration: Option<AcceleratorIntegrationV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pci_address: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub driver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numa_node: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -564,6 +593,7 @@ impl LiveSystemProbeV1 for LocalLiveProbeV1 {
             "block_and_filesystem".to_string(),
             "pci_accelerators".to_string(),
             "pci_driver_binding".to_string(),
+            "nvidia_procfs_gpu_info".to_string(),
             "drm_class".to_string(),
             "drm_platform_graphics".to_string(),
             "devfs_accelerator_nodes".to_string(),

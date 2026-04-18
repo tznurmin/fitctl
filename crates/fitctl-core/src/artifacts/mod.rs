@@ -7,7 +7,9 @@
 //! diffs, redacts, and inspects.
 
 pub mod batch_classification_report_v1;
+pub mod config_bundle_v1;
 pub mod contract_v1;
+pub mod decision_bundle_v1;
 pub mod envelope_v1;
 pub mod metadata_v1;
 pub mod recommendation_report_v1;

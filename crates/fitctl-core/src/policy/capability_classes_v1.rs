@@ -10,7 +10,8 @@ use crate::contract::{ContractDerivationError, ContractDerivationErrorCode};
 use crate::policy::EffectivePolicyV1;
 use crate::survey::execution_context_v1::{ObservationStateV1, VisibilityScopeV1};
 use crate::survey::live_v1::{
-    AcceleratorDetailsV1, CpuDetailsV1, MemoryDetailsV1, NetworkDetailsV1, SurveyFieldV1,
+    AcceleratorDetailsV1, AcceleratorKindV1, CpuDetailsV1, MemoryDetailsV1, NetworkDetailsV1,
+    SurveyFieldV1,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,19 +93,13 @@ pub fn derive_policy_shaped_capability_claim(
     if let Some(required_kind) = effective_policy.required_accelerator_kind {
         let matching_devices = accelerator_details
             .as_ref()
-            .map(|details| {
-                details
-                    .devices
-                    .iter()
-                    .filter(|device| device.kind == required_kind)
-                    .count()
-            })
+            .map(|details| visible_matching_accelerator_devices(details, required_kind))
             .unwrap_or_default();
         if matching_devices == 0 {
             admissible = false;
-            summary_parts.push(format!(
-                "no {} accelerator is visible under the active policy",
-                required_kind.as_str()
+            summary_parts.push(no_visible_required_accelerator_summary(
+                accelerator_details.as_ref(),
+                required_kind,
             ));
         }
     }
@@ -112,13 +107,14 @@ pub fn derive_policy_shaped_capability_claim(
     if let Some(min_accelerator_devices) = effective_policy.min_accelerator_devices {
         let visible_devices = accelerator_details
             .as_ref()
-            .map(|details| details.devices.len())
+            .map(visible_accelerator_device_count)
             .unwrap_or_default();
         if visible_devices < min_accelerator_devices as usize {
             admissible = false;
-            summary_parts.push(format!(
-                "visible accelerator count {} is below the policy floor {}",
-                visible_devices, min_accelerator_devices
+            summary_parts.push(visible_accelerator_count_summary(
+                accelerator_details.as_ref(),
+                visible_devices,
+                min_accelerator_devices,
             ));
         }
     }
@@ -182,6 +178,75 @@ pub fn derive_policy_shaped_capability_claim(
             trust_evidence_refs: Vec::new(),
         },
     })
+}
+
+fn visible_matching_accelerator_devices(
+    details: &AcceleratorDetailsV1,
+    required_kind: AcceleratorKindV1,
+) -> usize {
+    if has_no_visible_accelerator_nodes(details) {
+        return 0;
+    }
+
+    details
+        .devices
+        .iter()
+        .filter(|device| device.kind == required_kind)
+        .count()
+}
+
+fn visible_accelerator_device_count(details: &AcceleratorDetailsV1) -> usize {
+    if has_no_visible_accelerator_nodes(details) {
+        return 0;
+    }
+
+    details.devices.len()
+}
+
+fn has_no_visible_accelerator_nodes(details: &AcceleratorDetailsV1) -> bool {
+    details
+        .operability
+        .as_ref()
+        .is_some_and(|operability| operability.visible_device_nodes.is_empty())
+}
+
+fn no_visible_required_accelerator_summary(
+    accelerator_details: Option<&AcceleratorDetailsV1>,
+    required_kind: AcceleratorKindV1,
+) -> String {
+    if accelerator_details.is_some_and(|details| {
+        !details.devices.is_empty() && has_no_visible_accelerator_nodes(details)
+    }) {
+        return format!(
+            "{} hardware is present but no accelerator device nodes are visible under the current execution context",
+            required_kind.as_str()
+        );
+    }
+
+    format!(
+        "no {} accelerator is visible under the active policy",
+        required_kind.as_str()
+    )
+}
+
+fn visible_accelerator_count_summary(
+    accelerator_details: Option<&AcceleratorDetailsV1>,
+    visible_devices: usize,
+    min_accelerator_devices: u32,
+) -> String {
+    if accelerator_details.is_some_and(|details| {
+        !details.devices.is_empty() && has_no_visible_accelerator_nodes(details)
+    }) {
+        return format!(
+            "accelerator hardware is present but no accelerator device nodes are visible under the current execution context; visible accelerator count 0 is below the policy floor {}",
+            min_accelerator_devices
+        );
+    }
+
+    format!(
+        "visible accelerator count {} is below the policy floor {}",
+        visible_devices, min_accelerator_devices
+    )
 }
 
 fn extract_required_observed_value<T: Clone>(

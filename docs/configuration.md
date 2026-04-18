@@ -1,26 +1,41 @@
 # Configuration
 
-Fitctl uses small typed configuration files. For the core `survey -> contract -> validate` flow, the two main configuration types are policy and service profile.
+Configuration is expressed as typed JSON files. Bundled examples in this repository are under [configs](../configs).
 
-A policy defines what a host may claim from survey evidence. A service profile defines what a role requires from a host.
+The core inputs are [policies](../configs/policy) and
+[service profiles](../configs/service_profiles).
+
+A policy defines what a contract may claim from survey evidence. A service profile defines what a
+workload expects to be available from that contract during validation.
 
 ## Policy
 
-Use a `policy` when deriving a host `contract` from a `survey`. The `policy` shapes the host claim derived from survey evidence: it defines the capability class, the thresholds and admissibility constraints for that claim, and any extension namespace allowlist used during derivation.
+A `policy` controls contract derivation from a `survey`. It decides what the host may claim from
+survey evidence: it defines the capability class, the thresholds and
+admissibility constraints for that claim, and any extension namespace allowlist used during
+derivation.
 
-Bundled examples live under `configs/policy/`. For example, `general_compute_default.v1.json` defines a general compute baseline, while `gpu_compute_default.v1.json` requires GPU capability.
+Policies may also carry human-facing `display_name` and `short_display_name` labels for inspect
+and matrix views. Those labels are presentation metadata, not selection identity.
+
+Examples:
+
+- [general_compute_default.v1.json](../configs/policy/general_compute_default.v1.json) - general compute claim
+- [gpu_compute_default.v1.json](../configs/policy/gpu_compute_default.v1.json) - GPU-capable claim
+
+[Contracts](./contracts.md) covers contract derivation from survey evidence and policy.
 
 ## Service profile
 
-Use a service profile when validating whether a host contract fits a role. The service profile defines the required capabilities for that role and may also express preferred capabilities, topology constraints, or allowed fallback paths.
+A service profile controls validation against a role. It defines what the workload requires,
+prefers, or forbids to be available from that contract during validation.
 
-Bundled examples live under [configs/service_profiles](../configs/service_profiles/). For example, `general_compute_contract_only.v1.json` requires a general compute baseline, while `gpu_preferred_with_general_compute_fallback.v1.json` prefers GPU capability but allows a general compute fallback.
+Service profiles may also carry human-facing `display_name` and `short_display_name` labels for
+inspect and matrix views. Those labels are presentation metadata, not selection identity.
 
-## Bundled configuration layout
+Examples:
 
-The most relevant bundled configuration directories under `configs/` are:
+- [general_compute_contract_only.v2.json](../configs/service_profiles/general_compute_contract_only.v2.json) - requires general compute
+- [gpu_preferred_with_general_compute_fallback_contract_only.v2.json](../configs/service_profiles/gpu_preferred_with_general_compute_fallback_contract_only.v2.json) - prefers GPU, allows general compute fallback
 
-- `configs/policy/` — policies for contract derivation
-- `configs/service_profiles/` — service profiles for direct validation
-
-Most users only need `configs/policy/` and `configs/service_profiles/`. The stable core path is still `survey -> contract -> validate`.
+[Validation](./validation.md) covers the fit decision flow.

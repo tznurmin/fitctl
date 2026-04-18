@@ -1,0 +1,35 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-gpu-locality-single-numa-contract-only-v1",
+    "provenance": {
+      "source": "config:service_profiles/gpu_locality_single_numa_contract_only.v2.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "gpu_locality_single_numa_contract_only_v1",
+    "display_name": "GPU required with single-NUMA locality",
+    "short_display_name": "GPU single NUMA",
+    "core_requirements": {
+      "primary_capability_class": "gpu_accelerated",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "require_accelerator_locality_known": true,
+      "max_accelerator_numa_nodes": 1
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

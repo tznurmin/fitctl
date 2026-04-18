@@ -3,10 +3,16 @@
 
 //! Formatting helpers shared by the inspect renderer.
 
+use std::collections::BTreeMap;
+
 use super::*;
+use crate::artifacts::batch_classification_report_v1::{
+    BatchClassificationContractRefV1, BatchClassificationReportV1, BatchClassificationRowV1,
+    BatchClassificationServiceProfileRefV1,
+};
 use crate::artifacts::state_v1::FreshnessStateV1;
 use crate::artifacts::validation_report_v1::{ValidationBasisV1, ValidationReportPayloadV1};
-use crate::survey::IpAddressFamilyV1;
+use crate::survey::{IpAddressFamilyV1, StaticOperabilityV1};
 
 pub(super) fn push_line(
     output: &mut String,
@@ -122,6 +128,22 @@ pub(super) fn format_accelerator_details_for_inspect(
     value: &AcceleratorDetailsV1,
     options: InspectRenderOptionsV1,
 ) -> String {
+    let accelerator_numa_nodes = value
+        .devices
+        .iter()
+        .filter_map(|device| device.numa_node)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let accelerators_with_known_numa_node = u32::try_from(
+        value
+            .devices
+            .iter()
+            .filter(|device| device.numa_node.is_some())
+            .count(),
+    )
+    .ok()
+    .filter(|count| *count > 0);
     let mut kinds = value
         .devices
         .iter()
@@ -136,6 +158,20 @@ pub(super) fn format_accelerator_details_for_inspect(
         .collect::<Vec<_>>();
     vendors.sort();
     vendors.dedup();
+    let mut families = value
+        .devices
+        .iter()
+        .filter_map(|device| device.family.clone())
+        .collect::<Vec<_>>();
+    families.sort();
+    families.dedup();
+    let mut models = value
+        .devices
+        .iter()
+        .filter_map(|device| device.model.clone())
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
     let mut drivers = value
         .devices
         .iter()
@@ -143,6 +179,18 @@ pub(super) fn format_accelerator_details_for_inspect(
         .collect::<Vec<_>>();
     drivers.sort();
     drivers.dedup();
+    let integrated_devices = value
+        .devices
+        .iter()
+        .filter(|device| {
+            device.integration == Some(crate::survey::AcceleratorIntegrationV1::Integrated)
+        })
+        .count();
+    let max_memory_bytes = value
+        .devices
+        .iter()
+        .filter_map(|device| device.memory_bytes)
+        .max();
 
     if value.devices.is_empty() {
         return "0 devices".to_string();
@@ -153,6 +201,25 @@ pub(super) fn format_accelerator_details_for_inspect(
         format!("kinds {}", join_or_placeholder(&kinds)),
         format!("vendors {}", join_or_placeholder(&vendors)),
     ];
+    if !families.is_empty() {
+        parts.push(format!("families {}", join_or_placeholder(&families)));
+    }
+    if !models.is_empty() {
+        parts.push(format!("models {}", join_or_placeholder(&models)));
+    }
+    if integrated_devices > 0 {
+        parts.push(format!("{integrated_devices} integrated"));
+    }
+    if let Some(memory_bytes) = max_memory_bytes {
+        parts.push(format!("max memory {}", format_bytes_compact(memory_bytes)));
+    }
+    if let Some(locality) = format_accelerator_locality_for_inspect(
+        u32::try_from(value.devices.len()).ok(),
+        accelerators_with_known_numa_node,
+        &accelerator_numa_nodes,
+    ) {
+        parts.push(locality);
+    }
     if !drivers.is_empty() {
         parts.push(format!("drivers {}", join_or_placeholder(&drivers)));
     }
@@ -172,16 +239,31 @@ pub(super) fn format_accelerator_details_for_inspect(
                 if let Some(vendor) = device.vendor.as_ref() {
                     detail_parts.push(vendor.clone());
                 }
+                if let Some(family) = device.family.as_ref() {
+                    detail_parts.push(format!("family {family}"));
+                }
+                if let Some(model) = device.model.as_ref() {
+                    detail_parts.push(format!("model {model}"));
+                }
                 if let (Some(vendor_id), Some(device_id)) =
                     (device.vendor_id.as_ref(), device.device_id.as_ref())
                 {
                     detail_parts.push(format!("{vendor_id}:{device_id}"));
+                }
+                if let Some(integration) = device.integration {
+                    detail_parts.push(format!("integration {}", integration.as_str()));
+                }
+                if let Some(memory_bytes) = device.memory_bytes {
+                    detail_parts.push(format!("memory {}", format_bytes_compact(memory_bytes)));
                 }
                 if let Some(driver) = device.driver.as_ref() {
                     detail_parts.push(format!("driver {driver}"));
                 }
                 if let Some(pci_address) = device.pci_address.as_ref() {
                     detail_parts.push(format!("pci {pci_address}"));
+                }
+                if let Some(numa_node) = device.numa_node {
+                    detail_parts.push(format!("numa {numa_node}"));
                 }
                 detail_parts.join(" ")
             })
@@ -190,6 +272,30 @@ pub(super) fn format_accelerator_details_for_inspect(
     }
 
     parts.join("; ")
+}
+
+pub(super) fn format_accelerator_locality_for_inspect(
+    total_accelerators: Option<u32>,
+    accelerators_with_known_numa_node: Option<u32>,
+    accelerator_numa_nodes: &[u32],
+) -> Option<String> {
+    let total_accelerators = total_accelerators?;
+    if total_accelerators == 0 {
+        return None;
+    }
+
+    match accelerators_with_known_numa_node {
+        Some(known) if !accelerator_numa_nodes.is_empty() => Some(format!(
+            "locality {known}/{total_accelerators} known; NUMA nodes {}",
+            accelerator_numa_nodes
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        Some(known) => Some(format!("locality {known}/{total_accelerators} known")),
+        None => Some("locality unknown".to_string()),
+    }
 }
 
 pub(super) fn format_accelerator_operability_for_inspect(
@@ -212,11 +318,35 @@ pub(super) fn format_accelerator_operability_for_inspect(
                 operability.visible_device_nodes.join(", ")
             }
         ));
-    } else if !operability.visible_device_nodes.is_empty() {
+        parts.push(format!(
+            "render nodes {}",
+            if operability.visible_render_nodes.is_empty() {
+                "<none>".to_string()
+            } else {
+                operability.visible_render_nodes.join(", ")
+            }
+        ));
+    } else if !operability.visible_device_nodes.is_empty()
+        || !matches!(
+            operability.static_operability,
+            StaticOperabilityV1::Operable
+        )
+    {
         parts.push(format!(
             "{} visible nodes",
             operability.visible_device_nodes.len()
         ));
+        if !operability.visible_render_nodes.is_empty()
+            || !matches!(
+                operability.static_operability,
+                StaticOperabilityV1::Operable
+            )
+        {
+            parts.push(format!(
+                "{} render nodes",
+                operability.visible_render_nodes.len()
+            ));
+        }
     }
     parts.join("; ")
 }
@@ -291,12 +421,61 @@ pub(super) fn format_validation_mode(mode: ValidationModeV1) -> &'static str {
     mode.as_str()
 }
 
-pub(super) fn format_validation_verdict(verdict: ValidationVerdictV1) -> &'static str {
-    verdict.as_str()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InspectColorRoleV1 {
+    Success,
+    Warning,
+    Failure,
+    Plain,
+}
+
+fn style_text_for_inspect(
+    value: &str,
+    role: InspectColorRoleV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    if !options.style.color_enabled {
+        return value.to_string();
+    }
+
+    let color_code = match (options.style.palette, role) {
+        (_, InspectColorRoleV1::Plain) => None,
+        (InspectPaletteV1::Default, InspectColorRoleV1::Success) => Some("32"),
+        (InspectPaletteV1::Default, InspectColorRoleV1::Warning) => Some("33"),
+        (InspectPaletteV1::Default, InspectColorRoleV1::Failure) => Some("31"),
+    };
+
+    match color_code {
+        Some(color_code) => format!("\u{1b}[{color_code}m{value}\u{1b}[0m"),
+        None => value.to_string(),
+    }
+}
+
+pub(super) fn format_validation_verdict(
+    verdict: ValidationVerdictV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let value = verdict.as_str();
+    let role = match verdict {
+        ValidationVerdictV1::Fit => InspectColorRoleV1::Success,
+        ValidationVerdictV1::FitWithDegradation => InspectColorRoleV1::Warning,
+        ValidationVerdictV1::Unfit => InspectColorRoleV1::Failure,
+        ValidationVerdictV1::Indeterminate => InspectColorRoleV1::Plain,
+    };
+    style_text_for_inspect(value, role, options)
 }
 
 pub(super) fn format_validation_reason_code(reason_code: ValidationReasonCodeV1) -> &'static str {
     reason_code.as_str()
+}
+
+pub(super) fn format_operator_posture(verdict: ValidationVerdictV1) -> &'static str {
+    match verdict {
+        ValidationVerdictV1::Fit => "proceed",
+        ValidationVerdictV1::FitWithDegradation => "proceed_with_degradation",
+        ValidationVerdictV1::Unfit => "stop",
+        ValidationVerdictV1::Indeterminate => "hold_for_evidence",
+    }
 }
 
 pub(super) fn format_validation_state_freshness(
@@ -374,6 +553,230 @@ pub(super) fn format_recommendation_freshness_state(
     freshness_state: RecommendationFreshnessStateV1,
 ) -> &'static str {
     freshness_state.as_str()
+}
+
+pub(super) fn format_batch_operator_posture_counts(rows: &[BatchClassificationRowV1]) -> String {
+    let mut proceed = 0usize;
+    let mut proceed_with_degradation = 0usize;
+    let mut stop = 0usize;
+    let mut hold_for_evidence = 0usize;
+
+    for row in rows {
+        match row.verdict {
+            ValidationVerdictV1::Fit => proceed += 1,
+            ValidationVerdictV1::FitWithDegradation => proceed_with_degradation += 1,
+            ValidationVerdictV1::Unfit => stop += 1,
+            ValidationVerdictV1::Indeterminate => hold_for_evidence += 1,
+        }
+    }
+
+    [
+        format!("proceed {proceed}"),
+        format!("proceed_with_degradation {proceed_with_degradation}"),
+        format!("stop {stop}"),
+        format!("hold_for_evidence {hold_for_evidence}"),
+    ]
+    .join("; ")
+}
+
+pub(super) fn format_batch_primary_reason_tally(rows: &[BatchClassificationRowV1]) -> String {
+    if rows.is_empty() {
+        return "<none>".to_string();
+    }
+
+    let mut tallies = BTreeMap::new();
+    for row in rows {
+        *tallies
+            .entry(row.primary_reason_code.as_str())
+            .or_insert(0usize) += 1;
+    }
+
+    tallies
+        .into_iter()
+        .map(|(reason, count)| format!("{reason}={count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub(super) fn format_batch_row_summaries(
+    rows: &[BatchClassificationRowV1],
+    max_rows: usize,
+) -> String {
+    if rows.is_empty() {
+        return "<none>".to_string();
+    }
+
+    let limit = rows.len().min(max_rows);
+    let mut summaries = rows
+        .iter()
+        .take(limit)
+        .map(|row| {
+            let mut summary = format!(
+                "{} -> {}: {}",
+                row.contract_artifact_id,
+                row.service_profile_artifact_id,
+                row.verdict.as_str()
+            );
+            if let Some(tier) = row.selected_degradation_tier.as_ref() {
+                summary.push_str(&format!(" via {tier}"));
+            }
+            summary.push_str(&format!(" ({})", row.primary_reason_code.as_str()));
+            summary
+        })
+        .collect::<Vec<_>>();
+
+    let remaining = rows.len().saturating_sub(limit);
+    if remaining > 0 {
+        summaries.push(format!("... +{remaining} more"));
+    }
+
+    summaries.join(" | ")
+}
+
+pub(super) fn format_batch_verdict_matrix(
+    artifact: &BatchClassificationReportV1,
+    options: InspectRenderOptionsV1,
+) -> Result<String, InspectError> {
+    let mut rows_by_pair = BTreeMap::new();
+    for row in &artifact.report.rows {
+        let key = (
+            row.contract_artifact_id.clone(),
+            row.service_profile_artifact_id.clone(),
+        );
+        if rows_by_pair.insert(key.clone(), row).is_some() {
+            return Err(InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_matrix_render",
+                format!(
+                    "batch classification report contains duplicate matrix row {}::{}",
+                    key.0, key.1
+                ),
+            ));
+        }
+    }
+
+    let contract_parts =
+        batch_contract_display_parts(&artifact.classification_basis.ordered_contracts, options);
+    let profile_labels = batch_profile_display_labels(
+        &artifact.classification_basis.ordered_service_profiles,
+        options,
+    );
+
+    let host_label_width = artifact
+        .classification_basis
+        .ordered_contracts
+        .iter()
+        .map(|contract| {
+            contract_parts
+                .get(contract.artifact_id.as_str())
+                .map(|parts| parts.host_label.len())
+                .unwrap_or(contract.artifact_id.len())
+        })
+        .fold("Host".len(), usize::max);
+    let contract_label_width = artifact
+        .classification_basis
+        .ordered_contracts
+        .iter()
+        .map(|contract| {
+            contract_parts
+                .get(contract.artifact_id.as_str())
+                .map(|parts| parts.contract_label.len())
+                .unwrap_or(contract.artifact_id.len())
+        })
+        .fold("Contract".len(), usize::max);
+    let profile_label_width = artifact
+        .classification_basis
+        .ordered_service_profiles
+        .iter()
+        .map(|profile| {
+            profile_labels
+                .get(profile.artifact_id.as_str())
+                .map(String::len)
+                .unwrap_or(profile.artifact_id.len())
+        })
+        .fold("Profile".len(), usize::max);
+    let verdict_label_width = artifact
+        .classification_basis
+        .ordered_service_profiles
+        .iter()
+        .flat_map(|profile| {
+            artifact
+                .classification_basis
+                .ordered_contracts
+                .iter()
+                .map(move |contract| (contract, profile))
+        })
+        .try_fold("Verdict".len(), |width, (contract, profile)| {
+            let Some(row) =
+                rows_by_pair.get(&(contract.artifact_id.clone(), profile.artifact_id.clone()))
+            else {
+                return Err(InspectError::new(
+                    InspectErrorCode::InspectInputInvalid,
+                    "inspect_matrix_render",
+                    format!(
+                        "batch classification report is missing matrix row {}::{}",
+                        contract.artifact_id, profile.artifact_id
+                    ),
+                ));
+            };
+            Ok::<usize, InspectError>(width.max(row.verdict.as_str().len()))
+        })?;
+
+    let mut lines = Vec::new();
+    lines.push("Each row checks one Profile against one Host under one Contract.".to_string());
+    lines.push(
+        "Profile = workload need; Host = candidate machine; Contract = host claim under policy; Verdict = fit result."
+            .to_string(),
+    );
+    lines.push(format!(
+        "{} | {} | {} | {}",
+        pad_plain_cell("Profile", profile_label_width),
+        pad_plain_cell("Host", host_label_width),
+        pad_plain_cell("Contract", contract_label_width),
+        pad_plain_cell("Verdict", verdict_label_width),
+    ));
+    lines.push(format!(
+        "{}-+-{}-+-{}-+-{}",
+        "-".repeat(profile_label_width),
+        "-".repeat(host_label_width),
+        "-".repeat(contract_label_width),
+        "-".repeat(verdict_label_width),
+    ));
+
+    for profile in &artifact.classification_basis.ordered_service_profiles {
+        for contract in &artifact.classification_basis.ordered_contracts {
+            let row = rows_by_pair
+                .get(&(contract.artifact_id.clone(), profile.artifact_id.clone()))
+                .expect("matrix row presence already validated");
+            let plain = row.verdict.as_str();
+            let rendered_verdict = pad_rendered_cell(
+                plain,
+                format_validation_verdict(row.verdict, options),
+                verdict_label_width,
+            );
+            let contract_label = contract_parts
+                .get(contract.artifact_id.as_str())
+                .map(|parts| parts.contract_label.as_str())
+                .unwrap_or(contract.artifact_id.as_str());
+            let host_label = contract_parts
+                .get(contract.artifact_id.as_str())
+                .map(|parts| parts.host_label.as_str())
+                .unwrap_or(contract.artifact_id.as_str());
+            let profile_label = profile_labels
+                .get(profile.artifact_id.as_str())
+                .map(String::as_str)
+                .unwrap_or(profile.artifact_id.as_str());
+            lines.push(format!(
+                "{} | {} | {} | {}",
+                pad_plain_cell(profile_label, profile_label_width),
+                pad_plain_cell(host_label, host_label_width),
+                pad_plain_cell(contract_label, contract_label_width),
+                rendered_verdict
+            ));
+        }
+    }
+
+    Ok(lines.join("\n"))
 }
 
 pub(super) fn format_degradation_ladder(ladder: &[DegradationTierV1]) -> String {
@@ -880,4 +1283,958 @@ pub(super) fn civil_from_days(days: i64) -> Option<(i32, u32, u32)> {
         u32::try_from(month).ok()?,
         u32::try_from(day).ok()?,
     ))
+}
+
+fn pad_plain_cell(value: &str, width: usize) -> String {
+    format!("{value:<width$}")
+}
+
+fn pad_rendered_cell(plain: &str, rendered: String, width: usize) -> String {
+    let padding = width.saturating_sub(plain.len());
+    if padding == 0 {
+        rendered
+    } else {
+        format!("{rendered}{}", " ".repeat(padding))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BatchContractDisplayPartsV1 {
+    host_label: String,
+    contract_label: String,
+}
+
+fn batch_contract_display_parts(
+    contracts: &[BatchClassificationContractRefV1],
+    options: InspectRenderOptionsV1,
+) -> BTreeMap<&str, BatchContractDisplayPartsV1> {
+    let artifact_ids = contracts
+        .iter()
+        .map(|contract| contract.artifact_id.as_str())
+        .collect::<Vec<_>>();
+    let fallback = fallback_batch_contract_display_parts(&artifact_ids, options);
+    let mut display_parts = contracts
+        .iter()
+        .map(|contract| {
+            let fallback_parts = fallback
+                .get(contract.artifact_id.as_str())
+                .cloned()
+                .unwrap_or_else(|| BatchContractDisplayPartsV1 {
+                    host_label: contract.artifact_id.clone(),
+                    contract_label: contract.artifact_id.clone(),
+                });
+            let host_label = contract
+                .host_alias
+                .clone()
+                .unwrap_or(fallback_parts.host_label);
+            let contract_label = if options.show_identifiers {
+                contract.artifact_id.clone()
+            } else {
+                contract
+                    .short_display_name
+                    .clone()
+                    .or_else(|| contract.display_name.clone())
+                    .unwrap_or(fallback_parts.contract_label)
+            };
+            (
+                contract.artifact_id.as_str(),
+                BatchContractDisplayPartsV1 {
+                    host_label,
+                    contract_label,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    if !options.show_identifiers
+        && display_parts
+            .values()
+            .all(|parts| parts.host_label.starts_with("demo-"))
+    {
+        for parts in display_parts.values_mut() {
+            parts.host_label = parts
+                .host_label
+                .strip_prefix("demo-")
+                .unwrap_or(parts.host_label.as_str())
+                .to_string();
+        }
+    }
+
+    display_parts
+}
+
+fn fallback_batch_contract_display_parts<'a>(
+    artifact_ids: &[&'a str],
+    options: InspectRenderOptionsV1,
+) -> BTreeMap<&'a str, BatchContractDisplayPartsV1> {
+    let base_labels = artifact_ids
+        .iter()
+        .map(|artifact_id| strip_known_prefix(artifact_id, "contract-").to_string())
+        .collect::<Vec<_>>();
+    let prefix_candidates = repeated_prefix_candidates(&base_labels);
+    let suffix_candidates = repeated_suffix_candidates(&base_labels);
+    let prefix_contract_labels = contract_labels_from_prefixes(&base_labels, &prefix_candidates);
+    let suffix_contract_labels = contract_labels_from_suffixes(&base_labels, &suffix_candidates);
+    let suffix_host_labels =
+        host_labels_from_contract_labels(&base_labels, &suffix_contract_labels);
+    let prefer_prefix_strategy = has_strong_common_prefix(&suffix_host_labels)
+        && labels_are_nonempty_and_unique(&prefix_contract_labels);
+
+    if options.show_identifiers {
+        return artifact_ids
+            .iter()
+            .zip(base_labels.iter())
+            .zip(if prefer_prefix_strategy {
+                prefix_contract_labels.iter()
+            } else {
+                suffix_contract_labels.iter()
+            })
+            .map(|((artifact_id, base_label), contract_label)| {
+                let display_parts =
+                    normalized_batch_contract_display_parts(base_label, contract_label);
+                (
+                    *artifact_id,
+                    BatchContractDisplayPartsV1 {
+                        host_label: display_parts.host_label,
+                        contract_label: (*artifact_id).to_string(),
+                    },
+                )
+            })
+            .collect();
+    }
+
+    artifact_ids
+        .iter()
+        .zip(base_labels.iter())
+        .zip(if prefer_prefix_strategy {
+            prefix_contract_labels.iter()
+        } else {
+            suffix_contract_labels.iter()
+        })
+        .map(|((artifact_id, base_label), contract_label)| {
+            (
+                *artifact_id,
+                normalized_batch_contract_display_parts(base_label, contract_label),
+            )
+        })
+        .collect()
+}
+
+fn batch_profile_display_labels(
+    profiles: &[BatchClassificationServiceProfileRefV1],
+    options: InspectRenderOptionsV1,
+) -> BTreeMap<&str, String> {
+    let labels = if options.show_identifiers {
+        profiles
+            .iter()
+            .map(|profile| profile.artifact_id.clone())
+            .collect::<Vec<_>>()
+    } else {
+        profiles
+            .iter()
+            .map(compact_batch_profile_label)
+            .collect::<Vec<_>>()
+    };
+
+    profiles
+        .iter()
+        .zip(labels)
+        .map(|(profile, label)| (profile.artifact_id.as_str(), label))
+        .collect()
+}
+
+fn compact_batch_profile_label(profile: &BatchClassificationServiceProfileRefV1) -> String {
+    if let Some(label) = profile.short_display_name.as_deref() {
+        return label.to_string();
+    }
+    if let Some(label) = profile.display_name.as_deref() {
+        return label.to_string();
+    }
+    let label = strip_known_prefix(profile.artifact_id.as_str(), "service-profile-");
+    label
+        .strip_suffix("-contract-only-v1")
+        .or_else(|| label.strip_suffix("-v1"))
+        .unwrap_or(label)
+        .to_string()
+}
+
+fn strip_known_prefix<'a>(value: &'a str, prefix: &str) -> &'a str {
+    value.strip_prefix(prefix).unwrap_or(value)
+}
+
+fn repeated_prefix_candidates(values: &[String]) -> Vec<String> {
+    let mut candidates = BTreeMap::<String, std::collections::BTreeSet<String>>::new();
+    for value in values {
+        for prefix in hyphen_prefixes(value) {
+            if let Some(remainder) = value.strip_prefix(&format!("{prefix}-")) {
+                candidates
+                    .entry(prefix.to_string())
+                    .or_default()
+                    .insert(remainder.to_string());
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter_map(|(prefix, remainders)| {
+            (remainders.len() >= 2 && !prefix.is_empty()).then_some(prefix)
+        })
+        .collect()
+}
+
+fn repeated_suffix_candidates(values: &[String]) -> Vec<String> {
+    let mut candidates = BTreeMap::<String, std::collections::BTreeSet<String>>::new();
+    for value in values {
+        for suffix in hyphen_suffixes(value) {
+            if let Some(prefix) = value.strip_suffix(&format!("-{suffix}")) {
+                candidates
+                    .entry(suffix.to_string())
+                    .or_default()
+                    .insert(prefix.to_string());
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter_map(|(suffix, prefixes)| {
+            (prefixes.len() >= 2 && !suffix.is_empty()).then_some(suffix)
+        })
+        .collect()
+}
+
+fn contract_labels_from_prefixes(values: &[String], prefixes: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| {
+            longest_matching_prefix(value, prefixes)
+                .and_then(|prefix| value.strip_prefix(&format!("{prefix}-")))
+                .map(str::to_string)
+                .unwrap_or_else(|| value.to_string())
+        })
+        .collect()
+}
+
+fn contract_labels_from_suffixes(values: &[String], suffixes: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| {
+            longest_matching_suffix(value, suffixes)
+                .map(str::to_string)
+                .unwrap_or_else(|| value.to_string())
+        })
+        .collect()
+}
+
+fn host_labels_from_contract_labels(values: &[String], contract_labels: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .zip(contract_labels.iter())
+        .map(|(value, contract_label)| host_label_from_contract_label(value, contract_label))
+        .collect()
+}
+
+fn host_label_from_contract_label(value: &str, contract_label: &str) -> String {
+    value
+        .strip_suffix(&format!("-{contract_label}"))
+        .unwrap_or(value)
+        .to_string()
+}
+
+fn normalized_batch_contract_display_parts(
+    base_label: &str,
+    contract_label: &str,
+) -> BatchContractDisplayPartsV1 {
+    let host_label = host_label_from_contract_label(base_label, contract_label);
+    let mut contract_label = contract_label.to_string();
+    let normalized_host_label = if !host_label_looks_complete(&host_label) {
+        if let Some((trimmed_host_label, trailing_token)) = split_last_hyphen_segment(&host_label) {
+            if !trimmed_host_label.is_empty() && !trailing_token.is_empty() {
+                contract_label = format!("{trailing_token}-{contract_label}");
+                trimmed_host_label.to_string()
+            } else {
+                host_label
+            }
+        } else {
+            host_label
+        }
+    } else {
+        host_label
+    };
+
+    BatchContractDisplayPartsV1 {
+        host_label: normalized_host_label,
+        contract_label,
+    }
+}
+
+fn host_label_looks_complete(host_label: &str) -> bool {
+    host_label.rsplit('-').next().is_some_and(is_version_marker) || !host_label.contains('-')
+}
+
+fn split_last_hyphen_segment(value: &str) -> Option<(&str, &str)> {
+    let split_index = value.rfind('-')?;
+    let prefix = &value[..split_index];
+    let suffix = &value[split_index + 1..];
+    (!prefix.is_empty() && !suffix.is_empty()).then_some((prefix, suffix))
+}
+
+fn is_version_marker(value: &str) -> bool {
+    value.starts_with('v')
+        && value[1..]
+            .chars()
+            .all(|character| character.is_ascii_digit())
+}
+
+fn hyphen_prefixes(value: &str) -> Vec<&str> {
+    value
+        .match_indices('-')
+        .map(|(index, _)| &value[..index])
+        .filter(|candidate| !candidate.is_empty())
+        .collect()
+}
+
+fn hyphen_suffixes(value: &str) -> Vec<&str> {
+    value
+        .match_indices('-')
+        .map(|(index, _)| &value[index + 1..])
+        .filter(|candidate| !candidate.is_empty())
+        .collect()
+}
+
+fn longest_matching_prefix<'a>(value: &str, prefixes: &'a [String]) -> Option<&'a str> {
+    prefixes
+        .iter()
+        .filter_map(|prefix| {
+            value
+                .strip_prefix(&format!("{prefix}-"))
+                .is_some()
+                .then_some(prefix.as_str())
+        })
+        .max_by_key(|prefix| prefix.len())
+}
+
+fn longest_matching_suffix<'a>(value: &str, suffixes: &'a [String]) -> Option<&'a str> {
+    suffixes
+        .iter()
+        .filter_map(|suffix| {
+            value
+                .strip_suffix(&format!("-{suffix}"))
+                .is_some()
+                .then_some(suffix.as_str())
+        })
+        .min_by(|left, right| {
+            version_marker_count(left)
+                .cmp(&version_marker_count(right))
+                .then_with(|| right.len().cmp(&left.len()))
+        })
+}
+
+fn has_strong_common_prefix(values: &[String]) -> bool {
+    let Some(common_prefix) = longest_common_prefix(values) else {
+        return false;
+    };
+    let trimmed = common_prefix.trim_end_matches('-');
+    if trimmed.is_empty() {
+        return false;
+    }
+    let boundary_trimmed = trimmed
+        .rfind('-')
+        .map(|index| &trimmed[..index])
+        .filter(|candidate| !candidate.is_empty())
+        .unwrap_or(trimmed);
+    let min_len = values.iter().map(String::len).min().unwrap_or(0);
+    !boundary_trimmed.is_empty() && boundary_trimmed.len() * 2 >= min_len
+}
+
+fn longest_common_prefix(values: &[String]) -> Option<&str> {
+    let first = values.first()?;
+    let mut prefix_len = first.len();
+    for value in values.iter().skip(1) {
+        let mut byte_index = 0usize;
+        for (left, right) in first.chars().zip(value.chars()) {
+            if left != right {
+                break;
+            }
+            byte_index += left.len_utf8();
+        }
+        prefix_len = prefix_len.min(byte_index);
+        if prefix_len == 0 {
+            return None;
+        }
+    }
+    Some(&first[..prefix_len])
+}
+
+fn version_marker_count(value: &str) -> usize {
+    value
+        .split('-')
+        .filter(|token| {
+            token.len() > 1
+                && token.starts_with('v')
+                && token[1..]
+                    .chars()
+                    .all(|character| character.is_ascii_digit())
+        })
+        .count()
+}
+
+fn labels_are_nonempty_and_unique(values: &[String]) -> bool {
+    !values.is_empty()
+        && values.iter().all(|value| !value.is_empty())
+        && values
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            == values.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_verdict_coloring_is_opt_in() {
+        assert_eq!(
+            format_validation_verdict(ValidationVerdictV1::Fit, InspectRenderOptionsV1::default(),),
+            "fit"
+        );
+        assert_eq!(
+            format_validation_verdict(
+                ValidationVerdictV1::Indeterminate,
+                InspectRenderOptionsV1::default(),
+            ),
+            "indeterminate"
+        );
+    }
+
+    #[test]
+    fn validation_verdict_coloring_uses_green_yellow_and_red_mapping() {
+        let options = InspectRenderOptionsV1 {
+            style: InspectStyleOptionsV1 {
+                color_enabled: true,
+                palette: InspectPaletteV1::Default,
+            },
+            ..InspectRenderOptionsV1::default()
+        };
+
+        assert_eq!(
+            format_validation_verdict(ValidationVerdictV1::Fit, options),
+            "\u{1b}[32mfit\u{1b}[0m"
+        );
+        assert_eq!(
+            format_validation_verdict(ValidationVerdictV1::FitWithDegradation, options),
+            "\u{1b}[33mfit_with_degradation\u{1b}[0m"
+        );
+        assert_eq!(
+            format_validation_verdict(ValidationVerdictV1::Unfit, options),
+            "\u{1b}[31munfit\u{1b}[0m"
+        );
+        assert_eq!(
+            format_validation_verdict(ValidationVerdictV1::Indeterminate, options),
+            "indeterminate"
+        );
+    }
+
+    #[test]
+    fn semantic_color_roles_use_default_palette_when_enabled() {
+        let options = InspectRenderOptionsV1 {
+            style: InspectStyleOptionsV1 {
+                color_enabled: true,
+                palette: InspectPaletteV1::Default,
+            },
+            ..InspectRenderOptionsV1::default()
+        };
+
+        assert_eq!(
+            style_text_for_inspect("fit", InspectColorRoleV1::Success, options),
+            "\u{1b}[32mfit\u{1b}[0m"
+        );
+        assert_eq!(
+            style_text_for_inspect("fit_with_degradation", InspectColorRoleV1::Warning, options),
+            "\u{1b}[33mfit_with_degradation\u{1b}[0m"
+        );
+        assert_eq!(
+            style_text_for_inspect("unfit", InspectColorRoleV1::Failure, options),
+            "\u{1b}[31munfit\u{1b}[0m"
+        );
+        assert_eq!(
+            style_text_for_inspect("indeterminate", InspectColorRoleV1::Plain, options),
+            "indeterminate"
+        );
+    }
+
+    #[test]
+    fn operator_posture_maps_each_verdict_to_a_scan_friendly_label() {
+        assert_eq!(format_operator_posture(ValidationVerdictV1::Fit), "proceed");
+        assert_eq!(
+            format_operator_posture(ValidationVerdictV1::FitWithDegradation),
+            "proceed_with_degradation"
+        );
+        assert_eq!(format_operator_posture(ValidationVerdictV1::Unfit), "stop");
+        assert_eq!(
+            format_operator_posture(ValidationVerdictV1::Indeterminate),
+            "hold_for_evidence"
+        );
+    }
+
+    #[test]
+    fn batch_reason_tally_and_row_summaries_stay_deterministic() {
+        let rows = vec![
+            BatchClassificationRowV1 {
+                row_id: "row-a".to_string(),
+                contract_artifact_id: "contract-a".to_string(),
+                contract_semantic_hash: "hash-a".to_string(),
+                service_profile_artifact_id: "profile-a".to_string(),
+                service_profile_semantic_hash: "profile-hash-a".to_string(),
+                verdict: ValidationVerdictV1::Fit,
+                primary_reason_code: ValidationReasonCodeV1::RequirementsSatisfied,
+                selected_degradation_tier: None,
+                summary: "fit".to_string(),
+            },
+            BatchClassificationRowV1 {
+                row_id: "row-b".to_string(),
+                contract_artifact_id: "contract-a".to_string(),
+                contract_semantic_hash: "hash-a".to_string(),
+                service_profile_artifact_id: "profile-b".to_string(),
+                service_profile_semantic_hash: "profile-hash-b".to_string(),
+                verdict: ValidationVerdictV1::FitWithDegradation,
+                primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
+                selected_degradation_tier: Some("fallback/general_compute".to_string()),
+                summary: "degraded".to_string(),
+            },
+            BatchClassificationRowV1 {
+                row_id: "row-c".to_string(),
+                contract_artifact_id: "contract-b".to_string(),
+                contract_semantic_hash: "hash-b".to_string(),
+                service_profile_artifact_id: "profile-a".to_string(),
+                service_profile_semantic_hash: "profile-hash-a".to_string(),
+                verdict: ValidationVerdictV1::Unfit,
+                primary_reason_code: ValidationReasonCodeV1::CapabilityUnknown,
+                selected_degradation_tier: None,
+                summary: "unfit".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            format_batch_operator_posture_counts(&rows),
+            "proceed 1; proceed_with_degradation 1; stop 1; hold_for_evidence 0"
+        );
+        assert_eq!(
+            format_batch_primary_reason_tally(&rows),
+            "capability_unknown=1, degradation_path_required=1, requirements_satisfied=1"
+        );
+        assert_eq!(
+            format_batch_row_summaries(&rows, 2),
+            "contract-a -> profile-a: fit (requirements_satisfied) | contract-a -> profile-b: fit_with_degradation via fallback/general_compute (degradation_path_required) | ... +1 more"
+        );
+    }
+
+    #[test]
+    fn batch_verdict_matrix_uses_declared_contract_and_profile_order() {
+        let artifact = BatchClassificationReportV1 {
+            envelope: crate::artifacts::envelope_v1::ArtifactEnvelopeV1 {
+                schema_id: crate::artifacts::schema_ids_v1::BATCH_CLASSIFICATION_REPORT_SCHEMA_ID
+                    .to_string(),
+                schema_version: crate::artifacts::schema_ids_v1::TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
+                artifact_id: "batch-demo".to_string(),
+                provenance: crate::artifacts::envelope_v1::ArtifactProvenanceV1 {
+                    source: "classify:contract_only".to_string(),
+                    collected_at: "2025-04-21T14:37:19Z".to_string(),
+                    fitctl_version: Some("0.2.0".to_string()),
+                    command_name: Some("classify".to_string()),
+                    correlation_id: Some("batch-demo".to_string()),
+                },
+                redaction: None,
+                signatures: vec![],
+            },
+            classification_basis:
+                crate::artifacts::batch_classification_report_v1::BatchClassificationBasisV1 {
+                    validation_mode: ValidationModeV1::ContractOnly,
+                    validated_at: "2025-04-21T14:37:19Z".to_string(),
+                    validation_engine_id: "fitctl.validate.v1".to_string(),
+                    validation_engine_version: "1".to_string(),
+                    ordered_contracts: vec![
+                        crate::artifacts::batch_classification_report_v1::BatchClassificationContractRefV1 {
+                            artifact_id: "contract-b".to_string(),
+                            semantic_hash: "hash-b".to_string(),
+                            host_alias: None,
+                            display_name: None,
+                            short_display_name: None,
+                        },
+                        crate::artifacts::batch_classification_report_v1::BatchClassificationContractRefV1 {
+                            artifact_id: "contract-a".to_string(),
+                            semantic_hash: "hash-a".to_string(),
+                            host_alias: None,
+                            display_name: None,
+                            short_display_name: None,
+                        },
+                    ],
+                    ordered_service_profiles: vec![
+                        crate::artifacts::batch_classification_report_v1::BatchClassificationServiceProfileRefV1 {
+                            artifact_id: "service-profile-z".to_string(),
+                            semantic_hash: "hash-z".to_string(),
+                            display_name: None,
+                            short_display_name: None,
+                        },
+                        crate::artifacts::batch_classification_report_v1::BatchClassificationServiceProfileRefV1 {
+                            artifact_id: "service-profile-a".to_string(),
+                            semantic_hash: "hash-a".to_string(),
+                            display_name: None,
+                            short_display_name: None,
+                        },
+                    ],
+                },
+            report:
+                crate::artifacts::batch_classification_report_v1::BatchClassificationReportPayloadV1 {
+                    rows: vec![
+                        BatchClassificationRowV1 {
+                            row_id: "b-z".to_string(),
+                            contract_artifact_id: "contract-b".to_string(),
+                            contract_semantic_hash: "hash-b".to_string(),
+                            service_profile_artifact_id: "service-profile-z".to_string(),
+                            service_profile_semantic_hash: "hash-z".to_string(),
+                            verdict: ValidationVerdictV1::Fit,
+                            primary_reason_code: ValidationReasonCodeV1::RequirementsSatisfied,
+                            selected_degradation_tier: None,
+                            summary: "fit".to_string(),
+                        },
+                        BatchClassificationRowV1 {
+                            row_id: "b-a".to_string(),
+                            contract_artifact_id: "contract-b".to_string(),
+                            contract_semantic_hash: "hash-b".to_string(),
+                            service_profile_artifact_id: "service-profile-a".to_string(),
+                            service_profile_semantic_hash: "hash-a".to_string(),
+                            verdict: ValidationVerdictV1::FitWithDegradation,
+                            primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
+                            selected_degradation_tier: Some(
+                                "fallback/general_compute".to_string(),
+                            ),
+                            summary: "degraded".to_string(),
+                        },
+                        BatchClassificationRowV1 {
+                            row_id: "a-z".to_string(),
+                            contract_artifact_id: "contract-a".to_string(),
+                            contract_semantic_hash: "hash-a".to_string(),
+                            service_profile_artifact_id: "service-profile-z".to_string(),
+                            service_profile_semantic_hash: "hash-z".to_string(),
+                            verdict: ValidationVerdictV1::Unfit,
+                            primary_reason_code: ValidationReasonCodeV1::CapabilityUnknown,
+                            selected_degradation_tier: None,
+                            summary: "unfit".to_string(),
+                        },
+                        BatchClassificationRowV1 {
+                            row_id: "a-a".to_string(),
+                            contract_artifact_id: "contract-a".to_string(),
+                            contract_semantic_hash: "hash-a".to_string(),
+                            service_profile_artifact_id: "service-profile-a".to_string(),
+                            service_profile_semantic_hash: "hash-a".to_string(),
+                            verdict: ValidationVerdictV1::Indeterminate,
+                            primary_reason_code: ValidationReasonCodeV1::StateStale,
+                            selected_degradation_tier: None,
+                            summary: "indeterminate".to_string(),
+                        },
+                    ],
+                    contract_summaries: vec![],
+                    service_profile_summaries: vec![],
+                },
+        };
+
+        let matrix = format_batch_verdict_matrix(&artifact, InspectRenderOptionsV1::default())
+            .expect("matrix should render");
+
+        assert!(matrix.contains("Host"));
+        assert!(matrix.contains("Contract"));
+        assert!(matrix.contains("Profile"));
+        assert!(matrix.contains("Verdict"));
+        let lines = matrix.lines().collect::<Vec<_>>();
+        let b_z_row = lines
+            .iter()
+            .position(|line| {
+                line.contains("b")
+                    && line.contains("z")
+                    && line.contains("fit")
+                    && !line.contains("fit_with_degradation")
+            })
+            .expect("b/z row should exist");
+        let b_a_row = lines
+            .iter()
+            .position(|line| {
+                line.contains("b") && line.contains("a") && line.contains("fit_with_degradation")
+            })
+            .expect("b/a row should exist");
+        let a_z_row = lines
+            .iter()
+            .position(|line| {
+                line.contains("a")
+                    && line.contains("z")
+                    && line.contains("unfit")
+                    && !line.contains("fit_with_degradation")
+            })
+            .expect("a/z row should exist");
+        assert!(b_z_row < a_z_row);
+        assert!(a_z_row < b_a_row);
+        assert!(lines
+            .iter()
+            .any(|line| { line.contains("b") && line.contains("z") && line.contains("fit") }));
+        assert!(lines.iter().any(|line| {
+            line.contains("b") && line.contains("a") && line.contains("fit_with_degradation")
+        }));
+        assert!(lines
+            .iter()
+            .any(|line| { line.contains("a") && line.contains("z") && line.contains("unfit") }));
+        assert!(lines
+            .iter()
+            .any(|line| { line.contains("a") && line.contains("indeterminate") }));
+        assert!(matrix.contains("fit_with_degradation"));
+        assert!(matrix.contains("indeterminate"));
+    }
+
+    #[test]
+    fn batch_contract_display_parts_split_same_host_multi_policy_labels() {
+        let contracts = [
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-gpu-workstation-like-v1-general-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-a".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-b".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+        ];
+        let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
+
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-general-compute-default-v1")
+                .map(|parts| parts.host_label.as_str()),
+            Some("linux-gpu-workstation-like-v1")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1")
+                .map(|parts| parts.host_label.as_str()),
+            Some("linux-gpu-workstation-like-v1")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-general-compute-default-v1")
+                .map(|parts| parts.contract_label.as_str()),
+            Some("general-compute-default-v1")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1")
+                .map(|parts| parts.contract_label.as_str()),
+            Some("gpu-compute-default-v1")
+        );
+    }
+
+    #[test]
+    fn batch_contract_display_parts_split_multi_host_single_policy_labels() {
+        let contracts = [
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-bare-metal-like-v1-general-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-a".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-gpu-workstation-like-v1-general-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-b".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+        ];
+        let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
+
+        assert_eq!(
+            labels
+                .get("contract-linux-bare-metal-like-v1-general-compute-default-v1")
+                .map(|parts| parts.host_label.as_str()),
+            Some("linux-bare-metal-like-v1")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-general-compute-default-v1")
+                .map(|parts| parts.host_label.as_str()),
+            Some("linux-gpu-workstation-like-v1")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-bare-metal-like-v1-general-compute-default-v1")
+                .map(|parts| parts.contract_label.as_str()),
+            Some("general-compute-default-v1")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-general-compute-default-v1")
+                .map(|parts| parts.contract_label.as_str()),
+            Some("general-compute-default-v1")
+        );
+    }
+
+    #[test]
+    fn batch_contract_display_parts_split_mixed_host_and_policy_labels() {
+        let contracts = [
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-bare-metal-like-v1-general-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-a".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-network-mixed-like-v1-general-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-b".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-c".to_string(),
+                host_alias: None,
+                display_name: None,
+                short_display_name: None,
+            },
+        ];
+        let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
+
+        assert_eq!(
+            labels
+                .get("contract-linux-bare-metal-like-v1-general-compute-default-v1")
+                .map(|parts| (parts.host_label.as_str(), parts.contract_label.as_str())),
+            Some(("linux-bare-metal-like-v1", "general-compute-default-v1"))
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-network-mixed-like-v1-general-compute-default-v1")
+                .map(|parts| (parts.host_label.as_str(), parts.contract_label.as_str())),
+            Some(("linux-network-mixed-like-v1", "general-compute-default-v1"))
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1")
+                .map(|parts| (parts.host_label.as_str(), parts.contract_label.as_str())),
+            Some(("linux-gpu-dual-numa-like-v1", "gpu-compute-default-v1"))
+        );
+    }
+
+    #[test]
+    fn batch_contract_display_parts_prefer_explicit_host_and_contract_labels() {
+        let contracts = [BatchClassificationContractRefV1 {
+            artifact_id: "contract-linux-bare-metal-like-v1-general-compute-default-v1".to_string(),
+            semantic_hash: "hash-a".to_string(),
+            host_alias: Some("bare-01".to_string()),
+            display_name: Some("bare-01/General compute default policy".to_string()),
+            short_display_name: Some("General compute default".to_string()),
+        }];
+        let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
+
+        assert_eq!(
+            labels
+                .get("contract-linux-bare-metal-like-v1-general-compute-default-v1")
+                .map(|parts| (parts.host_label.as_str(), parts.contract_label.as_str())),
+            Some(("bare-01", "General compute default"))
+        );
+    }
+
+    #[test]
+    fn batch_contract_display_parts_strip_shared_demo_prefix_from_host_aliases() {
+        let contracts = [
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-bare-metal-like-v1-general-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-a".to_string(),
+                host_alias: Some("demo-baremetal-01".to_string()),
+                display_name: Some(
+                    "demo-baremetal-01 / General compute default policy".to_string(),
+                ),
+                short_display_name: Some("General compute default".to_string()),
+            },
+            BatchClassificationContractRefV1 {
+                artifact_id: "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
+                    .to_string(),
+                semantic_hash: "hash-b".to_string(),
+                host_alias: Some("demo-gpu-01".to_string()),
+                display_name: Some("demo-gpu-01 / GPU compute default policy".to_string()),
+                short_display_name: Some("GPU compute default".to_string()),
+            },
+        ];
+        let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
+
+        assert_eq!(
+            labels
+                .get("contract-linux-bare-metal-like-v1-general-compute-default-v1")
+                .map(|parts| parts.host_label.as_str()),
+            Some("baremetal-01")
+        );
+        assert_eq!(
+            labels
+                .get("contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1")
+                .map(|parts| parts.host_label.as_str()),
+            Some("gpu-01")
+        );
+    }
+
+    #[test]
+    fn batch_profile_display_labels_compact_contract_only_suffixes() {
+        let profiles = [
+            crate::artifacts::batch_classification_report_v1::BatchClassificationServiceProfileRefV1 {
+                artifact_id: "service-profile-general-compute-no-gpu-contract-only-v1".to_string(),
+                semantic_hash: "hash-a".to_string(),
+                display_name: Some("CPU only".to_string()),
+                short_display_name: Some("CPU only".to_string()),
+            },
+            crate::artifacts::batch_classification_report_v1::BatchClassificationServiceProfileRefV1 {
+                artifact_id: "service-profile-gpu-preferred-with-general-compute-fallback-contract-only-v1".to_string(),
+                semantic_hash: "hash-b".to_string(),
+                display_name: Some("GPU preferred with CPU fallback".to_string()),
+                short_display_name: Some("GPU preferred, CPU fallback".to_string()),
+            },
+            crate::artifacts::batch_classification_report_v1::BatchClassificationServiceProfileRefV1 {
+                artifact_id: "service-profile-gpu-required-contract-only-v1".to_string(),
+                semantic_hash: "hash-c".to_string(),
+                display_name: Some("GPU required".to_string()),
+                short_display_name: Some("GPU required".to_string()),
+            },
+        ];
+        let labels = batch_profile_display_labels(&profiles, InspectRenderOptionsV1::default());
+
+        assert_eq!(
+            labels
+                .get("service-profile-general-compute-no-gpu-contract-only-v1")
+                .map(String::as_str),
+            Some("CPU only")
+        );
+        assert_eq!(
+            labels
+                .get("service-profile-gpu-preferred-with-general-compute-fallback-contract-only-v1")
+                .map(String::as_str),
+            Some("GPU preferred, CPU fallback")
+        );
+        assert_eq!(
+            labels
+                .get("service-profile-gpu-required-contract-only-v1")
+                .map(String::as_str),
+            Some("GPU required")
+        );
+    }
 }

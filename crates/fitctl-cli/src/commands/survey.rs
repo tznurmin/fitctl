@@ -8,8 +8,9 @@ use std::process::ExitCode;
 
 use fitctl_core::config::{load_extension_pack_from_path, load_invocation_context_from_path};
 use fitctl_core::extensions::{
-    apply_node_runtime_extension_to_survey_v1, apply_python_runtime_extension_to_survey_v1,
-    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
+    apply_cuda_runtime_extension_to_survey_v1, apply_node_runtime_extension_to_survey_v1,
+    apply_python_runtime_extension_to_survey_v1, CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE,
+    PYTHON_RUNTIME_NAMESPACE,
 };
 use fitctl_core::survey::{LocalLiveProbeV1, SurveyEngineV1, SurveyModeV1};
 
@@ -140,7 +141,10 @@ pub fn run(args: &[String]) -> ExitCode {
             );
             return ExitCode::from(2);
         }
-        if namespace != PYTHON_RUNTIME_NAMESPACE && namespace != NODE_RUNTIME_NAMESPACE {
+        if namespace != PYTHON_RUNTIME_NAMESPACE
+            && namespace != NODE_RUNTIME_NAMESPACE
+            && namespace != CUDA_RUNTIME_NAMESPACE
+        {
             eprintln!(
                 "fitctl survey: extension namespace {namespace} is enabled but no survey collector is implemented for it"
             );
@@ -169,6 +173,14 @@ pub fn run(args: &[String]) -> ExitCode {
                 namespaces.dedup();
                 for namespace in namespaces {
                     let result = match namespace.as_str() {
+                        CUDA_RUNTIME_NAMESPACE => apply_cuda_runtime_extension_to_survey_v1(
+                            survey,
+                            replay_extensions_root
+                                .as_ref()
+                                .map(|root| root.join("cuda_runtime"))
+                                .as_deref(),
+                        )
+                        .map_err(|error| error.to_string()),
                         PYTHON_RUNTIME_NAMESPACE => apply_python_runtime_extension_to_survey_v1(
                             survey,
                             replay_extensions_root

@@ -9,7 +9,9 @@ use std::path::Path;
 
 use serde_json::{Map, Value};
 
-use crate::artifacts::schema_ids_v1::SERVICE_PROFILE_SCHEMA_ID;
+use crate::artifacts::schema_ids_v1::{
+    SERVICE_PROFILE_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
+};
 use crate::artifacts::service_profile_v1::{
     AssurancePredicateV1, ExplicitAssuranceRequirementV1, ServiceProfileV1,
 };
@@ -117,6 +119,8 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
         profile,
         &[
             "profile_id",
+            "display_name",
+            "short_display_name",
             "core_requirements",
             "extension_requirements",
             "preferences",
@@ -130,6 +134,8 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
         profile,
         &[
             "profile_id",
+            "display_name",
+            "short_display_name",
             "core_requirements",
             "extension_requirements",
             "preferences",
@@ -159,6 +165,8 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "min_numa_nodes",
             "max_numa_nodes",
             "min_cpu_packages",
+            "require_accelerator_locality_known",
+            "max_accelerator_numa_nodes",
         ],
     )?;
     reject_explicit_nulls(
@@ -174,6 +182,8 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "min_numa_nodes",
             "max_numa_nodes",
             "min_cpu_packages",
+            "require_accelerator_locality_known",
+            "max_accelerator_numa_nodes",
         ],
         "service profile requirement field",
     )?;
@@ -332,7 +342,7 @@ fn validate_service_profile_semantics(
     profile: &ServiceProfileV1,
 ) -> Result<(), ServiceProfileError> {
     if profile.envelope.schema_id != SERVICE_PROFILE_SCHEMA_ID
-        || profile.envelope.schema_version != 1
+        || profile.envelope.schema_version != TOP_LEVEL_ARTIFACT_SCHEMA_VERSION
     {
         return Err(ServiceProfileError::new(
             ServiceProfileErrorCode::ServiceProfileSchemaUnsupported,
@@ -343,12 +353,20 @@ fn validate_service_profile_semantics(
 
     let payload = &profile.profile;
     if is_blank(&payload.profile_id)
+        || payload
+            .display_name
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || payload
+            .short_display_name
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
         || is_blank(&payload.core_requirements.primary_capability_class)
     {
         return Err(ServiceProfileError::new(
             ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
             "profile_validate",
-            "service profile ids and primary capability class must be non-empty",
+            "service profile ids, optional display labels, and primary capability class must be non-empty",
         ));
     }
 
@@ -402,11 +420,15 @@ fn validate_service_profile_semantics(
             .core_requirements
             .min_cpu_packages
             .is_some_and(|value| value == 0)
+        || payload
+            .core_requirements
+            .max_accelerator_numa_nodes
+            .is_some_and(|value| value == 0)
     {
         return Err(ServiceProfileError::new(
             ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
             "profile_validate",
-            "allocatable, network, and topology thresholds must be positive when present",
+            "allocatable, network, topology, and accelerator locality thresholds must be positive when present",
         ));
     }
 

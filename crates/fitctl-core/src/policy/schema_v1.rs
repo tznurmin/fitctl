@@ -24,6 +24,10 @@ pub struct PolicyDocumentV1 {
     pub schema_id: String,
     pub schema_version: u32,
     pub policy_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_display_name: Option<String>,
     pub layers: Vec<PolicyLayerV1>,
     #[serde(default)]
     pub extension_policy: PolicyExtensionPolicyV1,
@@ -136,6 +140,8 @@ fn validate_policy_document_json(raw: &Value) -> Result<(), ContractDerivationEr
             "schema_id",
             "schema_version",
             "policy_id",
+            "display_name",
+            "short_display_name",
             "layers",
             "extension_policy",
         ],
@@ -147,6 +153,8 @@ fn validate_policy_document_json(raw: &Value) -> Result<(), ContractDerivationEr
             "schema_id",
             "schema_version",
             "policy_id",
+            "display_name",
+            "short_display_name",
             "layers",
             "extension_policy",
         ],
@@ -246,12 +254,20 @@ pub(crate) fn validate_policy_document(
     if policy.schema_id != POLICY_DOCUMENT_SCHEMA_ID
         || policy.schema_version != 1
         || policy.policy_id.trim().is_empty()
+        || policy
+            .display_name
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        || policy
+            .short_display_name
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
         || policy.layers.is_empty()
     {
         return Err(ContractDerivationError::new(
             ContractDerivationErrorCode::PolicyDocumentInvalid,
             "policy_load",
-            "policy document must declare the supported schema and at least one layer",
+            "policy document must declare the supported schema, non-blank optional labels, and at least one layer",
         ));
     }
 
