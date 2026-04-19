@@ -54,7 +54,19 @@ Read [Configuration](./docs/configuration.md) for reusable policy and profile in
 
 ## Installation
 
-Install from a checked-out repository with Cargo:
+From crates.io:
+
+```bash
+cargo install fitctl --locked
+```
+
+From the GitHub repository:
+
+```bash
+cargo install --git https://github.com/tznurmin/fitctl fitctl --locked
+```
+
+From a local checkout:
 
 ```bash
 cargo install --path crates/fitctl-cli --locked
@@ -75,6 +87,8 @@ cargo build --workspace
 - [Artifacts](./docs/artifacts.md) – survey, contract, state, and validation-report artifacts
 
 fitctl makes fit decisions. It does not place workloads or manage hosts.
+
+Version history and release notes: [GitHub Releases](https://github.com/tznurmin/fitctl/releases)
 
 ## License
 
