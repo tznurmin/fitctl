@@ -32,7 +32,8 @@ use crate::extensions::{
     NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
 };
 use crate::policy::capability_classes_v1::{
-    derive_policy_shaped_capability_claim, SurveyCapabilityInputV1,
+    classify_policy_scoped_accelerator_inventory, derive_policy_shaped_capability_claim,
+    policy_scoped_accelerator_inventory_is_active, SurveyCapabilityInputV1,
 };
 use crate::policy::explanation_v1::validate_explanation_links;
 use crate::policy::{merge_policy_document_v1, PolicyDocumentV1};
@@ -183,6 +184,7 @@ pub fn derive_host_contract_v1(
             ),
             accelerator_summary: derive_accelerator_summary(
                 &survey_payload.core_evidence.observations.accelerators,
+                &effective_policy,
             ),
             topology_summary: ContractTopologySummaryV1 {
                 numa_nodes: survey_payload
@@ -442,11 +444,12 @@ fn derive_storage_operability(storage: &StorageDetailsV1) -> Option<ContractStor
 }
 
 fn derive_accelerator_summary(
-    accelerators: &SurveyFieldV1<AcceleratorDetailsV1>,
+    accelerator_field: &SurveyFieldV1<AcceleratorDetailsV1>,
+    effective_policy: &crate::policy::EffectivePolicyV1,
 ) -> ContractAcceleratorSummaryV1 {
     // Accept both observed and partially observed survey data so thin accelerator evidence can
     // still inform conservative capability claims.
-    let accelerators = match (&accelerators.state, &accelerators.value) {
+    let accelerators = match (&accelerator_field.state, &accelerator_field.value) {
         (ObservationStateV1::Observed, Some(accelerators))
         | (ObservationStateV1::PartiallyObserved, Some(accelerators)) => accelerators,
         _ => return ContractAcceleratorSummaryV1::default(),
@@ -540,10 +543,35 @@ fn derive_accelerator_summary(
         .iter()
         .filter_map(|device| device.memory_bytes)
         .max();
+    let full_inventory_complete = Some(matches!(
+        accelerator_field.state,
+        ObservationStateV1::Observed
+    ));
+    let policy_scoped_inventory = if policy_scoped_accelerator_inventory_is_active(effective_policy)
+    {
+        classify_policy_scoped_accelerator_inventory(
+            accelerator_field,
+            accelerators,
+            effective_policy,
+        )
+        .ok()
+    } else {
+        None
+    };
 
     ContractAcceleratorSummaryV1 {
         total_accelerators,
         gpu_accelerators,
+        full_inventory_complete,
+        policy_scoped_confirmed_accelerators: policy_scoped_inventory
+            .as_ref()
+            .map(|inventory| inventory.policy_scoped_confirmed_accelerators),
+        policy_scoped_unresolved_accelerators: policy_scoped_inventory
+            .as_ref()
+            .map(|inventory| inventory.policy_scoped_unresolved_accelerators),
+        policy_scoped_inventory_complete: policy_scoped_inventory
+            .as_ref()
+            .map(|inventory| inventory.policy_scoped_inventory_complete),
         integrated_accelerators,
         accelerators_with_known_memory,
         accelerators_with_known_numa_node,

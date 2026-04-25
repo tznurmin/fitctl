@@ -5,17 +5,20 @@
     "artifact_id": "contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1",
     "provenance": {
       "source": "policy:gpu_compute_default_v1",
-      "collected_at": "2025-04-22T09:20:00Z",
-      "fitctl_version": "0.2.0",
+      "collected_at": "unix:1776620421",
+      "fitctl_version": "0.2.1",
       "command_name": "contract",
       "correlation_id": "contract-linux-gpu-container-restricted-like-v1-gpu-compute-default-v1"
     },
     "redaction": null,
     "signatures": []
   },
+  "host_alias": "demo-gpu-hidden-01",
+  "display_name": "demo-gpu-hidden-01 / GPU compute default policy",
+  "short_display_name": "GPU compute default",
   "contract_basis": {
     "core_semantic_basis": {
-      "source_survey_semantic_hash": "d3530cbd8438be66939503eb671a3b91354f493ff362e55e0ada3a2623871cea",
+      "source_survey_semantic_hash": "4d8f6868211bbeba870ca29cc81be429abe2042b97cf1f5635ab9d2e8cf07c78",
       "policy_semantic_hash": "59986012973e6d2e12da482d7f94c4c9345697dcf944a5d21f4242f674e6fe9f",
       "derivation_engine_id": "fitctl.contract.v1",
       "derivation_engine_version": "1",
@@ -25,7 +28,7 @@
       ]
     },
     "derivation_provenance": {
-      "derived_at": "2025-04-22T09:20:00Z",
+      "derived_at": "unix:1776620421",
       "notes": null
     }
   },
@@ -35,10 +38,13 @@
         "accelerator_kinds": [
           "gpu"
         ],
+        "accelerator_numa_nodes": [],
         "accelerators_with_known_memory": 2,
+        "accelerators_with_known_numa_node": null,
         "families": [
           "nvidia_pci"
         ],
+        "full_inventory_complete": true,
         "gpu_accelerators": 2,
         "integrated_accelerators": null,
         "max_memory_bytes": 51539607552,
@@ -50,6 +56,9 @@
           "driver_bound_devices": 2,
           "static_operability": "not_operable"
         },
+        "policy_scoped_confirmed_accelerators": 2,
+        "policy_scoped_inventory_complete": true,
+        "policy_scoped_unresolved_accelerators": 0,
         "total_accelerators": 2,
         "vendors": [
           "nvidia"
@@ -100,8 +109,13 @@
       "identity_summary": {
         "composition_digest": "989aa09500287008291c790cd469e25b21cbbb0baa5f6736411a645c5769ef8c",
         "identity_class": "local_stable",
-        "local_stable_id": "1f4733965df6d8b24ee64ea2a60bd19d58364ef785b8b36710198900a883f55d",
-        "provenance_fingerprint": "0b0237dba4179bde80ca5e13a7d95b3c4fc7b955917cd96e24cee14de5dde47b"
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "b3a79828a3f7e2d756acaacf8280e2b3d2c38458fa5caecda0566601c3c2b089",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "702efa6075d2cba3a4c2dd6189479242be42d637d1319f4c1669d4af1790cf67"
       },
       "network_summary": {
         "interface_kinds": [

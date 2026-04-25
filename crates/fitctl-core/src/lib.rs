@@ -75,7 +75,7 @@ pub const COMMANDS: [CommandSpec; 17] = [
     CommandSpec {
         name: "classify",
         summary: "Classify contracts against explicit profiles or catalogue selections",
-        tier: CommandTier::Experimental,
+        tier: CommandTier::StableCore,
     },
     CommandSpec {
         name: "bundle",

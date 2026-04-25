@@ -1,0 +1,248 @@
+{
+  "envelope": {
+    "schema_id": "host-contract.v2",
+    "schema_version": 2,
+    "artifact_id": "contract-cuda-driver-supported-cuda-advisory-fallback",
+    "provenance": {
+      "source": "policy:general_compute_default_v1",
+      "collected_at": "unix:1776633200",
+      "fitctl_version": "0.2.1",
+      "command_name": "contract",
+      "correlation_id": "contract-cuda-driver-supported-cuda-advisory-fallback"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "host_alias": "gpu-host-01",
+  "display_name": "gpu-host-01 / General compute default policy",
+  "short_display_name": "General compute default",
+  "contract_basis": {
+    "core_semantic_basis": {
+      "source_survey_semantic_hash": "717304ca16d7bd6afd91f2f9c2c09a232571e5ec394ccd1fdd7518235969b46c",
+      "policy_semantic_hash": "3ad4beaa05baaea5ae9a605a60fb4869d47859ad949bd618b770c5534ff8c15f",
+      "derivation_engine_id": "fitctl.contract.v1",
+      "derivation_engine_version": "1",
+      "contract_schema_version": 2,
+      "selected_policy_layers": [
+        "defaults/general_compute",
+        "site/general_compute"
+      ]
+    },
+    "extension_basis": {
+      "enabled_extension_namespaces": [
+        "fitctl.runtime.cuda"
+      ],
+      "extension_semantic_hashes": {
+        "fitctl.runtime.cuda": "c95f4bde878a7e137e59323ce8cff4ebf20f71929b8b69d4b136af9007d4ebf4"
+      }
+    },
+    "derivation_provenance": {
+      "derived_at": "unix:1776633200",
+      "notes": null
+    }
+  },
+  "contract": {
+    "core_contract": {
+      "accelerator_summary": {
+        "accelerator_kinds": [
+          "gpu"
+        ],
+        "accelerator_numa_nodes": [
+          0
+        ],
+        "accelerators_with_known_memory": 2,
+        "accelerators_with_known_numa_node": 2,
+        "families": [
+          "nvidia_pci"
+        ],
+        "full_inventory_complete": true,
+        "gpu_accelerators": 2,
+        "integrated_accelerators": null,
+        "max_memory_bytes": 51539607552,
+        "models": [
+          "nvidia-gpu-2206",
+          "nvidia-gpu-2230"
+        ],
+        "operability": {
+          "driver_bound_devices": 2,
+          "static_operability": "operable",
+          "visible_device_nodes": [
+            "/dev/nvidia-uvm",
+            "/dev/nvidia0",
+            "/dev/nvidia1",
+            "/dev/nvidiactl"
+          ]
+        },
+        "total_accelerators": 2,
+        "vendors": [
+          "nvidia"
+        ]
+      },
+      "capability_classes": {
+        "general_compute": {
+          "admissible": true,
+          "claim_metadata": {
+            "assurance_source": "self_observed",
+            "derivation_stage": "policy_asserted",
+            "evidence_paths": [
+              "$.survey.core_evidence.observations.cpu",
+              "$.survey.core_evidence.observations.memory",
+              "$.survey.core_evidence.execution_context",
+              "$.survey.core_evidence.observations.network"
+            ],
+            "policy_rule_id": "site/general_compute",
+            "source_collectors": [
+              "procfs",
+              "sysfs",
+              "cgroupfs",
+              "mountinfo",
+              "netdev",
+              "block_and_filesystem"
+            ],
+            "trust_evidence_refs": []
+          },
+          "evidence_refs": [
+            "$.survey.core_evidence.observations.cpu",
+            "$.survey.core_evidence.observations.memory",
+            "$.survey.core_evidence.execution_context",
+            "$.survey.core_evidence.observations.network"
+          ],
+          "rule_ids": [
+            "defaults/general_compute",
+            "site/general_compute"
+          ],
+          "summary": "host satisfies the general_compute capability baseline"
+        }
+      },
+      "execution_constraints": {
+        "container_runtime": null,
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "b1e049da1b7d466351642603f7515dec8ed8e7e2427bbba6f87517c0224e35ca",
+        "identity_class": "local_stable",
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "0cc6d9fb8690d1b2e9673018014d8b7ddb63c09a9b322152892f9e871f16fb4c",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "9fac516b9054244469ddd566541b3f36553ca8abd47a83b67b7890e49afddcea"
+      },
+      "network_summary": {
+        "interface_kinds": [
+          "ethernet",
+          "loopback"
+        ],
+        "max_observed_speed_mbps": 2500,
+        "non_loopback_interfaces": 1,
+        "operability": {
+          "interfaces_with_known_speed": 1,
+          "physical_non_loopback_interfaces": 1,
+          "static_operability": "operable"
+        },
+        "total_interfaces": 2
+      },
+      "storage_summary": {
+        "block_device_classes": [],
+        "filesystem_types": [],
+        "operability": {
+          "root_mount_present": false,
+          "static_operability": "not_operable",
+          "usable_block_devices": 0
+        },
+        "total_block_devices": 2,
+        "total_mounts": 2
+      },
+      "topology_summary": {
+        "cpu_packages": 1,
+        "numa_nodes": 1
+      }
+    },
+    "extension_contract": {
+      "fitctl.runtime.cuda": {
+        "claim_metadata": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "derived",
+          "evidence_paths": [
+            "$.contract.extension_contract.fitctl.runtime.cuda",
+            "$.survey.extension_evidence.fitctl.runtime.cuda"
+          ],
+          "source_collectors": [
+            "fitctl.runtime.cuda.collector.v1"
+          ],
+          "trust_evidence_refs": []
+        },
+        "runtime_available": true,
+        "runtime_id": "cuda",
+        "schema_id": "fitctl.extension.runtime.cuda.contract.v1",
+        "schema_version": 1,
+        "version": {
+          "major": 12,
+          "minor": 4,
+          "patch": 131
+        },
+        "driver_version": {
+          "major": 550,
+          "minor": 54,
+          "patch": 15
+        },
+        "driver_supported_cuda_version": {
+          "major": 13,
+          "minor": 0,
+          "patch": 0
+        },
+        "default_runtime_version": {
+          "major": 12,
+          "minor": 4,
+          "patch": 0
+        },
+        "default_view_probe_diagnostics": {
+          "default_toolkit_version": {
+            "source_tier": "primary",
+            "source_kind": "command_probe",
+            "source_ref": "/usr/local/cuda/bin/nvcc",
+            "status": "observed"
+          },
+          "driver_version": {
+            "source_tier": "primary",
+            "source_kind": "file_probe",
+            "source_ref": "/proc/driver/nvidia/version",
+            "status": "observed"
+          },
+          "driver_supported_cuda_version": {
+            "source_tier": "advisory_fallback",
+            "source_kind": "advisory_command_probe",
+            "source_ref": "/run/current-system/sw/bin/nvidia-smi",
+            "status": "observed"
+          },
+          "default_runtime_version": {
+            "source_tier": "primary",
+            "source_kind": "dynamic_library_probe",
+            "source_ref": "libcudart.so",
+            "status": "observed"
+          }
+        },
+        "installed_toolkits": [
+          {
+            "install_root": "/usr/local/cuda-11.8",
+            "version": {
+              "major": 11,
+              "minor": 8,
+              "patch": 89
+            }
+          },
+          {
+            "install_root": "/usr/local/cuda-12.4",
+            "version": {
+              "major": 12,
+              "minor": 4,
+              "patch": 131
+            },
+            "selected_by_default_toolkit_view": true
+          }
+        ]
+      }
+    }
+  }
+}

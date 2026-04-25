@@ -1,7 +1,7 @@
 {
-  "schema_id": "fitctl.fixture.extension.org.example.runtime.python.corpus.v1",
+  "schema_id": "fitctl.fixture.extension.runtime.python.corpus.v1",
   "schema_version": 1,
-  "namespace": "org.example.runtime.python",
+  "namespace": "fitctl.runtime.python",
   "fixtures": [
     {
       "fixture_id": "linux-bare-metal-like-v1",

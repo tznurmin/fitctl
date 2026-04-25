@@ -14,6 +14,7 @@ use crate::artifacts::state_v1::{
     HostStateTopologyV1, StateFreshnessV1,
 };
 use crate::fixtures::FixtureCoverageTagV1;
+use crate::identity::select_live_linux_identity_input_v2;
 use crate::state::live_v1::{CollectedHostStateSnapshotV1, SnapshotSourceKindV1};
 use crate::state::{StateError, StateErrorCode};
 
@@ -46,6 +47,8 @@ pub struct HostStateFixtureSnapshotV1 {
     pub fixture_id: String,
     pub collected_at: String,
     pub host_alias: String,
+    #[serde(default)]
+    pub local_stable_identity_inputs_v2: Option<ReplayLocalStableIdentityInputsV1>,
     pub collectors: Vec<String>,
     pub freshness: StateFreshnessV1,
     pub resources: HostRuntimeResourcesV1,
@@ -55,6 +58,19 @@ pub struct HostStateFixtureSnapshotV1 {
     pub topology: HostStateTopologyV1,
     #[serde(default)]
     pub operability: HostStateOperabilityV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayLocalStableIdentityInputsV1 {
+    #[serde(default)]
+    pub etc_machine_id: Option<String>,
+    #[serde(default)]
+    pub dbus_machine_id: Option<String>,
+    #[serde(default)]
+    pub dmi_product_uuid: Option<String>,
+    #[serde(default)]
+    pub kernel_hostname: Option<String>,
 }
 
 /// Load the host-state replay corpus manifest rooted at the given fixtures directory.
@@ -129,6 +145,20 @@ pub(crate) fn load_snapshot_from_corpus(
 
     validate_snapshot(&snapshot, entry)?;
 
+    let local_stable_identity_input =
+        snapshot
+            .local_stable_identity_inputs_v2
+            .as_ref()
+            .map(|identity_inputs| {
+                select_live_linux_identity_input_v2(
+                    identity_inputs.etc_machine_id.as_deref(),
+                    identity_inputs.dbus_machine_id.as_deref(),
+                    identity_inputs.dmi_product_uuid.as_deref(),
+                    identity_inputs.kernel_hostname.as_deref(),
+                )
+                .input
+            });
+
     Ok(CollectedHostStateSnapshotV1 {
         source_kind: SnapshotSourceKindV1::Replay {
             corpus_id: manifest.corpus_id.clone(),
@@ -137,6 +167,7 @@ pub(crate) fn load_snapshot_from_corpus(
         snapshot_id: snapshot.fixture_id.clone(),
         collected_at: snapshot.collected_at.clone(),
         host_alias: snapshot.host_alias.clone(),
+        local_stable_identity_input,
         collectors: snapshot.collectors.clone(),
         freshness: snapshot.freshness.clone(),
         resources: snapshot.resources.clone(),

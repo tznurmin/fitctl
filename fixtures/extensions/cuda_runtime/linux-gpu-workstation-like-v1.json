@@ -1,13 +1,13 @@
 {
-  "schema_id": "fitctl.fixture.extension.org.example.runtime.cuda.snapshot.v1",
+  "schema_id": "fitctl.fixture.extension.runtime.cuda.snapshot.v1",
   "schema_version": 1,
   "fixture_id": "linux-gpu-workstation-like-v1",
-  "namespace": "org.example.runtime.cuda",
+  "namespace": "fitctl.runtime.cuda",
   "evidence": {
-    "schema_id": "fitctl.extension.org.example.runtime.cuda.evidence.v1",
+    "schema_id": "fitctl.extension.runtime.cuda.evidence.v1",
     "schema_version": 1,
     "collector": {
-      "collector_id": "org.example.runtime.cuda.collector.v1",
+      "collector_id": "fitctl.runtime.cuda.collector.v1",
       "collector_version": "1",
       "source_family": "fixture_replay"
     },
@@ -15,10 +15,10 @@
       "assurance_source": "self_observed",
       "derivation_stage": "normalized",
       "source_collectors": [
-        "org.example.runtime.cuda.collector.v1"
+        "fitctl.runtime.cuda.collector.v1"
       ],
       "evidence_paths": [
-        "$.survey.extension_evidence.org.example.runtime.cuda"
+        "$.survey.extension_evidence.fitctl.runtime.cuda"
       ],
       "trust_evidence_refs": []
     },

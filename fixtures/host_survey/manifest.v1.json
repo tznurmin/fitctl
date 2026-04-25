@@ -20,6 +20,66 @@
       ]
     },
     {
+      "fixture_id": "linux-identity-machine-id-etc-like-v1",
+      "path": "linux-identity-machine-id-etc-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-identity-machine-id-dbus-like-v1",
+      "path": "linux-identity-machine-id-dbus-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-identity-machine-id-conflict-like-v1",
+      "path": "linux-identity-machine-id-conflict-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-identity-dmi-product-uuid-like-v1",
+      "path": "linux-identity-dmi-product-uuid-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-identity-hostname-fallback-like-v1",
+      "path": "linux-identity-hostname-fallback-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": []
+    },
+    {
       "fixture_id": "linux-vm-like-v1",
       "path": "linux-vm-like-v1.json",
       "execution_context": "vm_like",
@@ -46,6 +106,34 @@
       ]
     },
     {
+      "fixture_id": "linux-container-machine-id-visible-v1",
+      "path": "linux-container-machine-id-visible-v1.json",
+      "execution_context": "container_restricted",
+      "coverage_tags": [
+        "container_restricted",
+        "limited_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": [
+        "linux-container-machine-id-runtime-missing-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-container-hostname-fallback-v1",
+      "path": "linux-container-hostname-fallback-v1.json",
+      "execution_context": "container_restricted",
+      "coverage_tags": [
+        "container_restricted",
+        "limited_privilege",
+        "x86_64",
+        "no_accelerators"
+      ],
+      "related_state_fixtures": [
+        "linux-container-hostname-fallback-runtime-missing-v1"
+      ]
+    },
+    {
       "fixture_id": "linux-gpu-workstation-like-v1",
       "path": "linux-gpu-workstation-like-v1.json",
       "execution_context": "bare_metal_like",
@@ -58,8 +146,33 @@
       "related_state_fixtures": []
     },
     {
+      "fixture_id": "linux-gpu-workstation-partial-integrated-like-v1",
+      "path": "linux-gpu-workstation-partial-integrated-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "discrete_gpu",
+        "integrated_graphics"
+      ],
+      "related_state_fixtures": []
+    },
+    {
       "fixture_id": "linux-gpu-dual-numa-like-v1",
       "path": "linux-gpu-dual-numa-like-v1.json",
+      "execution_context": "bare_metal_like",
+      "coverage_tags": [
+        "bare_metal_like",
+        "full_privilege",
+        "x86_64",
+        "discrete_gpu"
+      ],
+      "related_state_fixtures": []
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-partial-discrete-like-v1",
+      "path": "linux-gpu-workstation-partial-discrete-like-v1.json",
       "execution_context": "bare_metal_like",
       "coverage_tags": [
         "bare_metal_like",

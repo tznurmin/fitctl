@@ -1,0 +1,47 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-gpu-two-required-cuda-runtime-per-device-memory-required-v1",
+    "provenance": {
+      "source": "config:service_profiles/gpu_two_required_cuda_runtime_per_device_memory_required.v2.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "gpu_two_required_cuda_runtime_per_device_memory_required_v1",
+    "display_name": "2 GPUs with CUDA per-device memory requirement",
+    "short_display_name": "2 GPUs + per-device CUDA memory",
+    "core_requirements": {
+      "primary_capability_class": "gpu_accelerated",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "min_policy_scoped_accelerators": 2
+    },
+    "extension_requirements": {
+      "fitctl.runtime.cuda": {
+        "schema_id": "fitctl.extension.runtime.cuda.requirement.v1",
+        "schema_version": 1,
+        "required_runtime": "cuda",
+        "require_presence": true,
+        "minimum_version": {
+          "major": 12,
+          "minor": 0,
+          "patch": 0
+        },
+        "minimum_device_allocatable_memory_bytes": 17179869184
+      }
+    },
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

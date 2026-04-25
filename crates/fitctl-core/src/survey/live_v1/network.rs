@@ -165,10 +165,13 @@ pub(super) fn read_network_address_map() -> Option<BTreeMap<String, Vec<NetworkA
                 if !is_valid_ip_address(address_family, address, prefix_len) {
                     continue;
                 }
+                let Ok(prefix_len) = u8::try_from(prefix_len) else {
+                    continue;
+                };
                 addresses.push(NetworkAddressV1 {
                     family: address_family,
                     address: address.to_string(),
-                    prefix_len: prefix_len as u8,
+                    prefix_len,
                 });
             }
         }

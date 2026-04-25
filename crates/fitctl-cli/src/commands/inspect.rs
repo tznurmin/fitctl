@@ -154,7 +154,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl inspect [--input <path>] [--verbose] [--show-identifiers] [--color <auto|always|never>] [--view <summary|matrix>] [--matrix]\n\nNotes:\n  - when --input is omitted and stdin is piped, inspect reads the artifact from stdin\n  - pass --input - to force stdin explicitly\n  - pass --verbose to include provenance-heavy metadata and hidden diagnostic fields\n  - pass --show-identifiers to reveal full stable identifiers, digests, and fingerprints without the full verbose surface\n  - pass --color auto|always|never to control ANSI colour in terminal output\n  - pass --view matrix or --matrix to render the explicit batch-classification matrix view\n  - matrix view is supported only for batch-classification reports\n  - NO_COLOR disables colour in auto mode\n"
+    "Usage:\n  fitctl inspect [--input <path>] [--verbose] [--show-identifiers] [--color <auto|always|never>] [--view <summary|coverage|matrix>] [--matrix]\n\nNotes:\n  - when --input is omitted and stdin is piped, inspect reads the artifact from stdin\n  - pass --input - to force stdin explicitly\n  - pass --verbose to include provenance-heavy metadata and hidden diagnostic fields\n  - pass --show-identifiers to reveal full stable identifiers, digests, and fingerprints without the full verbose surface\n  - pass --color auto|always|never to control ANSI colour in terminal output\n  - pass --view coverage to render grouped coverage detail for survey, contract, and state artifacts\n  - pass --view matrix or --matrix to render the explicit batch-classification matrix view\n  - matrix view is supported only for batch-classification reports\n  - NO_COLOR disables colour in auto mode\n"
 }
 
 fn load_artifact_record_from_stdin() -> Result<fitctl_core::inspect::InspectArtifactV1, String> {
@@ -183,8 +183,9 @@ enum ColorModeV1 {
 fn parse_inspect_view(value: &str) -> Result<InspectViewV1, &'static str> {
     match value {
         "summary" => Ok(InspectViewV1::Summary),
+        "coverage" => Ok(InspectViewV1::Coverage),
         "matrix" => Ok(InspectViewV1::Matrix),
-        _ => Err("--view must be one of: summary, matrix"),
+        _ => Err("--view must be one of: summary, coverage, matrix"),
     }
 }
 
@@ -245,8 +246,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_inspect_view_accepts_summary_and_matrix_only() {
+    fn parse_inspect_view_accepts_supported_values_only() {
         assert_eq!(parse_inspect_view("summary"), Ok(InspectViewV1::Summary));
+        assert_eq!(parse_inspect_view("coverage"), Ok(InspectViewV1::Coverage));
         assert_eq!(parse_inspect_view("matrix"), Ok(InspectViewV1::Matrix));
         assert!(parse_inspect_view("rows").is_err());
     }

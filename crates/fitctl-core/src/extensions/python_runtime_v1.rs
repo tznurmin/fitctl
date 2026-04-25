@@ -21,25 +21,23 @@ use crate::artifacts::survey_v1::{
 };
 use crate::redact::profile_v1::BuiltInRedactionProfileV1;
 
-pub const PYTHON_RUNTIME_NAMESPACE: &str = "org.example.runtime.python";
-pub const PYTHON_RUNTIME_EVIDENCE_SCHEMA_ID: &str =
-    "fitctl.extension.org.example.runtime.python.evidence.v1";
-pub const PYTHON_RUNTIME_CONTRACT_SCHEMA_ID: &str =
-    "fitctl.extension.org.example.runtime.python.contract.v1";
+pub const PYTHON_RUNTIME_NAMESPACE: &str = "fitctl.runtime.python";
+pub const PYTHON_RUNTIME_EVIDENCE_SCHEMA_ID: &str = "fitctl.extension.runtime.python.evidence.v1";
+pub const PYTHON_RUNTIME_CONTRACT_SCHEMA_ID: &str = "fitctl.extension.runtime.python.contract.v1";
 pub const PYTHON_RUNTIME_REQUIREMENT_SCHEMA_ID: &str =
-    "fitctl.extension.org.example.runtime.python.requirement.v1";
+    "fitctl.extension.runtime.python.requirement.v1";
 
-const PYTHON_RUNTIME_COLLECTOR_ID: &str = "org.example.runtime.python.collector.v1";
+const PYTHON_RUNTIME_COLLECTOR_ID: &str = "fitctl.runtime.python.collector.v1";
 const PYTHON_RUNTIME_COLLECTOR_VERSION: &str = "1";
 const PYTHON_RUNTIME_LIVE_SOURCE_FAMILY: &str = "command_probe";
 const PYTHON_RUNTIME_REPLAY_SOURCE_FAMILY: &str = "fixture_replay";
 const PYTHON_RUNTIME_REPLAY_CORPUS_SCHEMA_ID: &str =
-    "fitctl.fixture.extension.org.example.runtime.python.corpus.v1";
+    "fitctl.fixture.extension.runtime.python.corpus.v1";
 const PYTHON_RUNTIME_REPLAY_SNAPSHOT_SCHEMA_ID: &str =
-    "fitctl.fixture.extension.org.example.runtime.python.snapshot.v1";
+    "fitctl.fixture.extension.runtime.python.snapshot.v1";
 
-const PYTHON_EVIDENCE_PATH: &str = "$.survey.extension_evidence.org.example.runtime.python";
-const PYTHON_CONTRACT_PATH: &str = "$.contract.extension_contract.org.example.runtime.python";
+const PYTHON_EVIDENCE_PATH: &str = "$.survey.extension_evidence.fitctl.runtime.python";
+const PYTHON_CONTRACT_PATH: &str = "$.contract.extension_contract.fitctl.runtime.python";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PythonRuntimeExtensionError {

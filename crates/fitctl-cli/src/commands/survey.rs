@@ -8,11 +8,15 @@ use std::process::ExitCode;
 
 use fitctl_core::config::{load_extension_pack_from_path, load_invocation_context_from_path};
 use fitctl_core::extensions::{
-    apply_cuda_runtime_extension_to_survey_v1, apply_node_runtime_extension_to_survey_v1,
-    apply_python_runtime_extension_to_survey_v1, CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE,
-    PYTHON_RUNTIME_NAMESPACE,
+    apply_cuda_runtime_extension_to_survey_with_selection_v1,
+    apply_node_runtime_extension_to_survey_v1, apply_python_runtime_extension_to_survey_v1,
+    CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
 };
 use fitctl_core::survey::{LocalLiveProbeV1, SurveyEngineV1, SurveyModeV1};
+
+use crate::commands::state_support::{
+    resolve_cuda_selected_environment_request_v1, CudaSelectedEnvironmentCliInputV1,
+};
 
 pub fn run(args: &[String]) -> ExitCode {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -26,6 +30,9 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut extension_pack_paths = Vec::new();
     let mut invocation_context_path: Option<PathBuf> = None;
     let mut enabled_extension_namespaces = Vec::new();
+    let mut cuda_environment_catalogue_path: Option<PathBuf> = None;
+    let mut cuda_environment_id: Option<String> = None;
+    let mut cuda_selected_environment_input_path: Option<PathBuf> = None;
 
     let mut index = 0;
     while index < args.len() {
@@ -73,6 +80,30 @@ pub fn run(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 };
                 enabled_extension_namespaces.push(value.clone());
+                index += 2;
+            }
+            "--cuda-environment-catalogue" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl survey: --cuda-environment-catalogue requires a path");
+                    return ExitCode::from(2);
+                };
+                cuda_environment_catalogue_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--cuda-environment-id" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl survey: --cuda-environment-id requires an id");
+                    return ExitCode::from(2);
+                };
+                cuda_environment_id = Some(value.clone());
+                index += 2;
+            }
+            "--cuda-selected-environment-input" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl survey: --cuda-selected-environment-input requires a path");
+                    return ExitCode::from(2);
+                };
+                cuda_selected_environment_input_path = Some(PathBuf::from(value));
                 index += 2;
             }
             unknown => {
@@ -151,6 +182,21 @@ pub fn run(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    let cuda_selected_environment = match resolve_cuda_selected_environment_request_v1(
+        use_live_mode,
+        &requested_extension_namespaces,
+        &CudaSelectedEnvironmentCliInputV1 {
+            catalogue_path: cuda_environment_catalogue_path,
+            environment_id: cuda_environment_id,
+            replay_input_path: cuda_selected_environment_input_path,
+        },
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            eprintln!("fitctl survey: {error}");
+            return ExitCode::from(2);
+        }
+    };
 
     let engine = SurveyEngineV1::new(LocalLiveProbeV1);
     match engine.collect_host_survey(mode) {
@@ -173,14 +219,17 @@ pub fn run(args: &[String]) -> ExitCode {
                 namespaces.dedup();
                 for namespace in namespaces {
                     let result = match namespace.as_str() {
-                        CUDA_RUNTIME_NAMESPACE => apply_cuda_runtime_extension_to_survey_v1(
-                            survey,
-                            replay_extensions_root
-                                .as_ref()
-                                .map(|root| root.join("cuda_runtime"))
-                                .as_deref(),
-                        )
-                        .map_err(|error| error.to_string()),
+                        CUDA_RUNTIME_NAMESPACE => {
+                            apply_cuda_runtime_extension_to_survey_with_selection_v1(
+                                survey,
+                                replay_extensions_root
+                                    .as_ref()
+                                    .map(|root| root.join("cuda_runtime"))
+                                    .as_deref(),
+                                cuda_selected_environment.as_ref(),
+                            )
+                            .map_err(|error| error.to_string())
+                        }
                         PYTHON_RUNTIME_NAMESPACE => apply_python_runtime_extension_to_survey_v1(
                             survey,
                             replay_extensions_root
@@ -229,5 +278,5 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl survey [--live] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...]\n  fitctl survey --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...]\n\nNotes:\n  - live local survey is the default when --fixture is not provided\n  - fixture mode is explicit and intended for tests, examples, and deterministic replay\n"
+    "Usage:\n  fitctl survey [--live] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl survey --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - live local survey is the default when --fixture is not provided\n  - fixture mode is explicit and intended for tests, examples, and deterministic replay\n"
 }

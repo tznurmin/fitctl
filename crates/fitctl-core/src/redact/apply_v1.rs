@@ -348,6 +348,9 @@ fn redact_state_artifact(
         artifact.envelope.artifact_id = profile.artifact_id_placeholder("state");
         artifact.state.snapshot_id = host_placeholder.clone();
         artifact.state.host_alias = host_placeholder;
+        if let Some(local_identity) = artifact.state.local_identity.as_mut() {
+            local_identity.local_stable_id = profile.local_stable_identity_placeholder();
+        }
     }
     if profile.applies_auditor_redactions() {
         artifact.state.source_ref = profile.source_ref_placeholder();

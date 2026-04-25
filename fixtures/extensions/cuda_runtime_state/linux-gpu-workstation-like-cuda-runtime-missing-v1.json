@@ -1,0 +1,38 @@
+{
+  "schema_id": "fitctl.fixture.extension.runtime.cuda.state.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-workstation-like-cuda-runtime-missing-v1",
+  "namespace": "fitctl.runtime.cuda",
+  "state": {
+    "schema_id": "fitctl.extension.runtime.cuda.state.v1",
+    "schema_version": 1,
+    "collector": {
+      "collector_id": "fitctl.runtime.cuda.state_collector.v1",
+      "collector_version": "1",
+      "source_family": "fixture_replay"
+    },
+    "claim_metadata": {
+      "assurance_source": "self_observed",
+      "derivation_stage": "normalized",
+      "source_collectors": [
+        "fitctl.runtime.cuda.state_collector.v1"
+      ],
+      "evidence_paths": [
+        "$.state.extension_state.fitctl.runtime.cuda"
+      ],
+      "policy_rule_id": null,
+      "trust_evidence_refs": []
+    },
+    "runtime_id": "cuda",
+    "runtime_state": "missing",
+    "devices": [],
+    "total_memory_bytes": {
+      "state": "missing",
+      "value": null
+    },
+    "allocatable_memory_bytes": {
+      "state": "missing",
+      "value": null
+    }
+  }
+}

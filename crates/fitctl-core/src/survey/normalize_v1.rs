@@ -7,8 +7,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
 use crate::artifacts::metadata_v1::{
-    AssuranceSourceV1, ClaimMetadataV1, CollectorMetadataV1, DerivationStageV1, IdentityClassV1,
-    IdentitySummaryV1,
+    AssuranceSourceV1, ClaimMetadataV1, CollectorMetadataV1, DerivationStageV1, IdentitySummaryV1,
 };
 use crate::artifacts::schema_ids_v1::{HOST_SURVEY_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION};
 use crate::artifacts::survey_v1::{
@@ -17,7 +16,7 @@ use crate::artifacts::survey_v1::{
 };
 use crate::artifacts::validation_v1::validate_host_survey;
 use crate::identity::{
-    derive_composition_digest_v1, derive_local_stable_id_v1, derive_provenance_fingerprint_v1,
+    derive_composition_digest_v1, derive_local_stable_id_v2, derive_provenance_fingerprint_v1,
 };
 use crate::survey::collector_matrix_v1::is_supported_collector_family;
 use crate::survey::live_v1::{
@@ -29,7 +28,7 @@ use crate::survey::live_v1::{
 };
 use crate::survey::{validate_observation_field_coherence_v1, SurveyError, SurveyErrorCode};
 
-pub(crate) fn build_host_survey_from_snapshot(
+pub fn build_host_survey_from_snapshot_v1(
     mut snapshot: CollectedHostSnapshotV1,
 ) -> Result<HostSurveyV1, SurveyError> {
     if snapshot.collectors.is_empty() {
@@ -63,7 +62,7 @@ pub(crate) fn build_host_survey_from_snapshot(
             execution_context: snapshot.execution_context.clone(),
             collectors: typed_collectors_from_snapshot(&snapshot.collectors),
             section_metadata: build_section_metadata(&snapshot),
-            identity_summary: build_identity_summary(&snapshot),
+            identity_summary: build_identity_summary_v2(&snapshot),
             observations: snapshot.observations.clone(),
         },
         extension_evidence: Default::default(),
@@ -159,9 +158,8 @@ fn build_section_metadata(snapshot: &CollectedHostSnapshotV1) -> SurveySectionMe
     }
 }
 
-fn build_identity_summary(snapshot: &CollectedHostSnapshotV1) -> IdentitySummaryV1 {
-    let local_stable_id =
-        derive_local_stable_id_v1(&snapshot.host_alias, &snapshot.provenance_source);
+fn build_identity_summary_v2(snapshot: &CollectedHostSnapshotV1) -> IdentitySummaryV1 {
+    let local_stable_id = derive_local_stable_id_v2(&snapshot.local_stable_identity_input);
     let composition_digest = derive_composition_digest_v1(
         snapshot
             .observations
@@ -212,12 +210,9 @@ fn build_identity_summary(snapshot: &CollectedHostSnapshotV1) -> IdentitySummary
         snapshot.execution_context.container_runtime.as_deref(),
     );
 
-    IdentitySummaryV1 {
-        identity_class: IdentityClassV1::LocalStable,
-        local_stable_id,
-        composition_digest,
-        provenance_fingerprint,
-    }
+    snapshot
+        .local_stable_identity_input
+        .derive_summary(composition_digest, provenance_fingerprint)
 }
 
 fn typed_collectors_from_snapshot(collectors: &[String]) -> Vec<CollectorMetadataV1> {

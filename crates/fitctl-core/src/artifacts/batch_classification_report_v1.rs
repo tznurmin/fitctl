@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::artifacts::envelope_v1::ArtifactEnvelopeV1;
+use crate::artifacts::state_v1::FreshnessStateV1;
 use crate::artifacts::validation_report_v1::{
     ValidationModeV1, ValidationReasonCodeV1, ValidationVerdictV1,
 };
@@ -22,6 +23,8 @@ pub struct BatchClassificationReportV1 {
 #[serde(deny_unknown_fields)]
 pub struct BatchClassificationBasisV1 {
     pub validation_mode: ValidationModeV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_state_age_seconds: Option<u64>,
     pub validated_at: String,
     pub validation_engine_id: String,
     pub validation_engine_version: String,
@@ -40,6 +43,35 @@ pub struct BatchClassificationContractRefV1 {
     pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_state: Option<BatchClassificationStateRefV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BatchClassificationStateRefV1 {
+    pub artifact_id: String,
+    pub semantic_hash: String,
+    pub observed_at: String,
+    pub freshness_state: FreshnessStateV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_basis: Option<BatchClassificationStateMatchBasisV1>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchClassificationStateMatchBasisV1 {
+    LocalStableId,
+    HostAliasFallback,
+}
+
+impl BatchClassificationStateMatchBasisV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalStableId => "local_stable_id",
+            Self::HostAliasFallback => "host_alias_fallback",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

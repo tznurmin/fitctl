@@ -1,0 +1,125 @@
+{
+  "envelope": {
+    "schema_id": "host-contract.v2",
+    "schema_version": 2,
+    "artifact_id": "contract-linux-bare-metal-like-v1-general-compute-default-v1",
+    "provenance": {
+      "source": "policy:general_compute_default_v1",
+      "collected_at": "unix:1776619931",
+      "fitctl_version": "0.2.1",
+      "command_name": "contract",
+      "correlation_id": "contract-linux-bare-metal-like-v1-general-compute-default-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "host_alias": "cpu-host-01",
+  "display_name": "cpu-host-01 / General compute default policy",
+  "short_display_name": "General compute default",
+  "contract_basis": {
+    "core_semantic_basis": {
+      "source_survey_semantic_hash": "2dfa03be1189efa2eebbb9f432c421d395bb936607f8f515ac78c429ee04b082",
+      "policy_semantic_hash": "3ad4beaa05baaea5ae9a605a60fb4869d47859ad949bd618b770c5534ff8c15f",
+      "derivation_engine_id": "fitctl.contract.v1",
+      "derivation_engine_version": "1",
+      "contract_schema_version": 2,
+      "selected_policy_layers": [
+        "defaults/general_compute",
+        "site/general_compute"
+      ]
+    },
+    "derivation_provenance": {
+      "derived_at": "unix:1776619931",
+      "notes": null
+    }
+  },
+  "contract": {
+    "core_contract": {
+      "capability_classes": {
+        "general_compute": {
+          "admissible": true,
+          "claim_metadata": {
+            "assurance_source": "self_observed",
+            "derivation_stage": "policy_asserted",
+            "evidence_paths": [
+              "$.survey.core_evidence.observations.cpu",
+              "$.survey.core_evidence.observations.memory",
+              "$.survey.core_evidence.execution_context",
+              "$.survey.core_evidence.observations.network"
+            ],
+            "policy_rule_id": "site/general_compute",
+            "source_collectors": [
+              "procfs",
+              "sysfs",
+              "cgroupfs",
+              "mountinfo",
+              "netdev",
+              "block_and_filesystem"
+            ],
+            "trust_evidence_refs": []
+          },
+          "evidence_refs": [
+            "$.survey.core_evidence.observations.cpu",
+            "$.survey.core_evidence.observations.memory",
+            "$.survey.core_evidence.execution_context",
+            "$.survey.core_evidence.observations.network"
+          ],
+          "rule_ids": [
+            "defaults/general_compute",
+            "site/general_compute"
+          ],
+          "summary": "host satisfies the general_compute capability baseline"
+        }
+      },
+      "execution_constraints": {
+        "container_runtime": null,
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "e3e780d38cb203d8cefff820550da3efad674d592d5edbd71404cdeaca5ad45e",
+        "identity_class": "local_stable",
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "c54c9da320db3fb89b9266d19033a4df0a58e1e4b231cce2c27ebdd527c38798",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "0de0aaf4078b91b34a7dc5397ad4e25b1254fbcced339fd41943531543a3d260"
+      },
+      "network_summary": {
+        "interface_kinds": [
+          "ethernet",
+          "loopback"
+        ],
+        "max_observed_speed_mbps": 1000,
+        "non_loopback_interfaces": 1,
+        "operability": {
+          "interfaces_with_known_speed": 1,
+          "physical_non_loopback_interfaces": 1,
+          "static_operability": "operable"
+        },
+        "total_interfaces": 2
+      },
+      "storage_summary": {
+        "block_device_classes": [
+          "solid_state"
+        ],
+        "filesystem_types": [
+          "ext4",
+          "xfs"
+        ],
+        "operability": {
+          "root_mount_present": true,
+          "static_operability": "operable",
+          "usable_block_devices": 1
+        },
+        "total_block_devices": 1,
+        "total_mounts": 2
+      },
+      "topology_summary": {
+        "cpu_packages": 1,
+        "numa_nodes": 1
+      }
+    }
+  }
+}

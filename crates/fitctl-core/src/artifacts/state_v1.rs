@@ -10,6 +10,10 @@ use serde_json::Value;
 
 use crate::artifacts::envelope_v1::ArtifactEnvelopeV1;
 use crate::artifacts::metadata_v1::{ClaimMetadataV1, CollectorMetadataV1};
+use crate::artifacts::metadata_v1::{
+    LocalStableAnchorFamilyV1, LocalStableAnchorSourceV1, LocalStableIdDegradedReasonV1,
+    LocalStableStabilityClassV1,
+};
 use crate::survey::{
     deserialize_observation_limitation_reason_opt_v1, ObservationLimitationReasonV1,
     ObservationStateV1,
@@ -34,9 +38,34 @@ pub struct HostStatePayloadV1 {
     pub snapshot_id: String,
     pub host_alias: String,
     pub source_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_identity: Option<StateLocalIdentityV1>,
     pub core_state: HostStateCoreV1,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extension_state: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Narrow local identity metadata used by host-state correlation.
+///
+/// State tracks only the local identity anchor used for correlation. Composition and provenance
+/// digests remain survey/contract concepts.
+pub struct StateLocalIdentityV1 {
+    pub local_stable_id: String,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub local_stable_id_version: u32,
+    pub local_stable_anchor_family: LocalStableAnchorFamilyV1,
+    pub local_stable_anchor_source: LocalStableAnchorSourceV1,
+    pub local_stable_stability_class: LocalStableStabilityClassV1,
+    #[serde(default)]
+    pub local_stable_id_degraded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_stable_id_degraded_reason: Option<LocalStableIdDegradedReasonV1>,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

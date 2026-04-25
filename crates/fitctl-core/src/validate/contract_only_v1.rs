@@ -35,8 +35,13 @@ use crate::artifacts::validation_v1::{
 };
 use crate::contract::{load_host_contract_artifact_from_path, HostContractPayloadV1};
 use crate::extensions::{
-    evaluate_registered_extension_requirement_v1, ExtensionEvaluatorRegistryErrorKindV1,
-    ExtensionRequirementEvaluationOutcomeV1,
+    decode_cuda_runtime_requirement_from_value, decode_cuda_runtime_state_from_value,
+    decode_cuda_runtime_validation_diagnostic_from_value,
+    evaluate_registered_extension_requirement_v1, CudaRuntimeDeviceStateV1, CudaRuntimeStateV1,
+    CudaRuntimeValidationCheckpointV1, CudaRuntimeValidationDetailCodeV1,
+    CudaRuntimeValidationDiagnosticV1, ExtensionEvaluatorRegistryErrorKindV1,
+    ExtensionRequirementEvaluationOutcomeV1, CUDA_RUNTIME_NAMESPACE,
+    CUDA_RUNTIME_VALIDATION_DIAGNOSTIC_MODEL_ID,
 };
 use crate::policy::capability_classes_v1::DerivedCapabilityClaimV1;
 use crate::service_profile::load_service_profile_from_path;
@@ -129,6 +134,29 @@ pub fn validate_request_v1(
                 format!("failed to decode host contract payload: {error}"),
             )
         })?;
+    if let Some(host_state) = request.host_state.as_ref() {
+        if let Some(local_identity) = host_state.state.local_identity.as_ref() {
+            let contract_local_stable_id = contract_payload
+                .core_contract
+                .identity_summary
+                .local_stable_id
+                .trim();
+            let state_local_stable_id = local_identity.local_stable_id.trim();
+            if !contract_local_stable_id.is_empty()
+                && !state_local_stable_id.is_empty()
+                && contract_local_stable_id != state_local_stable_id
+            {
+                return Err(ValidationError::new(
+                    ValidationErrorCode::ValidationInputInvalid,
+                    "validation_state_identity",
+                    format!(
+                        "host-state local identity {} does not match contract local identity {}",
+                        host_state.envelope.artifact_id, request.contract.envelope.artifact_id
+                    ),
+                ));
+            }
+        }
+    }
     let contract_semantic_hash =
         semantic_hash_hex_for_contract(&request.contract).map_err(|error| {
             ValidationError::new(
@@ -195,6 +223,14 @@ pub fn validate_request_v1(
         &request.contract,
         &contract_payload,
         &request.service_profile,
+    );
+    let report_payload = apply_runtime_extension_state_gate(
+        report_payload,
+        &request.service_profile,
+        request.host_state.as_ref(),
+        request.mode,
+        request.max_state_age_seconds,
+        &request.validated_at,
     );
     let report_payload = attach_validation_explanations_and_hints(report_payload);
 
@@ -264,6 +300,13 @@ fn attach_validation_explanations_and_hints(
 fn build_validation_explanations(
     report: &ValidationReportPayloadV1,
 ) -> Vec<ValidationExplanationV1> {
+    if let Some(diagnostic) = decode_cuda_runtime_validation_diagnostic_from_report(report) {
+        return vec![build_cuda_runtime_validation_explanation(
+            &diagnostic,
+            report.primary_reason_code,
+        )];
+    }
+
     let mut related_requirements = if !report.failed_requirements.is_empty() {
         report.failed_requirements.clone()
     } else {
@@ -298,6 +341,15 @@ fn build_validation_remediation_hints(
 
     if matches!(report.verdict, Verdict::Fit) {
         return vec![];
+    }
+
+    if let Some(diagnostic) = decode_cuda_runtime_validation_diagnostic_from_report(report) {
+        return build_cuda_runtime_validation_remediation_hint(
+            &diagnostic,
+            report.primary_reason_code,
+        )
+        .into_iter()
+        .collect();
     }
 
     let hint = match report.primary_reason_code {
@@ -739,6 +791,526 @@ fn apply_extension_requirements_gate(
     base.failed_requirements.dedup();
     base.selected_degradation_tier = None;
     base.summary = summary;
+    if matches!(reason_code, ValidationReasonCodeV1::RequirementUnsatisfied) {
+        if let Some((namespace, _)) = unsatisfied_extensions.first() {
+            if namespace == CUDA_RUNTIME_NAMESPACE {
+                if let Some(requirement_value) = service_profile
+                    .profile
+                    .extension_requirements
+                    .get(CUDA_RUNTIME_NAMESPACE)
+                {
+                    if let Ok(requirement) =
+                        decode_cuda_runtime_requirement_from_value(requirement_value)
+                    {
+                        if requirement.minimum_allocatable_memory_bytes.is_some()
+                            || service_profile
+                                .profile
+                                .core_requirements
+                                .min_policy_scoped_accelerators
+                                .is_some()
+                        {
+                            let related_requirements = if base.failed_requirements.is_empty() {
+                                vec![cuda_runtime_namespace_requirement_key()]
+                            } else {
+                                base.failed_requirements.clone()
+                            };
+                            let evidence_refs = if base.evidence_refs.is_empty() {
+                                vec![cuda_runtime_contract_evidence_ref()]
+                            } else {
+                                base.evidence_refs.clone()
+                            };
+                            attach_cuda_runtime_validation_diagnostic(
+                                &mut base,
+                                CudaRuntimeValidationDiagnosticSelector {
+                                    detail_code: CudaRuntimeValidationDetailCodeV1::StaticRequirementUnsatisfied,
+                                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionGate,
+                                },
+                                related_requirements,
+                                evidence_refs,
+                                CudaRuntimeValidationDiagnosticPayload {
+                                    required_allocatable_memory_bytes: requirement
+                                        .minimum_allocatable_memory_bytes,
+                                    observed_allocatable_memory_bytes: None,
+                                    observed_total_memory_bytes: None,
+                                    required_qualifying_device_count: service_profile
+                                        .profile
+                                        .core_requirements
+                                        .min_policy_scoped_accelerators,
+                                    observed_qualifying_device_count: None,
+                                    required_device_allocatable_memory_bytes: requirement
+                                        .minimum_device_allocatable_memory_bytes,
+                                    required_qualifying_device_aggregate_allocatable_memory_bytes:
+                                        requirement
+                                            .minimum_qualifying_device_aggregate_allocatable_memory_bytes,
+                                    observed_qualifying_device_aggregate_allocatable_memory_bytes:
+                                        None,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    base
+}
+
+fn apply_runtime_extension_state_gate(
+    mut base: ValidationReportPayloadV1,
+    service_profile: &ServiceProfileV1,
+    host_state: Option<&HostStateV1>,
+    mode: ValidationModeV1,
+    max_state_age_seconds: Option<u64>,
+    validated_at: &str,
+) -> ValidationReportPayloadV1 {
+    if !matches!(
+        base.verdict,
+        ValidationVerdictV1::Fit | ValidationVerdictV1::FitWithDegradation
+    ) {
+        return base;
+    }
+
+    let Some(requirement_value) = service_profile
+        .profile
+        .extension_requirements
+        .get(CUDA_RUNTIME_NAMESPACE)
+    else {
+        return base;
+    };
+
+    let requirement = match decode_cuda_runtime_requirement_from_value(requirement_value) {
+        Ok(requirement) => requirement,
+        Err(error) => {
+            return runtime_extension_validation_blocked_report(
+                base,
+                vec![cuda_runtime_namespace_requirement_key()],
+                vec![format!("$.state.extension_state.{CUDA_RUNTIME_NAMESPACE}")],
+                error.message,
+            );
+        }
+    };
+
+    let required_qualifying_device_count = service_profile
+        .profile
+        .core_requirements
+        .min_policy_scoped_accelerators;
+    let required_allocatable_memory_bytes = requirement.minimum_allocatable_memory_bytes;
+    let required_device_allocatable_memory_bytes =
+        requirement.minimum_device_allocatable_memory_bytes;
+    let required_qualifying_device_aggregate_allocatable_memory_bytes =
+        requirement.minimum_qualifying_device_aggregate_allocatable_memory_bytes;
+
+    if required_qualifying_device_count.is_none()
+        && required_allocatable_memory_bytes.is_none()
+        && required_qualifying_device_aggregate_allocatable_memory_bytes.is_none()
+    {
+        return base;
+    }
+
+    let requirement_keys = cuda_runtime_requirement_keys(
+        required_qualifying_device_count,
+        required_allocatable_memory_bytes,
+        required_device_allocatable_memory_bytes,
+        required_qualifying_device_aggregate_allocatable_memory_bytes,
+    );
+    let evidence_refs = cuda_runtime_gate_evidence_refs(
+        required_qualifying_device_count,
+        required_allocatable_memory_bytes,
+        required_device_allocatable_memory_bytes,
+        required_qualifying_device_aggregate_allocatable_memory_bytes,
+    );
+    let threshold_label = cuda_runtime_threshold_label(
+        required_qualifying_device_count,
+        required_allocatable_memory_bytes,
+        required_device_allocatable_memory_bytes,
+        required_qualifying_device_aggregate_allocatable_memory_bytes,
+    );
+    let diagnostic_payload = CudaRuntimeValidationDiagnosticPayload {
+        required_allocatable_memory_bytes,
+        observed_allocatable_memory_bytes: None,
+        observed_total_memory_bytes: None,
+        required_qualifying_device_count,
+        observed_qualifying_device_count: None,
+        required_device_allocatable_memory_bytes,
+        required_qualifying_device_aggregate_allocatable_memory_bytes,
+        observed_qualifying_device_aggregate_allocatable_memory_bytes: None,
+    };
+
+    if matches!(mode, ValidationModeV1::ContractOnly) {
+        return runtime_extension_state_missing_or_stale_report(
+            base,
+            requirement_keys,
+            evidence_refs,
+            ValidationReasonCodeV1::StateMissing,
+            &format!("contract-only validation requires host-state.v2 for {threshold_label}"),
+            CudaRuntimeValidationDiagnosticSelector {
+                detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing,
+                checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionState,
+            },
+            diagnostic_payload,
+        );
+    }
+
+    let Some(host_state) = host_state else {
+        return runtime_extension_state_missing_or_stale_report(
+            base,
+            requirement_keys,
+            evidence_refs,
+            ValidationReasonCodeV1::StateMissing,
+            &format!("host-state is required for {threshold_label}"),
+            CudaRuntimeValidationDiagnosticSelector {
+                detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing,
+                checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionState,
+            },
+            diagnostic_payload,
+        );
+    };
+
+    match is_state_stale(host_state, max_state_age_seconds, validated_at) {
+        Ok(true) => {
+            let summary = match mode {
+                ValidationModeV1::StateAdvisory => {
+                    format!("stale host-state remains explicit for {threshold_label}")
+                }
+                _ => format!("stale host-state blocks {threshold_label}"),
+            };
+            return runtime_extension_state_missing_or_stale_report(
+                base,
+                requirement_keys,
+                cuda_runtime_evidence_refs_with_freshness(evidence_refs),
+                ValidationReasonCodeV1::StateStale,
+                &summary,
+                CudaRuntimeValidationDiagnosticSelector {
+                    detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeStateStale,
+                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionFreshness,
+                },
+                diagnostic_payload,
+            );
+        }
+        Ok(false) => {}
+        Err(message) => return freshness_parse_failed_report(message),
+    }
+
+    let Some(state_value) = host_state.state.extension_state.get(CUDA_RUNTIME_NAMESPACE) else {
+        return runtime_extension_state_missing_or_stale_report(
+            base,
+            requirement_keys,
+            evidence_refs,
+            ValidationReasonCodeV1::StateMissing,
+            &format!(
+                "host-state does not include CUDA runtime extension state required for {threshold_label}"
+            ),
+            CudaRuntimeValidationDiagnosticSelector {
+                detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing,
+                checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionState,
+            },
+            diagnostic_payload,
+        );
+    };
+    let state = match decode_cuda_runtime_state_from_value(state_value) {
+        Ok(state) => state,
+        Err(error) => {
+            return runtime_extension_validation_blocked_report(
+                base,
+                requirement_keys,
+                evidence_refs,
+                error.message,
+            );
+        }
+    };
+
+    if !matches!(
+        state.runtime_state,
+        ObservationStateV1::Observed | ObservationStateV1::PartiallyObserved
+    ) {
+        let summary = if required_qualifying_device_count.is_some() {
+            format!("{threshold_label} are missing or unknown in host-state")
+        } else {
+            "CUDA allocatable memory is missing or unknown in host-state".to_string()
+        };
+        return runtime_extension_state_missing_or_stale_report(
+            base,
+            requirement_keys,
+            evidence_refs,
+            ValidationReasonCodeV1::StateMissing,
+            &summary,
+            CudaRuntimeValidationDiagnosticSelector {
+                detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing,
+                checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionState,
+            },
+            diagnostic_payload,
+        );
+    }
+
+    let allocatable_memory_bytes = required_allocatable_memory_bytes.map(|_| {
+        match (
+            &state.allocatable_memory_bytes.state,
+            &state.allocatable_memory_bytes.value,
+        ) {
+            (ObservationStateV1::Observed, Some(value))
+            | (ObservationStateV1::PartiallyObserved, Some(value)) => Ok(*value),
+            _ => Err(()),
+        }
+    });
+    let allocatable_memory_bytes = match allocatable_memory_bytes.transpose() {
+        Ok(value) => value,
+        Err(()) => {
+            return runtime_extension_state_missing_or_stale_report(
+                base,
+                requirement_keys,
+                evidence_refs,
+                ValidationReasonCodeV1::StateMissing,
+                "CUDA allocatable memory is missing or unknown in host-state",
+                CudaRuntimeValidationDiagnosticSelector {
+                    detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing,
+                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionState,
+                },
+                diagnostic_payload,
+            );
+        }
+    };
+
+    let observed_qualifying_device_count = (required_qualifying_device_count.is_some()
+        || required_qualifying_device_aggregate_allocatable_memory_bytes.is_some())
+    .then(|| {
+        cuda_runtime_qualifying_device_count(&state, required_device_allocatable_memory_bytes)
+    });
+
+    if let (Some(required_count), Some(observed_count)) = (
+        required_qualifying_device_count,
+        observed_qualifying_device_count,
+    ) {
+        if observed_count < required_count {
+            let threshold_summary = match required_device_allocatable_memory_bytes {
+                Some(minimum_device_allocatable_memory_bytes) => format!(
+                    "CUDA qualifying device count {} is below the required minimum {} at per-device floor {}",
+                    observed_count,
+                    required_count,
+                    format_bytes(minimum_device_allocatable_memory_bytes)
+                ),
+                None => format!(
+                    "CUDA qualifying device count {} is below the required minimum {}",
+                    observed_count, required_count
+                ),
+            };
+            return runtime_extension_threshold_unsatisfied_report(
+                base,
+                requirement_keys,
+                evidence_refs,
+                threshold_summary,
+                CudaRuntimeValidationDiagnosticSelector {
+                    detail_code:
+                        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceCountInsufficient,
+                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionSummary,
+                },
+                CudaRuntimeValidationDiagnosticPayload {
+                    required_allocatable_memory_bytes: None,
+                    observed_allocatable_memory_bytes: None,
+                    observed_total_memory_bytes: None,
+                    required_qualifying_device_count: Some(required_count),
+                    observed_qualifying_device_count: Some(observed_count),
+                    required_device_allocatable_memory_bytes,
+                    required_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                    observed_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                },
+            );
+        }
+    }
+
+    let observed_qualifying_device_aggregate_allocatable_memory_bytes =
+        required_qualifying_device_aggregate_allocatable_memory_bytes.map(|_| {
+            cuda_runtime_qualifying_device_aggregate_allocatable_memory(
+                &state,
+                required_device_allocatable_memory_bytes,
+            )
+        });
+
+    if let (Some(required_aggregate), Some(observed_aggregate)) = (
+        required_qualifying_device_aggregate_allocatable_memory_bytes,
+        observed_qualifying_device_aggregate_allocatable_memory_bytes,
+    ) {
+        if observed_aggregate < required_aggregate {
+            return runtime_extension_threshold_unsatisfied_report(
+                base,
+                requirement_keys,
+                evidence_refs,
+                format!(
+                    "CUDA qualifying-device aggregate allocatable memory {} is below the required floor {}",
+                    format_bytes(observed_aggregate),
+                    format_bytes(required_aggregate)
+                ),
+                CudaRuntimeValidationDiagnosticSelector {
+                    detail_code: CudaRuntimeValidationDetailCodeV1::QualifyingDeviceAggregateAllocatableMemoryInsufficient,
+                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionSummary,
+                },
+                CudaRuntimeValidationDiagnosticPayload {
+                    required_allocatable_memory_bytes: None,
+                    observed_allocatable_memory_bytes: None,
+                    observed_total_memory_bytes: None,
+                    required_qualifying_device_count,
+                    observed_qualifying_device_count,
+                    required_device_allocatable_memory_bytes,
+                    required_qualifying_device_aggregate_allocatable_memory_bytes: Some(
+                        required_aggregate,
+                    ),
+                    observed_qualifying_device_aggregate_allocatable_memory_bytes: Some(
+                        observed_aggregate,
+                    ),
+                },
+            );
+        }
+    }
+
+    if let (Some(required_allocatable_memory_bytes), Some(observed_allocatable_memory_bytes)) =
+        (required_allocatable_memory_bytes, allocatable_memory_bytes)
+    {
+        if observed_allocatable_memory_bytes < required_allocatable_memory_bytes {
+            return runtime_extension_threshold_unsatisfied_report(
+                base,
+                requirement_keys,
+                evidence_refs,
+                format!(
+                    "CUDA allocatable memory {} is below the required floor {}",
+                    format_bytes(observed_allocatable_memory_bytes),
+                    format_bytes(required_allocatable_memory_bytes)
+                ),
+                CudaRuntimeValidationDiagnosticSelector {
+                    detail_code: CudaRuntimeValidationDetailCodeV1::AllocatableMemoryInsufficient,
+                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionSummary,
+                },
+                CudaRuntimeValidationDiagnosticPayload {
+                    required_allocatable_memory_bytes: Some(required_allocatable_memory_bytes),
+                    observed_allocatable_memory_bytes: Some(observed_allocatable_memory_bytes),
+                    observed_total_memory_bytes: cuda_runtime_total_memory_bytes(host_state),
+                    required_qualifying_device_count: None,
+                    observed_qualifying_device_count: None,
+                    required_device_allocatable_memory_bytes: None,
+                    required_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                    observed_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                },
+            );
+        }
+    }
+
+    if let Some(required_allocatable_memory_bytes) = required_allocatable_memory_bytes {
+        if let Some(observed_allocatable_memory_bytes) = allocatable_memory_bytes {
+            base.matched_requirements
+                .push(cuda_runtime_allocatable_requirement_key());
+            base.matched_requirements.sort();
+            base.matched_requirements.dedup();
+            for evidence_ref in cuda_runtime_threshold_evidence_refs() {
+                if !base.evidence_refs.contains(&evidence_ref) {
+                    base.evidence_refs.push(evidence_ref);
+                }
+            }
+            base.evidence_refs.sort();
+            base.evidence_refs.dedup();
+            if required_qualifying_device_count.is_none() {
+                attach_cuda_runtime_validation_diagnostic(
+                    &mut base,
+                    CudaRuntimeValidationDiagnosticSelector {
+                        detail_code: CudaRuntimeValidationDetailCodeV1::RuntimeThresholdSatisfied,
+                        checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionSummary,
+                    },
+                    vec![cuda_runtime_allocatable_requirement_key()],
+                    cuda_runtime_threshold_evidence_refs(),
+                    CudaRuntimeValidationDiagnosticPayload {
+                        required_allocatable_memory_bytes: Some(required_allocatable_memory_bytes),
+                        observed_allocatable_memory_bytes: Some(observed_allocatable_memory_bytes),
+                        observed_total_memory_bytes: cuda_runtime_total_memory_bytes(host_state),
+                        required_qualifying_device_count: None,
+                        observed_qualifying_device_count: None,
+                        required_device_allocatable_memory_bytes: None,
+                        required_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                        observed_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                    },
+                );
+            }
+        }
+    }
+
+    if let Some(required_aggregate) = required_qualifying_device_aggregate_allocatable_memory_bytes
+    {
+        if let Some(observed_aggregate) =
+            observed_qualifying_device_aggregate_allocatable_memory_bytes
+        {
+            base.matched_requirements
+                .push(cuda_runtime_qualifying_device_aggregate_allocatable_requirement_key());
+            if required_device_allocatable_memory_bytes.is_some() {
+                base.matched_requirements
+                    .push(cuda_runtime_device_allocatable_requirement_key());
+            }
+            base.matched_requirements.sort();
+            base.matched_requirements.dedup();
+            for evidence_ref in evidence_refs.clone() {
+                if !base.evidence_refs.contains(&evidence_ref) {
+                    base.evidence_refs.push(evidence_ref);
+                }
+            }
+            base.evidence_refs.sort();
+            base.evidence_refs.dedup();
+            attach_cuda_runtime_validation_diagnostic(
+                &mut base,
+                CudaRuntimeValidationDiagnosticSelector {
+                    detail_code: CudaRuntimeValidationDetailCodeV1::QualifyingDeviceAggregateAllocatableMemoryThresholdSatisfied,
+                    checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionSummary,
+                },
+                requirement_keys,
+                evidence_refs,
+                CudaRuntimeValidationDiagnosticPayload {
+                    required_allocatable_memory_bytes: None,
+                    observed_allocatable_memory_bytes: None,
+                    observed_total_memory_bytes: None,
+                    required_qualifying_device_count,
+                    observed_qualifying_device_count,
+                    required_device_allocatable_memory_bytes,
+                    required_qualifying_device_aggregate_allocatable_memory_bytes: Some(
+                        required_aggregate,
+                    ),
+                    observed_qualifying_device_aggregate_allocatable_memory_bytes: Some(
+                        observed_aggregate,
+                    ),
+                },
+            );
+            return base;
+        }
+    }
+
+    if let Some(observed_qualifying_device_count) = observed_qualifying_device_count {
+        if required_device_allocatable_memory_bytes.is_some() {
+            base.matched_requirements
+                .push(cuda_runtime_device_allocatable_requirement_key());
+        }
+        base.matched_requirements.sort();
+        base.matched_requirements.dedup();
+        for evidence_ref in evidence_refs.clone() {
+            if !base.evidence_refs.contains(&evidence_ref) {
+                base.evidence_refs.push(evidence_ref);
+            }
+        }
+        base.evidence_refs.sort();
+        base.evidence_refs.dedup();
+        attach_cuda_runtime_validation_diagnostic(
+            &mut base,
+            CudaRuntimeValidationDiagnosticSelector {
+                detail_code: CudaRuntimeValidationDetailCodeV1::QualifyingDeviceThresholdSatisfied,
+                checkpoint: CudaRuntimeValidationCheckpointV1::RuntimeExtensionSummary,
+            },
+            requirement_keys,
+            evidence_refs,
+            CudaRuntimeValidationDiagnosticPayload {
+                required_allocatable_memory_bytes: None,
+                observed_allocatable_memory_bytes: None,
+                observed_total_memory_bytes: None,
+                required_qualifying_device_count,
+                observed_qualifying_device_count: Some(observed_qualifying_device_count),
+                required_device_allocatable_memory_bytes,
+                required_qualifying_device_aggregate_allocatable_memory_bytes: None,
+                observed_qualifying_device_aggregate_allocatable_memory_bytes: None,
+            },
+        );
+        return base;
+    }
     base
 }
 
@@ -1233,8 +1805,10 @@ fn evaluate_static_requirements(
     mut matched_requirements: Vec<String>,
 ) -> ValidationReportPayloadV1 {
     // The static path is ordered: unresolved assurance predicates first, then full-contract
-    // exclusions, then primary capability, then explicit assurance/topology/network checks, and
-    // finally degradation tiers in declared order if the primary path fails.
+    // exclusions, then primary capability, then primary-capability assurance, then the shared
+    // static hard-requirement bundle, and finally degradation tiers in declared order if the
+    // primary capability path is unavailable. Degradation candidates do not get to skip the
+    // shared hard gates.
     let profile = &service_profile.profile;
 
     if !profile.assurance_predicates.is_empty() {
@@ -1319,26 +1893,20 @@ fn evaluate_static_requirements(
             ) {
                 return report;
             }
-            if let Some(report) = evaluate_contract_topology_requirements(
+            if let Some(report) = evaluate_contract_shared_static_requirements(
                 contract,
                 service_profile,
                 matched_requirements.clone(),
             ) {
                 return report;
             }
-            if let Some(report) = evaluate_contract_accelerator_locality_requirements(
-                contract,
-                service_profile,
-                matched_requirements.clone(),
-            ) {
-                return report;
-            }
-            if let Some(report) = evaluate_contract_network_requirements(
-                contract,
-                service_profile,
-                matched_requirements.clone(),
-            ) {
-                return report;
+            if profile
+                .core_requirements
+                .min_policy_scoped_accelerators
+                .is_some()
+            {
+                matched_requirements
+                    .push("core_requirements.min_policy_scoped_accelerators".to_string());
             }
             return ValidationReportPayloadV1 {
                 verdict: ValidationVerdictV1::Fit,
@@ -1358,14 +1926,24 @@ fn evaluate_static_requirements(
             };
         }
 
-        if let Some((tier_id, fallback_match)) = select_degradation_tier(contract, profile) {
+        if let Some((tier_id, fallback_match)) = select_degradation_tier(contract, service_profile)
+        {
+            let mut matched_requirements = vec![
+                "core_requirements.allowed_visibility_scopes".to_string(),
+                format!("degradation_ladder.{tier_id}"),
+            ];
+            if profile
+                .core_requirements
+                .min_policy_scoped_accelerators
+                .is_some()
+            {
+                matched_requirements
+                    .push("core_requirements.min_policy_scoped_accelerators".to_string());
+            }
             return ValidationReportPayloadV1 {
                 verdict: ValidationVerdictV1::FitWithDegradation,
                 primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
-                matched_requirements: vec![
-                    "core_requirements.allowed_visibility_scopes".to_string(),
-                    format!("degradation_ladder.{tier_id}"),
-                ],
+                matched_requirements,
                 failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
                 evidence_refs: fallback_match.claim.evidence_refs.clone(),
                 policy_refs: fallback_match.claim.rule_ids.clone(),
@@ -1397,20 +1975,29 @@ fn evaluate_static_requirements(
 
         return degradation_path_unavailable_report(
             contract,
-            profile,
+            service_profile,
             matched_requirements,
             Some(primary_match),
         );
     }
 
-    if let Some((tier_id, fallback_match)) = select_degradation_tier(contract, profile) {
+    if let Some((tier_id, fallback_match)) = select_degradation_tier(contract, service_profile) {
+        let mut matched_requirements = vec![
+            "core_requirements.allowed_visibility_scopes".to_string(),
+            format!("degradation_ladder.{tier_id}"),
+        ];
+        if profile
+            .core_requirements
+            .min_policy_scoped_accelerators
+            .is_some()
+        {
+            matched_requirements
+                .push("core_requirements.min_policy_scoped_accelerators".to_string());
+        }
         return ValidationReportPayloadV1 {
             verdict: ValidationVerdictV1::FitWithDegradation,
             primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
-            matched_requirements: vec![
-                "core_requirements.allowed_visibility_scopes".to_string(),
-                format!("degradation_ladder.{tier_id}"),
-            ],
+            matched_requirements,
             failed_requirements: vec!["core_requirements.primary_capability_class".to_string()],
             evidence_refs: fallback_match.claim.evidence_refs.clone(),
             policy_refs: fallback_match.claim.rule_ids.clone(),
@@ -1441,7 +2028,7 @@ fn evaluate_static_requirements(
         };
     }
 
-    degradation_path_unavailable_report(contract, profile, matched_requirements, None)
+    degradation_path_unavailable_report(contract, service_profile, matched_requirements, None)
 }
 
 fn runtime_thresholds_declared(service_profile: &ServiceProfileV1) -> bool {
@@ -1476,6 +2063,518 @@ fn runtime_evidence_refs() -> Vec<String> {
         "$.state.core_state.resources.allocatable_cpu_logical_cores".to_string(),
         "$.state.core_state.resources.allocatable_memory_bytes".to_string(),
     ]
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.2} GiB", bytes as f64 / GIB)
+    } else {
+        format!("{:.2} MiB", bytes as f64 / MIB)
+    }
+}
+
+fn cuda_runtime_allocatable_requirement_key() -> String {
+    format!("extension_requirements.{CUDA_RUNTIME_NAMESPACE}.minimum_allocatable_memory_bytes")
+}
+
+fn cuda_runtime_device_allocatable_requirement_key() -> String {
+    format!(
+        "extension_requirements.{CUDA_RUNTIME_NAMESPACE}.minimum_device_allocatable_memory_bytes"
+    )
+}
+
+fn cuda_runtime_qualifying_device_aggregate_allocatable_requirement_key() -> String {
+    format!(
+        "extension_requirements.{CUDA_RUNTIME_NAMESPACE}.minimum_qualifying_device_aggregate_allocatable_memory_bytes"
+    )
+}
+
+fn cuda_runtime_namespace_requirement_key() -> String {
+    format!("extension_requirements.{CUDA_RUNTIME_NAMESPACE}")
+}
+
+fn cuda_runtime_contract_evidence_ref() -> String {
+    format!("$.contract.extension_contract.{CUDA_RUNTIME_NAMESPACE}")
+}
+
+fn cuda_runtime_threshold_evidence_refs() -> Vec<String> {
+    vec![format!(
+        "$.state.extension_state.{CUDA_RUNTIME_NAMESPACE}.allocatable_memory_bytes"
+    )]
+}
+
+fn cuda_runtime_device_count_evidence_refs() -> Vec<String> {
+    vec![format!(
+        "$.state.extension_state.{CUDA_RUNTIME_NAMESPACE}.devices"
+    )]
+}
+
+fn cuda_runtime_device_threshold_evidence_refs() -> Vec<String> {
+    vec![format!(
+        "$.state.extension_state.{CUDA_RUNTIME_NAMESPACE}.devices[].allocatable_memory_bytes"
+    )]
+}
+
+fn cuda_runtime_evidence_refs_with_freshness(mut refs: Vec<String>) -> Vec<String> {
+    refs.push("$.state.core_state.freshness.observed_at".to_string());
+    refs.push("$.state.core_state.freshness.freshness_state".to_string());
+    refs.sort();
+    refs.dedup();
+    refs
+}
+
+fn cuda_runtime_total_memory_bytes(host_state: &HostStateV1) -> Option<u64> {
+    let value = host_state
+        .state
+        .extension_state
+        .get(CUDA_RUNTIME_NAMESPACE)?;
+    let state = decode_cuda_runtime_state_from_value(value).ok()?;
+    match (
+        &state.total_memory_bytes.state,
+        &state.total_memory_bytes.value,
+    ) {
+        (ObservationStateV1::Observed, Some(value))
+        | (ObservationStateV1::PartiallyObserved, Some(value)) => Some(*value),
+        _ => None,
+    }
+}
+
+fn cuda_runtime_requirement_keys(
+    required_qualifying_device_count: Option<u32>,
+    required_allocatable_memory_bytes: Option<u64>,
+    required_device_allocatable_memory_bytes: Option<u64>,
+    required_qualifying_device_aggregate_allocatable_memory_bytes: Option<u64>,
+) -> Vec<String> {
+    let mut keys = Vec::new();
+    if required_qualifying_device_count.is_some() {
+        keys.push("core_requirements.min_policy_scoped_accelerators".to_string());
+    }
+    if required_allocatable_memory_bytes.is_some() {
+        keys.push(cuda_runtime_allocatable_requirement_key());
+    }
+    if required_device_allocatable_memory_bytes.is_some() {
+        keys.push(cuda_runtime_device_allocatable_requirement_key());
+    }
+    if required_qualifying_device_aggregate_allocatable_memory_bytes.is_some() {
+        keys.push(cuda_runtime_qualifying_device_aggregate_allocatable_requirement_key());
+    }
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn cuda_runtime_gate_evidence_refs(
+    required_qualifying_device_count: Option<u32>,
+    required_allocatable_memory_bytes: Option<u64>,
+    required_device_allocatable_memory_bytes: Option<u64>,
+    required_qualifying_device_aggregate_allocatable_memory_bytes: Option<u64>,
+) -> Vec<String> {
+    let mut refs = Vec::new();
+    if required_qualifying_device_count.is_some() {
+        refs.extend(cuda_runtime_device_count_evidence_refs());
+    }
+    if required_allocatable_memory_bytes.is_some() {
+        refs.extend(cuda_runtime_threshold_evidence_refs());
+    }
+    if required_device_allocatable_memory_bytes.is_some() {
+        refs.extend(cuda_runtime_device_threshold_evidence_refs());
+    }
+    if required_qualifying_device_aggregate_allocatable_memory_bytes.is_some() {
+        refs.extend(cuda_runtime_device_count_evidence_refs());
+        refs.extend(cuda_runtime_device_threshold_evidence_refs());
+    }
+    refs.sort();
+    refs.dedup();
+    refs
+}
+
+fn cuda_runtime_threshold_label(
+    required_qualifying_device_count: Option<u32>,
+    required_allocatable_memory_bytes: Option<u64>,
+    required_device_allocatable_memory_bytes: Option<u64>,
+    required_qualifying_device_aggregate_allocatable_memory_bytes: Option<u64>,
+) -> &'static str {
+    if required_qualifying_device_count.is_some()
+        && required_qualifying_device_aggregate_allocatable_memory_bytes.is_some()
+    {
+        "CUDA runtime qualifying-device aggregate-memory thresholds"
+    } else if required_qualifying_device_count.is_some()
+        && required_allocatable_memory_bytes.is_some()
+        && required_device_allocatable_memory_bytes.is_some()
+    {
+        "CUDA runtime qualifying-device and allocatable-memory thresholds"
+    } else if required_qualifying_device_count.is_some()
+        && required_device_allocatable_memory_bytes.is_some()
+    {
+        "CUDA runtime qualifying-device thresholds"
+    } else if required_qualifying_device_count.is_some()
+        && required_allocatable_memory_bytes.is_some()
+    {
+        "CUDA runtime device-count and allocatable-memory thresholds"
+    } else if required_qualifying_device_count.is_some() {
+        "CUDA runtime device-count thresholds"
+    } else {
+        "CUDA allocatable memory thresholds"
+    }
+}
+
+fn cuda_runtime_device_allocatable_bytes(state: &CudaRuntimeDeviceStateV1) -> Option<u64> {
+    match (
+        &state.allocatable_memory_bytes.state,
+        &state.allocatable_memory_bytes.value,
+    ) {
+        (ObservationStateV1::Observed, Some(value))
+        | (ObservationStateV1::PartiallyObserved, Some(value)) => Some(*value),
+        _ => None,
+    }
+}
+
+fn cuda_runtime_qualifying_device_count(
+    state: &CudaRuntimeStateV1,
+    required_device_allocatable_memory_bytes: Option<u64>,
+) -> u32 {
+    let count = state
+        .devices
+        .iter()
+        .filter(|device| match required_device_allocatable_memory_bytes {
+            Some(minimum) => {
+                cuda_runtime_device_allocatable_bytes(device).is_some_and(|value| value >= minimum)
+            }
+            None => true,
+        })
+        .count();
+    u32::try_from(count).expect("CUDA device count should fit into u32")
+}
+
+fn cuda_runtime_qualifying_device_aggregate_allocatable_memory(
+    state: &CudaRuntimeStateV1,
+    required_device_allocatable_memory_bytes: Option<u64>,
+) -> u64 {
+    state
+        .devices
+        .iter()
+        .filter_map(|device| {
+            let allocatable_bytes = cuda_runtime_device_allocatable_bytes(device)?;
+            match required_device_allocatable_memory_bytes {
+                Some(minimum) if allocatable_bytes < minimum => None,
+                _ => Some(allocatable_bytes),
+            }
+        })
+        .sum()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CudaRuntimeValidationDiagnosticSelector {
+    detail_code: CudaRuntimeValidationDetailCodeV1,
+    checkpoint: CudaRuntimeValidationCheckpointV1,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CudaRuntimeValidationDiagnosticPayload {
+    required_allocatable_memory_bytes: Option<u64>,
+    observed_allocatable_memory_bytes: Option<u64>,
+    observed_total_memory_bytes: Option<u64>,
+    required_qualifying_device_count: Option<u32>,
+    observed_qualifying_device_count: Option<u32>,
+    required_device_allocatable_memory_bytes: Option<u64>,
+    required_qualifying_device_aggregate_allocatable_memory_bytes: Option<u64>,
+    observed_qualifying_device_aggregate_allocatable_memory_bytes: Option<u64>,
+}
+
+fn attach_cuda_runtime_validation_diagnostic(
+    report: &mut ValidationReportPayloadV1,
+    selector: CudaRuntimeValidationDiagnosticSelector,
+    related_requirements: Vec<String>,
+    evidence_refs: Vec<String>,
+    payload: CudaRuntimeValidationDiagnosticPayload,
+) {
+    let diagnostic = CudaRuntimeValidationDiagnosticV1 {
+        diagnostic_model_id: CUDA_RUNTIME_VALIDATION_DIAGNOSTIC_MODEL_ID.to_string(),
+        diagnostic_model_version: 1,
+        detail_code: selector.detail_code,
+        checkpoint: selector.checkpoint,
+        related_requirements,
+        evidence_refs,
+        required_allocatable_memory_bytes: payload.required_allocatable_memory_bytes,
+        observed_allocatable_memory_bytes: payload.observed_allocatable_memory_bytes,
+        observed_total_memory_bytes: payload.observed_total_memory_bytes,
+        required_qualifying_device_count: payload.required_qualifying_device_count,
+        observed_qualifying_device_count: payload.observed_qualifying_device_count,
+        required_device_allocatable_memory_bytes: payload.required_device_allocatable_memory_bytes,
+        required_qualifying_device_aggregate_allocatable_memory_bytes: payload
+            .required_qualifying_device_aggregate_allocatable_memory_bytes,
+        observed_qualifying_device_aggregate_allocatable_memory_bytes: payload
+            .observed_qualifying_device_aggregate_allocatable_memory_bytes,
+    };
+
+    let value = serde_json::to_value(&diagnostic)
+        .expect("CUDA runtime validation diagnostic should encode");
+    report
+        .extension_diagnostics
+        .insert(CUDA_RUNTIME_NAMESPACE.to_string(), value);
+}
+
+fn decode_cuda_runtime_validation_diagnostic_from_report(
+    report: &ValidationReportPayloadV1,
+) -> Option<CudaRuntimeValidationDiagnosticV1> {
+    let value = report.extension_diagnostics.get(CUDA_RUNTIME_NAMESPACE)?;
+    decode_cuda_runtime_validation_diagnostic_from_value(value).ok()
+}
+
+fn cuda_runtime_required_threshold_summary(
+    diagnostic: &CudaRuntimeValidationDiagnosticV1,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(required_allocatable_memory_bytes) = diagnostic.required_allocatable_memory_bytes {
+        parts.push(format!(
+            "required allocatable-memory threshold {}",
+            format_bytes(required_allocatable_memory_bytes)
+        ));
+    }
+    if let Some(required_qualifying_device_count) = diagnostic.required_qualifying_device_count {
+        parts.push(format!(
+            "required qualifying-device count {}{}",
+            required_qualifying_device_count,
+            cuda_runtime_per_device_floor_suffix(diagnostic)
+        ));
+    }
+    if let Some(required_qualifying_device_aggregate_allocatable_memory_bytes) =
+        diagnostic.required_qualifying_device_aggregate_allocatable_memory_bytes
+    {
+        parts.push(format!(
+            "required qualifying-device aggregate allocatable-memory threshold {}",
+            format_bytes(required_qualifying_device_aggregate_allocatable_memory_bytes)
+        ));
+    }
+    if parts.is_empty() {
+        "unknown CUDA runtime threshold".to_string()
+    } else {
+        parts.join(" and ")
+    }
+}
+
+fn cuda_runtime_per_device_floor_suffix(diagnostic: &CudaRuntimeValidationDiagnosticV1) -> String {
+    diagnostic
+        .required_device_allocatable_memory_bytes
+        .map(|value| format!(" at per-device floor {}", format_bytes(value)))
+        .unwrap_or_default()
+}
+
+fn build_cuda_runtime_validation_explanation(
+    diagnostic: &CudaRuntimeValidationDiagnosticV1,
+    reason_code: ValidationReasonCodeV1,
+) -> ValidationExplanationV1 {
+    let summary = match diagnostic.detail_code {
+        CudaRuntimeValidationDetailCodeV1::StaticRequirementUnsatisfied => format!(
+            "CUDA runtime static requirement failed before runtime headroom was evaluated; {}.",
+            cuda_runtime_required_threshold_summary(diagnostic)
+        ),
+        CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing => format!(
+            "CUDA runtime state is missing for {}.",
+            cuda_runtime_required_threshold_summary(diagnostic)
+        ),
+        CudaRuntimeValidationDetailCodeV1::RuntimeStateStale => format!(
+            "CUDA runtime state is stale for {}.",
+            cuda_runtime_required_threshold_summary(diagnostic)
+        ),
+        CudaRuntimeValidationDetailCodeV1::AllocatableMemoryInsufficient => format!(
+            "CUDA allocatable memory {} is below the required threshold {}.",
+            format_bytes(
+                diagnostic
+                    .observed_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry observed allocatable memory"),
+            ),
+            format_bytes(
+                diagnostic
+                    .required_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry required bytes"),
+            )
+        ),
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceCountInsufficient => format!(
+            "CUDA qualifying device count {} is below the required threshold {}{}.",
+            diagnostic
+                .observed_qualifying_device_count
+                .expect("validated diagnostic should carry observed qualifying-device count"),
+            diagnostic
+                .required_qualifying_device_count
+                .expect("validated diagnostic should carry required qualifying-device count"),
+            cuda_runtime_per_device_floor_suffix(diagnostic)
+        ),
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceAggregateAllocatableMemoryInsufficient => format!(
+            "CUDA qualifying-device aggregate allocatable memory {} is below the required threshold {}{}.",
+            format_bytes(
+                diagnostic
+                    .observed_qualifying_device_aggregate_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry observed qualifying-device aggregate allocatable memory"),
+            ),
+            format_bytes(
+                diagnostic
+                    .required_qualifying_device_aggregate_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry required qualifying-device aggregate allocatable memory"),
+            ),
+            cuda_runtime_per_device_floor_suffix(diagnostic)
+        ),
+        CudaRuntimeValidationDetailCodeV1::RuntimeThresholdSatisfied => format!(
+            "CUDA allocatable memory {} satisfies the required threshold {}.",
+            format_bytes(
+                diagnostic
+                    .observed_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry observed allocatable memory"),
+            ),
+            format_bytes(
+                diagnostic
+                    .required_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry required bytes"),
+            )
+        ),
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceThresholdSatisfied => format!(
+            "CUDA qualifying device count {} satisfies the required threshold {}{}.",
+            diagnostic
+                .observed_qualifying_device_count
+                .expect("validated diagnostic should carry observed qualifying-device count"),
+            diagnostic
+                .required_qualifying_device_count
+                .expect("validated diagnostic should carry required qualifying-device count"),
+            cuda_runtime_per_device_floor_suffix(diagnostic)
+        ),
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceAggregateAllocatableMemoryThresholdSatisfied => format!(
+            "CUDA qualifying-device aggregate allocatable memory {} satisfies the required threshold {}{}.",
+            format_bytes(
+                diagnostic
+                    .observed_qualifying_device_aggregate_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry observed qualifying-device aggregate allocatable memory"),
+            ),
+            format_bytes(
+                diagnostic
+                    .required_qualifying_device_aggregate_allocatable_memory_bytes
+                    .expect("validated diagnostic should carry required qualifying-device aggregate allocatable memory"),
+            ),
+            cuda_runtime_per_device_floor_suffix(diagnostic)
+        ),
+    };
+
+    ValidationExplanationV1 {
+        explanation_id: format!("explain-cuda-runtime-{}", diagnostic.detail_code.as_str()),
+        reason_code,
+        summary,
+        related_requirements: diagnostic.related_requirements.clone(),
+        evidence_refs: diagnostic.evidence_refs.clone(),
+        policy_refs: vec![],
+    }
+}
+
+fn build_cuda_runtime_validation_remediation_hint(
+    diagnostic: &CudaRuntimeValidationDiagnosticV1,
+    reason_code: ValidationReasonCodeV1,
+) -> Option<ValidationRemediationHintV1> {
+    let hint = match diagnostic.detail_code {
+        CudaRuntimeValidationDetailCodeV1::StaticRequirementUnsatisfied => {
+            ValidationRemediationHintV1 {
+                hint_id: "review-cuda-runtime-contract-promise".to_string(),
+                reason_code,
+                summary: "Review the CUDA runtime contract promise before relying on runtime memory thresholds.".to_string(),
+                actions: vec![
+                    ValidationRemediationActionV1 {
+                        action_id: "inspect-cuda-extension-contract".to_string(),
+                        summary: "Inspect the CUDA extension contract section before treating runtime headroom as relevant.".to_string(),
+                    },
+                    ValidationRemediationActionV1 {
+                        action_id: "select-host-with-cuda-runtime".to_string(),
+                        summary: "Choose a host and policy combination that derives a usable CUDA runtime promise.".to_string(),
+                    },
+                ],
+            }
+        }
+        CudaRuntimeValidationDetailCodeV1::RuntimeStateMissing => ValidationRemediationHintV1 {
+            hint_id: "collect-cuda-runtime-state".to_string(),
+            reason_code,
+            summary: "Collect host-state with the CUDA runtime namespace before rerunning validation.".to_string(),
+            actions: vec![
+                ValidationRemediationActionV1 {
+                    action_id: "collect-fresh-host-state".to_string(),
+                    summary: "Emit a fresh host-state.v2 artifact that includes CUDA runtime extension state.".to_string(),
+                },
+                ValidationRemediationActionV1 {
+                    action_id: "inspect-cuda-runtime-state".to_string(),
+                    summary: "Inspect the CUDA runtime extension state rather than relying on the top-level reason code alone.".to_string(),
+                },
+            ],
+        },
+        CudaRuntimeValidationDetailCodeV1::RuntimeStateStale => ValidationRemediationHintV1 {
+            hint_id: "refresh-cuda-runtime-state".to_string(),
+            reason_code,
+            summary: "Refresh host-state so the CUDA runtime threshold uses current runtime evidence.".to_string(),
+            actions: vec![
+                ValidationRemediationActionV1 {
+                    action_id: "collect-fresh-host-state".to_string(),
+                    summary: "Collect a fresh host-state.v2 artifact with CUDA runtime extension state.".to_string(),
+                },
+                ValidationRemediationActionV1 {
+                    action_id: "review-state-age-window".to_string(),
+                    summary: "Review the configured max-state-age if CUDA runtime state is expiring sooner than intended.".to_string(),
+                },
+            ],
+        },
+        CudaRuntimeValidationDetailCodeV1::AllocatableMemoryInsufficient => {
+            ValidationRemediationHintV1 {
+                hint_id: "review-cuda-runtime-headroom".to_string(),
+                reason_code,
+                summary: "Choose a host with more free CUDA memory or lower the runtime threshold if the profile allows it.".to_string(),
+                actions: vec![
+                    ValidationRemediationActionV1 {
+                        action_id: "inspect-cuda-runtime-headroom".to_string(),
+                        summary: "Inspect the CUDA allocatable and total memory values recorded in the validation diagnostic.".to_string(),
+                    },
+                    ValidationRemediationActionV1 {
+                        action_id: "select-less-loaded-gpu-host-or-lower-threshold".to_string(),
+                        summary: "Choose a less loaded GPU host or lower the CUDA memory requirement only if the workload policy allows it.".to_string(),
+                    },
+                ],
+            }
+        }
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceCountInsufficient => {
+            ValidationRemediationHintV1 {
+                hint_id: "review-cuda-qualifying-device-count".to_string(),
+                reason_code,
+                summary: "Choose a host with more qualifying CUDA devices or lower the scoped GPU count only if the profile allows it.".to_string(),
+                actions: vec![
+                    ValidationRemediationActionV1 {
+                        action_id: "inspect-cuda-qualifying-device-count".to_string(),
+                        summary: "Inspect the CUDA runtime device list and qualifying-device count recorded in the validation diagnostic.".to_string(),
+                    },
+                    ValidationRemediationActionV1 {
+                        action_id: "select-host-with-more-qualifying-gpus-or-lower-threshold".to_string(),
+                        summary: "Choose a host with enough qualifying CUDA devices or lower the count only if the workload policy allows it.".to_string(),
+                    },
+                ],
+            }
+        }
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceAggregateAllocatableMemoryInsufficient => {
+            ValidationRemediationHintV1 {
+                hint_id: "review-cuda-qualifying-device-aggregate-memory".to_string(),
+                reason_code,
+                summary: "Choose a host with more allocatable memory across the qualifying CUDA devices or lower the aggregate threshold only if the profile allows it.".to_string(),
+                actions: vec![
+                    ValidationRemediationActionV1 {
+                        action_id: "inspect-cuda-qualifying-device-aggregate-memory".to_string(),
+                        summary: "Inspect the qualifying-device aggregate allocatable-memory value and per-device floor recorded in the CUDA runtime diagnostic.".to_string(),
+                    },
+                    ValidationRemediationActionV1 {
+                        action_id: "select-host-with-more-qualifying-cuda-memory-or-lower-threshold".to_string(),
+                        summary: "Choose a host with more allocatable memory across the qualifying CUDA devices or lower the aggregate threshold only if the workload policy allows it.".to_string(),
+                    },
+                ],
+            }
+        }
+        CudaRuntimeValidationDetailCodeV1::RuntimeThresholdSatisfied => return None,
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceThresholdSatisfied => return None,
+        CudaRuntimeValidationDetailCodeV1::QualifyingDeviceAggregateAllocatableMemoryThresholdSatisfied => return None,
+    };
+
+    Some(hint)
 }
 
 fn scalar_state_value<T: Copy>(
@@ -1514,6 +2613,42 @@ fn runtime_missing_report(
     missing
 }
 
+fn runtime_extension_state_missing_or_stale_report(
+    base: ValidationReportPayloadV1,
+    failed_requirements: Vec<String>,
+    evidence_refs: Vec<String>,
+    reason_code: ValidationReasonCodeV1,
+    summary: &str,
+    selector: CudaRuntimeValidationDiagnosticSelector,
+    payload: CudaRuntimeValidationDiagnosticPayload,
+) -> ValidationReportPayloadV1 {
+    let mut warnings = base.warnings.clone();
+    warnings.push(summary.to_string());
+    let mut matched_requirements = base.matched_requirements;
+    matched_requirements.retain(|requirement| !failed_requirements.contains(requirement));
+    let mut report = ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Indeterminate,
+        primary_reason_code: reason_code,
+        matched_requirements,
+        failed_requirements: failed_requirements.clone(),
+        evidence_refs: evidence_refs.clone(),
+        policy_refs: base.policy_refs,
+        assurance_mismatches: base.assurance_mismatches,
+        selected_degradation_tier: None,
+        warnings,
+        summary: summary.to_string(),
+        ..ValidationReportPayloadV1::default()
+    };
+    attach_cuda_runtime_validation_diagnostic(
+        &mut report,
+        selector,
+        failed_requirements,
+        evidence_refs,
+        payload,
+    );
+    report
+}
+
 fn runtime_threshold_unsatisfied_report(
     mut base: ValidationReportPayloadV1,
     failed_requirements: Vec<String>,
@@ -1530,12 +2665,67 @@ fn runtime_threshold_unsatisfied_report(
     base
 }
 
+fn runtime_extension_threshold_unsatisfied_report(
+    mut base: ValidationReportPayloadV1,
+    failed_requirements: Vec<String>,
+    evidence_refs: Vec<String>,
+    summary: String,
+    selector: CudaRuntimeValidationDiagnosticSelector,
+    payload: CudaRuntimeValidationDiagnosticPayload,
+) -> ValidationReportPayloadV1 {
+    base.verdict = ValidationVerdictV1::Unfit;
+    base.primary_reason_code = ValidationReasonCodeV1::RequirementUnsatisfied;
+    base.failed_requirements = failed_requirements.clone();
+    base.matched_requirements
+        .retain(|requirement| !failed_requirements.contains(requirement));
+    base.selected_degradation_tier = None;
+    base.summary = summary;
+    base.evidence_refs.extend(evidence_refs.clone());
+    base.evidence_refs.sort();
+    base.evidence_refs.dedup();
+    attach_cuda_runtime_validation_diagnostic(
+        &mut base,
+        selector,
+        failed_requirements,
+        evidence_refs,
+        payload,
+    );
+    base
+}
+
+fn runtime_extension_validation_blocked_report(
+    base: ValidationReportPayloadV1,
+    failed_requirements: Vec<String>,
+    evidence_refs: Vec<String>,
+    summary: String,
+) -> ValidationReportPayloadV1 {
+    let mut warnings = base.warnings;
+    warnings.push(summary.clone());
+    ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Indeterminate,
+        primary_reason_code: ValidationReasonCodeV1::ValidationBlocked,
+        matched_requirements: base.matched_requirements,
+        failed_requirements,
+        evidence_refs,
+        policy_refs: base.policy_refs,
+        assurance_mismatches: base.assurance_mismatches,
+        selected_degradation_tier: None,
+        warnings,
+        summary,
+        ..ValidationReportPayloadV1::default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DegradationTierFailureReasonV1 {
     Forbidden,
     Absent,
     Inadmissible {
         matched_capability_class: String,
+        summary: String,
+    },
+    StaticRequirementFailure {
+        reason_code: ValidationReasonCodeV1,
         summary: String,
     },
 }
@@ -1551,11 +2741,12 @@ struct DegradationTierFailureV1 {
 
 fn degradation_path_unavailable_report(
     contract: &HostContractPayloadV1,
-    profile: &crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+    service_profile: &ServiceProfileV1,
     matched_requirements: Vec<String>,
     primary_match: Option<CapabilityMatchV1<'_>>,
 ) -> ValidationReportPayloadV1 {
-    let failures = collect_degradation_tier_failures(contract, profile);
+    let profile = &service_profile.profile;
+    let failures = collect_degradation_tier_failures(contract, service_profile);
     let (evidence_refs, policy_refs) = collect_degradation_failure_refs(&failures);
     let primary_summary = format_primary_capability_failure(
         &profile.core_requirements.primary_capability_class,
@@ -1591,9 +2782,10 @@ fn degradation_path_unavailable_report(
 
 fn collect_degradation_tier_failures(
     contract: &HostContractPayloadV1,
-    profile: &crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+    service_profile: &ServiceProfileV1,
 ) -> Vec<DegradationTierFailureV1> {
     let mut failures = Vec::new();
+    let profile = &service_profile.profile;
 
     for tier in &profile.degradation_ladder {
         if is_forbidden(profile, &tier.acceptable_capability_class) {
@@ -1630,6 +2822,28 @@ fn collect_degradation_tier_failures(
                 },
                 evidence_refs: capability_match.claim.evidence_refs.clone(),
                 policy_refs: capability_match.claim.rule_ids.clone(),
+            });
+            continue;
+        }
+
+        let matched_requirements = vec![
+            "core_requirements.allowed_visibility_scopes".to_string(),
+            format!("degradation_ladder.{}", tier.tier_id),
+        ];
+        if let Some(report) = evaluate_contract_shared_static_requirements(
+            contract,
+            service_profile,
+            matched_requirements,
+        ) {
+            failures.push(DegradationTierFailureV1 {
+                tier_id: tier.tier_id.clone(),
+                capability_class: tier.acceptable_capability_class.clone(),
+                reason: DegradationTierFailureReasonV1::StaticRequirementFailure {
+                    reason_code: report.primary_reason_code,
+                    summary: report.summary,
+                },
+                evidence_refs: report.evidence_refs,
+                policy_refs: report.policy_refs,
             });
         }
     }
@@ -1712,14 +2926,29 @@ fn format_degradation_tier_failure(failure: &DegradationTierFailureV1) -> String
                 )
             }
         }
+        DegradationTierFailureReasonV1::StaticRequirementFailure {
+            reason_code,
+            summary,
+        } => {
+            let descriptor = if matches!(reason_code, ValidationReasonCodeV1::EvidenceIncomplete) {
+                "static requirement evidence remains incomplete"
+            } else {
+                "static requirement check failed"
+            };
+            format!(
+                "{} requires {}, but {}: {}",
+                failure.tier_id, failure.capability_class, descriptor, summary
+            )
+        }
     }
 }
 
 fn select_degradation_tier<'a>(
     contract: &'a HostContractPayloadV1,
-    profile: &'a crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+    service_profile: &'a ServiceProfileV1,
 ) -> Option<(&'a str, CapabilityMatchV1<'a>)> {
     // Degradation ladder order is semantic. The first admissible fallback tier wins.
+    let profile = &service_profile.profile;
     for tier in &profile.degradation_ladder {
         if is_forbidden(profile, &tier.acceptable_capability_class) {
             continue;
@@ -1728,7 +2957,19 @@ fn select_degradation_tier<'a>(
             resolve_capability_match(contract, &tier.acceptable_capability_class)
         {
             if capability_match.claim.admissible {
-                return Some((&tier.tier_id, capability_match));
+                let matched_requirements = vec![
+                    "core_requirements.allowed_visibility_scopes".to_string(),
+                    format!("degradation_ladder.{}", tier.tier_id),
+                ];
+                if evaluate_contract_shared_static_requirements(
+                    contract,
+                    service_profile,
+                    matched_requirements,
+                )
+                .is_none()
+                {
+                    return Some((&tier.tier_id, capability_match));
+                }
             }
         }
     }
@@ -2124,6 +3365,97 @@ fn evaluate_contract_accelerator_locality_requirements(
                 ));
             }
         }
+    }
+
+    None
+}
+
+fn evaluate_contract_shared_static_requirements(
+    contract: &HostContractPayloadV1,
+    service_profile: &ServiceProfileV1,
+    matched_requirements: Vec<String>,
+) -> Option<ValidationReportPayloadV1> {
+    if let Some(report) = evaluate_contract_topology_requirements(
+        contract,
+        service_profile,
+        matched_requirements.clone(),
+    ) {
+        return Some(report);
+    }
+    if let Some(report) = evaluate_contract_accelerator_locality_requirements(
+        contract,
+        service_profile,
+        matched_requirements.clone(),
+    ) {
+        return Some(report);
+    }
+    if let Some(report) = evaluate_contract_network_requirements(
+        contract,
+        service_profile,
+        matched_requirements.clone(),
+    ) {
+        return Some(report);
+    }
+    evaluate_contract_policy_scoped_accelerator_count_requirement(
+        contract,
+        service_profile,
+        matched_requirements,
+    )
+}
+
+fn evaluate_contract_policy_scoped_accelerator_count_requirement(
+    contract: &HostContractPayloadV1,
+    service_profile: &ServiceProfileV1,
+    matched_requirements: Vec<String>,
+) -> Option<ValidationReportPayloadV1> {
+    let required_minimum = service_profile
+        .profile
+        .core_requirements
+        .min_policy_scoped_accelerators?;
+
+    let summary = &contract.core_contract.accelerator_summary;
+    let evidence_refs = vec![
+        "$.contract.accelerator_summary.policy_scoped_confirmed_accelerators".to_string(),
+        "$.contract.accelerator_summary.policy_scoped_unresolved_accelerators".to_string(),
+        "$.contract.accelerator_summary.policy_scoped_inventory_complete".to_string(),
+    ];
+    let failed_requirement = "core_requirements.min_policy_scoped_accelerators";
+
+    let Some(confirmed_count) = summary.policy_scoped_confirmed_accelerators else {
+        return Some(ValidationReportPayloadV1 {
+            verdict: ValidationVerdictV1::Indeterminate,
+            primary_reason_code: ValidationReasonCodeV1::EvidenceIncomplete,
+            matched_requirements,
+            failed_requirements: vec![failed_requirement.to_string()],
+            evidence_refs,
+            policy_refs: vec![],
+            assurance_mismatches: vec![],
+            selected_degradation_tier: None,
+            warnings: vec![],
+            summary:
+                "contract accelerator summary does not expose a policy-scoped accelerator count"
+                    .to_string(),
+            ..ValidationReportPayloadV1::default()
+        });
+    };
+
+    if confirmed_count < required_minimum {
+        return Some(ValidationReportPayloadV1 {
+            verdict: ValidationVerdictV1::Unfit,
+            primary_reason_code: ValidationReasonCodeV1::RequirementUnsatisfied,
+            matched_requirements,
+            failed_requirements: vec![failed_requirement.to_string()],
+            evidence_refs,
+            policy_refs: vec![],
+            assurance_mismatches: vec![],
+            selected_degradation_tier: None,
+            warnings: vec![],
+            summary: format!(
+                "contract policy-scoped accelerator count {} is below the required minimum {}",
+                confirmed_count, required_minimum
+            ),
+            ..ValidationReportPayloadV1::default()
+        });
     }
 
     None

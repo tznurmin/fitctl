@@ -26,6 +26,12 @@ pub struct ArtifactProvenanceV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fitctl_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fitctl_vcs_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fitctl_vcs_describe: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fitctl_build_dirty: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation_id: Option<String>,
@@ -68,7 +74,32 @@ pub fn local_artifact_provenance_v1(
         source: source.into(),
         collected_at: collected_at.into(),
         fitctl_version: Some(LOCAL_FITCTL_VERSION_V1.to_string()),
+        fitctl_vcs_revision: local_fitctl_vcs_revision_v1(),
+        fitctl_vcs_describe: local_fitctl_vcs_describe_v1(),
+        fitctl_build_dirty: local_fitctl_build_dirty_v1(),
         command_name: Some(command_name.into()),
         correlation_id: Some(correlation_id.into()),
+    }
+}
+
+fn local_fitctl_vcs_revision_v1() -> Option<String> {
+    option_env!("FITCTL_VCS_REVISION")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn local_fitctl_vcs_describe_v1() -> Option<String> {
+    option_env!("FITCTL_VCS_DESCRIBE")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn local_fitctl_build_dirty_v1() -> Option<bool> {
+    match option_env!("FITCTL_BUILD_DIRTY").map(str::trim) {
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        _ => None,
     }
 }

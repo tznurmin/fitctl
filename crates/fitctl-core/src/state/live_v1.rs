@@ -8,6 +8,7 @@ use crate::artifacts::state_v1::{
     FreshnessStateV1, HostRuntimeResourcesV1, HostStateExecutionBoundariesV1,
     HostStateOperabilityV1, HostStateTopologyV1, StateFieldV1, StateFreshnessV1,
 };
+use crate::identity::{select_live_linux_identity_input_v2, LocalStableIdentityInputV2};
 use crate::state::{LiveStateProbeV1, StateError, StateErrorCode};
 use crate::survey::{ObservationLimitationReasonV1, ObservationStateV1};
 
@@ -24,6 +25,7 @@ pub struct CollectedHostStateSnapshotV1 {
     pub snapshot_id: String,
     pub collected_at: String,
     pub host_alias: String,
+    pub local_stable_identity_input: Option<LocalStableIdentityInputV2>,
     pub collectors: Vec<String>,
     pub freshness: StateFreshnessV1,
     pub resources: HostRuntimeResourcesV1,
@@ -50,6 +52,12 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
     fn collect_snapshot(&self) -> Result<CollectedHostStateSnapshotV1, StateError> {
         let collected_at = current_epoch_marker();
         let host_alias = read_hostname().unwrap_or_else(|| "localhost".to_string());
+        let live_identity = select_live_linux_identity_input_v2(
+            read_trimmed("/etc/machine-id").as_deref(),
+            read_trimmed("/var/lib/dbus/machine-id").as_deref(),
+            read_trimmed("/sys/class/dmi/id/product_uuid").as_deref(),
+            read_kernel_hostname_for_identity_v2().as_deref(),
+        );
         let meminfo = read_meminfo_counters();
         let boundaries = read_execution_boundaries();
 
@@ -97,6 +105,7 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
             snapshot_id: host_alias.clone(),
             collected_at: collected_at.clone(),
             host_alias,
+            local_stable_identity_input: Some(live_identity.input),
             collectors: vec![
                 "runtime_cpu_capacity".to_string(),
                 "procfs_meminfo".to_string(),
@@ -276,6 +285,10 @@ fn read_trimmed(path: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn read_kernel_hostname_for_identity_v2() -> Option<String> {
+    read_trimmed("/proc/sys/kernel/hostname")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

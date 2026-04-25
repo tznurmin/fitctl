@@ -22,8 +22,8 @@
       ]
     },
     "extension_requirements": {
-      "org.example.runtime.python": {
-        "schema_id": "fitctl.extension.org.example.runtime.python.requirement.v1",
+      "fitctl.runtime.python": {
+        "schema_id": "fitctl.extension.runtime.python.requirement.v1",
         "schema_version": 1,
         "required_runtime": "python3",
         "require_presence": true,

@@ -1,0 +1,279 @@
+{
+  "envelope": {
+    "schema_id": "host-state.v2",
+    "schema_version": 2,
+    "artifact_id": "state-cuda-default-view-version-split",
+    "provenance": {
+      "source": "fixture_corpus:host_state_runtime_v1",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "state",
+      "correlation_id": "state-cuda-default-view-version-split"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "state": {
+    "collection_mode": "replay",
+    "snapshot_id": "linux-gpu-workstation-like-cuda-runtime-fit-v1",
+    "host_alias": "gpu-host-01",
+    "source_ref": "fixture_corpus:host_state_runtime_v1",
+    "core_state": {
+      "collectors": [
+        {
+          "collector_id": "cgroupfs_cpu_quota",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cgroupfs_cpuset",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cgroupfs_memory_boundary",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "procfs_meminfo",
+          "collector_version": "1",
+          "source_family": "procfs"
+        },
+        {
+          "collector_id": "runtime_cpu_capacity",
+          "collector_version": "1",
+          "source_family": "rust_std"
+        },
+        {
+          "collector_id": "sysfs_topology",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        }
+      ],
+      "section_metadata": {
+        "resources": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "cgroupfs_cpu_quota",
+            "cgroupfs_cpuset",
+            "cgroupfs_memory_boundary",
+            "procfs_meminfo",
+            "runtime_cpu_capacity",
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.resources"
+          ],
+          "trust_evidence_refs": []
+        },
+        "boundaries": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "cgroupfs_cpu_quota",
+            "cgroupfs_cpuset",
+            "cgroupfs_memory_boundary",
+            "procfs_meminfo",
+            "runtime_cpu_capacity",
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.boundaries"
+          ],
+          "trust_evidence_refs": []
+        },
+        "topology": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "cgroupfs_cpu_quota",
+            "cgroupfs_cpuset",
+            "cgroupfs_memory_boundary",
+            "procfs_meminfo",
+            "runtime_cpu_capacity",
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "operability": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "cgroupfs_cpu_quota",
+            "cgroupfs_cpuset",
+            "cgroupfs_memory_boundary",
+            "procfs_meminfo",
+            "runtime_cpu_capacity",
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.operability"
+          ],
+          "trust_evidence_refs": []
+        }
+      },
+      "freshness": {
+        "observed_at": "2025-04-21T14:37:19Z",
+        "freshness_state": "fresh"
+      },
+      "resources": {
+        "allocatable_cpu_logical_cores": {
+          "state": "observed",
+          "value": 12
+        },
+        "memory_total_bytes": {
+          "state": "observed",
+          "value": 68719476736
+        },
+        "allocatable_memory_bytes": {
+          "state": "observed",
+          "value": 51539607552
+        },
+        "memory_used_excluding_cache_bytes": {
+          "state": "observed",
+          "value": 17179869184
+        }
+      },
+      "boundaries": {
+        "cgroup_version": {
+          "state": "observed",
+          "value": "v2"
+        },
+        "cpuset_cpu_logical_cores": {
+          "state": "observed",
+          "value": 12
+        },
+        "cpu_quota_logical_cores": {
+          "state": "unknown",
+          "value": null
+        },
+        "memory_limit_bytes": {
+          "state": "unknown",
+          "value": null
+        },
+        "memory_current_bytes": {
+          "state": "unknown",
+          "value": null
+        }
+      },
+      "topology": {
+        "visible_numa_nodes": {
+          "state": "observed",
+          "value": 1
+        }
+      },
+      "operability": {
+        "degraded_capability_classes": []
+      }
+    },
+    "extension_state": {
+      "fitctl.runtime.cuda": {
+        "allocatable_memory_bytes": {
+          "state": "observed",
+          "value": 21474836480
+        },
+        "claim_metadata": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.state.extension_state.fitctl.runtime.cuda"
+          ],
+          "source_collectors": [
+            "fitctl.runtime.cuda.state_collector.v1"
+          ],
+          "trust_evidence_refs": []
+        },
+        "collector": {
+          "collector_id": "fitctl.runtime.cuda.state_collector.v1",
+          "collector_version": "1",
+          "source_family": "fixture_replay"
+        },
+        "devices": [
+          {
+            "allocatable_memory_bytes": {
+              "state": "observed",
+              "value": 21474836480
+            },
+            "device_ordinal": 0,
+            "device_uuid": "GPU-7f64c1a9-1f5a-4b07-9ed8-f3f177a9a8b0",
+            "total_memory_bytes": {
+              "state": "observed",
+              "value": 25769803776
+            }
+          }
+        ],
+        "runtime_id": "cuda",
+        "runtime_state": "observed",
+        "schema_id": "fitctl.extension.runtime.cuda.state.v1",
+        "schema_version": 1,
+        "total_memory_bytes": {
+          "state": "observed",
+          "value": 25769803776
+        },
+        "default_toolkit_version": {
+          "state": "observed",
+          "value": {
+            "major": 12,
+            "minor": 4,
+            "patch": 131
+          }
+        },
+        "driver_version": {
+          "state": "observed",
+          "value": {
+            "major": 550,
+            "minor": 54,
+            "patch": 15
+          }
+        },
+        "driver_supported_cuda_version": {
+          "state": "observed",
+          "value": {
+            "major": 12,
+            "minor": 6,
+            "patch": 0
+          }
+        },
+        "default_runtime_version": {
+          "state": "observed",
+          "value": {
+            "major": 12,
+            "minor": 4,
+            "patch": 0
+          }
+        },
+        "default_view_probe_diagnostics": {
+          "default_toolkit_version": {
+            "source_tier": "primary",
+            "source_kind": "command_probe",
+            "source_ref": "/usr/local/cuda/bin/nvcc",
+            "status": "observed"
+          },
+          "driver_version": {
+            "source_tier": "primary",
+            "source_kind": "file_probe",
+            "source_ref": "/proc/driver/nvidia/version",
+            "status": "observed"
+          },
+          "driver_supported_cuda_version": {
+            "source_tier": "primary",
+            "source_kind": "dynamic_library_probe",
+            "source_ref": "libcuda.so.1",
+            "status": "observed"
+          },
+          "default_runtime_version": {
+            "source_tier": "primary",
+            "source_kind": "dynamic_library_probe",
+            "source_ref": "libcudart.so",
+            "status": "observed"
+          }
+        }
+      }
+    }
+  }
+}

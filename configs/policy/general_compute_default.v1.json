@@ -6,9 +6,9 @@
   "short_display_name": "General compute default",
   "extension_policy": {
     "allowed_extension_namespaces": [
-      "org.example.runtime.cuda",
-      "org.example.runtime.node",
-      "org.example.runtime.python"
+      "fitctl.runtime.cuda",
+      "fitctl.runtime.node",
+      "fitctl.runtime.python"
     ]
   },
   "layers": [

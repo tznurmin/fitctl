@@ -1,0 +1,87 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-workstation-like-v1-general-compute-default-v1-service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+    "provenance": {
+      "source": "validate:state_required",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-workstation-like-v1-general-compute-default-v1-service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "state_required",
+    "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+    "service_profile_artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+    "contract_semantic_hash": "5f0c7ac985e70d4d9b88d7a84aa3e14983c99d6741b950f7ab5ddf8e54608086",
+    "service_profile_semantic_hash": "ea84c3ea092c4e9ac011ec2427d4465420a7f27335b5f2fa07fc0debe5dfd5a2",
+    "state_artifact_id": "state-linux-gpu-workstation-like-cuda-runtime-fit-v1",
+    "state_semantic_hash": "58a101983cf01b8180d70bdb685e1382e1ccecd7f1c771462a652486ca532530",
+    "state_observed_at": "2025-04-21T14:37:19Z",
+    "state_freshness_state": "fresh",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "fit",
+    "primary_reason_code": "requirements_satisfied",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.primary_capability_class",
+      "extension_requirements.fitctl.runtime.cuda",
+      "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+    ],
+    "failed_requirements": [],
+    "evidence_refs": [
+      "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes",
+      "$.survey.core_evidence.execution_context",
+      "$.survey.core_evidence.observations.cpu",
+      "$.survey.core_evidence.observations.memory",
+      "$.survey.core_evidence.observations.network"
+    ],
+    "policy_refs": [
+      "defaults/general_compute",
+      "site/general_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "extension_diagnostics": {
+      "fitctl.runtime.cuda": {
+        "checkpoint": "runtime_extension_summary",
+        "detail_code": "runtime_threshold_satisfied",
+        "diagnostic_model_id": "fitctl.cuda_runtime_validation_diagnostic.v1",
+        "diagnostic_model_version": 1,
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes"
+        ],
+        "observed_allocatable_memory_bytes": 21474836480,
+        "observed_total_memory_bytes": 25769803776,
+        "related_requirements": [
+          "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+        ],
+        "required_allocatable_memory_bytes": 17179869184
+      }
+    },
+    "explanations": [
+      {
+        "explanation_id": "explain-cuda-runtime-runtime_threshold_satisfied",
+        "reason_code": "requirements_satisfied",
+        "summary": "CUDA allocatable memory 20.00 GiB satisfies the required threshold 16.00 GiB.",
+        "related_requirements": [
+          "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+        ],
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes"
+        ],
+        "policy_refs": []
+      }
+    ],
+    "remediation_hints": [],
+    "summary": "service profile fits the general_compute capability baseline"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "envelope": {
+    "schema_id": "fitctl.batch-classification-report.v3",
+    "schema_version": 2,
+    "artifact_id": "batch-classification-a4bf9bfb9763dcd5",
+    "provenance": {
+      "source": "classify:state_required",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "classify",
+      "correlation_id": "mode:state_required;max_state_age:<none>;contracts:contract-linux-gpu-workstation-like-v1-general-compute-default-v1,contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1;profiles:service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1;states:state-linux-gpu-workstation-like-cuda-runtime-fit-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "classification_basis": {
+    "validation_mode": "state_required",
+    "validated_at": "2025-04-21T14:37:19Z",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1",
+    "ordered_contracts": [
+      {
+        "artifact_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+        "semantic_hash": "5f0c7ac985e70d4d9b88d7a84aa3e14983c99d6741b950f7ab5ddf8e54608086",
+        "host_alias": "gpu-host-01",
+        "display_name": "gpu-host-01 / General compute default policy",
+        "short_display_name": "General compute default",
+        "matched_state": {
+          "artifact_id": "state-linux-gpu-workstation-like-cuda-runtime-fit-v1",
+          "semantic_hash": "58a101983cf01b8180d70bdb685e1382e1ccecd7f1c771462a652486ca532530",
+          "observed_at": "2025-04-21T14:37:19Z",
+          "freshness_state": "fresh"
+        }
+      },
+      {
+        "artifact_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1",
+        "semantic_hash": "99817dcbe0dfb51d38d98ed94663da6b342733c99f77a45452a3edfe99d375bf",
+        "host_alias": "gpu-host-01",
+        "display_name": "gpu-host-01 / GPU compute default policy",
+        "short_display_name": "GPU compute default",
+        "matched_state": {
+          "artifact_id": "state-linux-gpu-workstation-like-cuda-runtime-fit-v1",
+          "semantic_hash": "58a101983cf01b8180d70bdb685e1382e1ccecd7f1c771462a652486ca532530",
+          "observed_at": "2025-04-21T14:37:19Z",
+          "freshness_state": "fresh"
+        }
+      }
+    ],
+    "ordered_service_profiles": [
+      {
+        "artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+        "semantic_hash": "ea84c3ea092c4e9ac011ec2427d4465420a7f27335b5f2fa07fc0debe5dfd5a2",
+        "display_name": "General compute with CUDA allocatable memory requirement",
+        "short_display_name": "General compute + CUDA memory"
+      }
+    ]
+  },
+  "report": {
+    "rows": [
+      {
+        "row_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1::service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+        "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+        "contract_semantic_hash": "5f0c7ac985e70d4d9b88d7a84aa3e14983c99d6741b950f7ab5ddf8e54608086",
+        "service_profile_artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+        "service_profile_semantic_hash": "ea84c3ea092c4e9ac011ec2427d4465420a7f27335b5f2fa07fc0debe5dfd5a2",
+        "verdict": "fit",
+        "primary_reason_code": "requirements_satisfied",
+        "summary": "service profile fits the general_compute capability baseline"
+      },
+      {
+        "row_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1::service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+        "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1",
+        "contract_semantic_hash": "99817dcbe0dfb51d38d98ed94663da6b342733c99f77a45452a3edfe99d375bf",
+        "service_profile_artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+        "service_profile_semantic_hash": "ea84c3ea092c4e9ac011ec2427d4465420a7f27335b5f2fa07fc0debe5dfd5a2",
+        "verdict": "fit",
+        "primary_reason_code": "requirements_satisfied",
+        "summary": "service profile fits the general_compute capability baseline via gpu_accelerated"
+      }
+    ],
+    "contract_summaries": [
+      {
+        "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+        "fit_profile_ids": [
+          "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1"
+        ],
+        "degraded_profile_ids": [],
+        "unfit_profile_ids": [],
+        "indeterminate_profile_ids": []
+      },
+      {
+        "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1",
+        "fit_profile_ids": [
+          "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1"
+        ],
+        "degraded_profile_ids": [],
+        "unfit_profile_ids": [],
+        "indeterminate_profile_ids": []
+      }
+    ],
+    "service_profile_summaries": [
+      {
+        "service_profile_artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+        "fit_contract_ids": [
+          "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+          "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
+        ],
+        "degraded_contract_ids": [],
+        "unfit_contract_ids": [],
+        "indeterminate_contract_ids": []
+      }
+    ]
+  }
+}

@@ -16,6 +16,9 @@ use crate::artifacts::service_profile_v1::{
     AssurancePredicateV1, ExplicitAssuranceRequirementV1, ServiceProfileV1,
 };
 use crate::artifacts::validation_v1::{validate_service_profile, ArtifactValidationErrorCode};
+use crate::extensions::{
+    decode_cuda_runtime_requirement_from_value, CudaRuntimeRequirementV1, CUDA_RUNTIME_NAMESPACE,
+};
 use crate::service_profile::{ServiceProfileError, ServiceProfileErrorCode};
 
 pub fn load_service_profile_from_path(
@@ -165,6 +168,7 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "min_numa_nodes",
             "max_numa_nodes",
             "min_cpu_packages",
+            "min_policy_scoped_accelerators",
             "require_accelerator_locality_known",
             "max_accelerator_numa_nodes",
         ],
@@ -182,6 +186,7 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "min_numa_nodes",
             "max_numa_nodes",
             "min_cpu_packages",
+            "min_policy_scoped_accelerators",
             "require_accelerator_locality_known",
             "max_accelerator_numa_nodes",
         ],
@@ -422,13 +427,17 @@ fn validate_service_profile_semantics(
             .is_some_and(|value| value == 0)
         || payload
             .core_requirements
+            .min_policy_scoped_accelerators
+            .is_some_and(|value| value == 0)
+        || payload
+            .core_requirements
             .max_accelerator_numa_nodes
             .is_some_and(|value| value == 0)
     {
         return Err(ServiceProfileError::new(
             ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
             "profile_validate",
-            "allocatable, network, topology, and accelerator locality thresholds must be positive when present",
+            "allocatable, network, topology, accelerator-count, and accelerator-locality thresholds must be positive when present",
         ));
     }
 
@@ -540,6 +549,52 @@ fn validate_service_profile_semantics(
                 "assurance requirement targets must be unique",
             ));
         }
+    }
+
+    validate_known_extension_requirement_semantics(profile)?;
+
+    Ok(())
+}
+
+fn validate_known_extension_requirement_semantics(
+    profile: &ServiceProfileV1,
+) -> Result<(), ServiceProfileError> {
+    let payload = &profile.profile;
+
+    if let Some(value) = payload.extension_requirements.get(CUDA_RUNTIME_NAMESPACE) {
+        let requirement = decode_cuda_runtime_requirement_from_value(value).map_err(|error| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileArtifactInvalid,
+                "profile_validate",
+                format!(
+                    "service profile CUDA runtime extension requirement is invalid: {}",
+                    error.message
+                ),
+            )
+        })?;
+        validate_cuda_runtime_requirement_semantics(requirement, payload)?;
+    }
+
+    Ok(())
+}
+
+fn validate_cuda_runtime_requirement_semantics(
+    requirement: CudaRuntimeRequirementV1,
+    payload: &crate::artifacts::service_profile_v1::ServiceProfilePayloadV1,
+) -> Result<(), ServiceProfileError> {
+    if requirement
+        .minimum_qualifying_device_aggregate_allocatable_memory_bytes
+        .is_some()
+        && payload
+            .core_requirements
+            .min_policy_scoped_accelerators
+            .is_none()
+    {
+        return Err(ServiceProfileError::new(
+            ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+            "profile_validate",
+            "CUDA qualifying-device aggregate allocatable-memory thresholds require core_requirements.min_policy_scoped_accelerators",
+        ));
     }
 
     Ok(())

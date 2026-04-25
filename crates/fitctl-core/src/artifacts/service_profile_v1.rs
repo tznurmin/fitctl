@@ -66,6 +66,8 @@ pub struct ServiceRequirementsV1 {
     #[serde(default)]
     pub min_cpu_packages: Option<u32>,
     #[serde(default)]
+    pub min_policy_scoped_accelerators: Option<u32>,
+    #[serde(default)]
     pub require_accelerator_locality_known: bool,
     #[serde(default)]
     pub max_accelerator_numa_nodes: Option<u32>,

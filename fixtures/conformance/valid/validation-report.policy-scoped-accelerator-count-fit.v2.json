@@ -1,0 +1,72 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1-service-profile-gpu-two-required-contract-only-v1",
+    "provenance": {
+      "source": "validate:contract_only",
+      "collected_at": "unix:1776599341",
+      "fitctl_version": "0.2.1",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1-service-profile-gpu-two-required-contract-only-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "contract_only",
+    "contract_artifact_id": "contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1",
+    "service_profile_artifact_id": "service-profile-gpu-two-required-contract-only-v1",
+    "contract_semantic_hash": "7d0987fd288ea349703e3befac209115cc8f030be074fe0430aed12c8e0da196",
+    "service_profile_semantic_hash": "8b694e826f1889cec38e3ab07713735d31ee8ff07a95e37e0fbede36d93d76fe",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "fit",
+    "primary_reason_code": "requirements_satisfied",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.primary_capability_class",
+      "core_requirements.min_policy_scoped_accelerators"
+    ],
+    "failed_requirements": [],
+    "evidence_refs": [
+      "$.survey.core_evidence.observations.cpu",
+      "$.survey.core_evidence.observations.memory",
+      "$.survey.core_evidence.execution_context",
+      "$.survey.core_evidence.observations.network",
+      "$.survey.core_evidence.observations.accelerators"
+    ],
+    "policy_refs": [
+      "defaults/nvidia_gpu_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "explanations": [
+      {
+        "explanation_id": "explain-requirements_satisfied",
+        "reason_code": "requirements_satisfied",
+        "summary": "service profile fits the gpu_accelerated capability baseline",
+        "related_requirements": [
+          "core_requirements.allowed_visibility_scopes",
+          "core_requirements.min_policy_scoped_accelerators",
+          "core_requirements.primary_capability_class"
+        ],
+        "evidence_refs": [
+          "$.survey.core_evidence.execution_context",
+          "$.survey.core_evidence.observations.accelerators",
+          "$.survey.core_evidence.observations.cpu",
+          "$.survey.core_evidence.observations.memory",
+          "$.survey.core_evidence.observations.network"
+        ],
+        "policy_refs": [
+          "defaults/nvidia_gpu_compute"
+        ]
+      }
+    ],
+    "remediation_hints": [],
+    "summary": "service profile fits the gpu_accelerated capability baseline"
+  }
+}

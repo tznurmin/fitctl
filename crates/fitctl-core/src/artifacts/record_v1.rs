@@ -403,7 +403,7 @@ fn load_artifact_record_from_value_with_schema_id(
         unsupported => Err(ArtifactRecordError::new(
             ArtifactRecordErrorCode::ArtifactSchemaUnsupported,
             "artifact_load",
-            format!("artifact schema id {unsupported} is not supported by the diff surface"),
+            format!("artifact schema id {unsupported} is not supported"),
         )),
     }
 }

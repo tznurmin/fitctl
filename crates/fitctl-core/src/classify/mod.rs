@@ -6,7 +6,7 @@
 //! This layer reuses the validation engine across a matrix of inputs and emits a typed summary
 //! artifact instead of inventing a separate fit-decision model.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -17,27 +17,32 @@ use crate::artifacts::batch_classification_report_v1::{
     BatchClassificationBasisV1, BatchClassificationContractRefV1,
     BatchClassificationContractSummaryV1, BatchClassificationReportPayloadV1,
     BatchClassificationReportV1, BatchClassificationRowV1, BatchClassificationServiceProfileRefV1,
-    BatchClassificationServiceProfileSummaryV1,
+    BatchClassificationServiceProfileSummaryV1, BatchClassificationStateMatchBasisV1,
+    BatchClassificationStateRefV1,
 };
 use crate::artifacts::contract_v1::HostContractV1;
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
 use crate::artifacts::schema_ids_v1::{
-    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
+    is_supported_batch_classification_report_schema_id, BATCH_CLASSIFICATION_REPORT_SCHEMA_ID,
+    TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
 };
 use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_contract, semantic_hash_hex_for_service_profile,
+    semantic_hash_hex_for_state,
 };
 use crate::artifacts::service_profile_v1::ServiceProfileV1;
+use crate::artifacts::state_v1::HostStateV1;
 use crate::artifacts::validation_v1::{
     validate_batch_classification_report, ArtifactValidationErrorCode,
 };
+use crate::contract::HostContractPayloadV1;
 use crate::validate::{
     validate_request_v1, ValidationError, ValidationErrorCode, ValidationModeV1,
     ValidationRequestV1, ValidationVerdictV1,
 };
 
-pub const BATCH_CLASSIFICATION_ERROR_MODEL_ID: &str = "fitctl.batch_classification.v1";
-pub const BATCH_CLASSIFICATION_ERROR_MODEL_VERSION: u32 = 1;
+pub const BATCH_CLASSIFICATION_ERROR_MODEL_ID: &str = "fitctl.batch_classification.v2";
+pub const BATCH_CLASSIFICATION_ERROR_MODEL_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatchClassificationErrorCode {
@@ -101,7 +106,30 @@ impl std::error::Error for BatchClassificationError {}
 pub struct BatchClassificationRequestV1 {
     pub contracts: Vec<HostContractV1>,
     pub service_profiles: Vec<ServiceProfileV1>,
+    pub host_states: Vec<HostStateV1>,
+    pub validation_mode: ValidationModeV1,
+    pub max_state_age_seconds: Option<u64>,
     pub validated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct BatchClassificationStateSelectionV1 {
+    host_alias: String,
+    local_stable_id: Option<String>,
+    host_state: HostStateV1,
+    report_ref: BatchClassificationStateRefV1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct BatchClassificationStateIndexV1 {
+    by_host_alias: BTreeMap<String, BatchClassificationStateSelectionV1>,
+    by_local_stable_id: BTreeMap<String, BatchClassificationStateSelectionV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BatchClassificationContractIdentityV1 {
+    host_alias: Option<String>,
+    local_stable_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +157,13 @@ pub fn classify_batch_v1(
 
     let contracts = sort_unique_contracts(&request.contracts)?;
     let service_profiles = sort_unique_service_profiles(&request.service_profiles)?;
+    let host_states = sort_unique_host_states(&request.host_states)?;
+    let contract_identities = contracts
+        .iter()
+        .map(|(artifact_id, contract)| {
+            extract_contract_identity(contract).map(|identity| (artifact_id.clone(), identity))
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
 
     if contracts.is_empty() {
         return Err(BatchClassificationError::new(
@@ -144,10 +179,34 @@ pub fn classify_batch_v1(
             "batch classification requires at least one service-profile artifact",
         ));
     }
+    ensure_batch_validation_mode(
+        request.validation_mode,
+        !host_states.by_host_alias.is_empty(),
+        request.max_state_age_seconds,
+    )?;
 
+    let mut matched_state_refs = BTreeMap::new();
+    let mut matched_states_for_validation = BTreeMap::new();
+    let mut used_state_artifact_ids = BTreeSet::new();
     let ordered_contracts = contracts
         .values()
         .map(|contract| {
+            let identity = contract_identities
+                .get(contract.envelope.artifact_id.as_str())
+                .expect("ordered contracts must match the identity map");
+            let matched_state = select_host_state_for_contract(contract, identity, &host_states)?
+                .map(|state| {
+                    used_state_artifact_ids.insert(state.report_ref.artifact_id.clone());
+                    matched_states_for_validation.insert(
+                        contract.envelope.artifact_id.clone(),
+                        state.host_state.clone(),
+                    );
+                    matched_state_refs.insert(
+                        contract.envelope.artifact_id.clone(),
+                        state.report_ref.clone(),
+                    );
+                    state.report_ref
+                });
             Ok(BatchClassificationContractRefV1 {
                 artifact_id: contract.envelope.artifact_id.clone(),
                 semantic_hash: semantic_hash_hex_for_contract(contract).map_err(|error| {
@@ -160,9 +219,11 @@ pub fn classify_batch_v1(
                 host_alias: contract.host_alias.clone(),
                 display_name: contract.display_name.clone(),
                 short_display_name: contract.short_display_name.clone(),
+                matched_state,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+    ensure_no_unused_host_states(&host_states, &used_state_artifact_ids)?;
 
     let ordered_service_profiles = service_profiles
         .values()
@@ -195,11 +256,13 @@ pub fn classify_batch_v1(
             let validation_report = validate_request_v1(ValidationRequestV1 {
                 contract: contract.clone(),
                 service_profile: service_profile.clone(),
-                host_state: None,
-                mode: ValidationModeV1::ContractOnly,
+                host_state: matched_states_for_validation
+                    .get(contract_ref.artifact_id.as_str())
+                    .cloned(),
+                mode: request.validation_mode,
                 validated_at: request.validated_at.clone(),
                 notes: Some("batch-classification".to_string()),
-                max_state_age_seconds: None,
+                max_state_age_seconds: request.max_state_age_seconds,
             })
             .map_err(map_validation_error)?;
 
@@ -223,20 +286,28 @@ pub fn classify_batch_v1(
             schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             artifact_id: build_report_artifact_id(
                 &request.validated_at,
+                request.validation_mode,
+                request.max_state_age_seconds,
                 &ordered_contracts,
                 &ordered_service_profiles,
             ),
             provenance: local_artifact_provenance_v1(
-                "classify:contract_only",
+                format!("classify:{}", request.validation_mode.as_str()),
                 request.validated_at.clone(),
                 "classify",
-                build_correlation_id(&ordered_contracts, &ordered_service_profiles),
+                build_correlation_id(
+                    request.validation_mode,
+                    request.max_state_age_seconds,
+                    &ordered_contracts,
+                    &ordered_service_profiles,
+                ),
             ),
             redaction: None,
             signatures: vec![],
         },
         classification_basis: BatchClassificationBasisV1 {
-            validation_mode: ValidationModeV1::ContractOnly,
+            validation_mode: request.validation_mode,
+            max_state_age_seconds: request.max_state_age_seconds,
             validated_at: request.validated_at,
             validation_engine_id: "fitctl.validate.v1".to_string(),
             validation_engine_version: "1".to_string(),
@@ -576,6 +647,215 @@ fn sort_unique_service_profiles(
     Ok(ordered)
 }
 
+fn sort_unique_host_states(
+    host_states: &[HostStateV1],
+) -> Result<BatchClassificationStateIndexV1, BatchClassificationError> {
+    let mut by_host_alias = BTreeMap::new();
+    let mut by_local_stable_id = BTreeMap::new();
+
+    for host_state in host_states {
+        let artifact_id = host_state.envelope.artifact_id.clone();
+        if artifact_id.trim().is_empty() {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_state_select",
+                "host-state artifact ids must be non-blank for batch classification",
+            ));
+        }
+        let host_alias = host_state.state.host_alias.clone();
+        if host_alias.trim().is_empty() {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_state_select",
+                "host-state host_alias must be non-blank for batch classification",
+            ));
+        }
+        let report_ref = BatchClassificationStateRefV1 {
+            artifact_id,
+            semantic_hash: semantic_hash_hex_for_state(host_state).map_err(|error| {
+                BatchClassificationError::new(
+                    BatchClassificationErrorCode::BatchExecutionFailed,
+                    "batch_state_select",
+                    error.message,
+                )
+            })?,
+            observed_at: host_state.state.core_state.freshness.observed_at.clone(),
+            freshness_state: host_state.state.core_state.freshness.freshness_state,
+            match_basis: None,
+        };
+        let selection = BatchClassificationStateSelectionV1 {
+            host_alias: host_alias.clone(),
+            local_stable_id: host_state
+                .state
+                .local_identity
+                .as_ref()
+                .map(|identity| identity.local_stable_id.clone()),
+            host_state: host_state.clone(),
+            report_ref,
+        };
+        if by_host_alias
+            .insert(host_alias.clone(), selection.clone())
+            .is_some()
+        {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_state_select",
+                format!("duplicate host-state host_alias {host_alias} is not allowed"),
+            ));
+        }
+        if let Some(local_stable_id) = selection.local_stable_id.as_ref() {
+            if by_local_stable_id
+                .insert(local_stable_id.clone(), selection.clone())
+                .is_some()
+            {
+                return Err(BatchClassificationError::new(
+                    BatchClassificationErrorCode::BatchInputInvalid,
+                    "batch_state_select",
+                    format!(
+                        "duplicate host-state local_stable_id {local_stable_id} is not allowed"
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(BatchClassificationStateIndexV1 {
+        by_host_alias,
+        by_local_stable_id,
+    })
+}
+
+fn ensure_batch_validation_mode(
+    validation_mode: ValidationModeV1,
+    has_host_states: bool,
+    max_state_age_seconds: Option<u64>,
+) -> Result<(), BatchClassificationError> {
+    match validation_mode {
+        ValidationModeV1::ContractOnly => {
+            if has_host_states {
+                return Err(BatchClassificationError::new(
+                    BatchClassificationErrorCode::BatchInputInvalid,
+                    "batch_request_validate",
+                    "contract_only batch classification must not accept host-state inputs",
+                ));
+            }
+            if max_state_age_seconds.is_some() {
+                return Err(BatchClassificationError::new(
+                    BatchClassificationErrorCode::BatchInputInvalid,
+                    "batch_request_validate",
+                    "contract_only batch classification must not accept max_state_age_seconds",
+                ));
+            }
+        }
+        ValidationModeV1::StateAdvisory | ValidationModeV1::StateRequired => {
+            if max_state_age_seconds.is_some() && !has_host_states {
+                return Err(BatchClassificationError::new(
+                    BatchClassificationErrorCode::BatchInputInvalid,
+                    "batch_request_validate",
+                    "batch classification max_state_age_seconds requires at least one host-state input",
+                ));
+            }
+        }
+        ValidationModeV1::StateAware => {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_request_validate",
+                "batch classification supports contract_only, state_advisory, and state_required only",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_no_unused_host_states(
+    host_states: &BatchClassificationStateIndexV1,
+    used_state_artifact_ids: &BTreeSet<String>,
+) -> Result<(), BatchClassificationError> {
+    if let Some(unused_alias) = host_states
+        .by_host_alias
+        .iter()
+        .find(|(_, state)| !used_state_artifact_ids.contains(&state.report_ref.artifact_id))
+        .map(|(alias, _)| alias)
+    {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchInputInvalid,
+            "batch_state_map",
+            format!(
+                "host-state input for host_alias {unused_alias} does not match any batch contract"
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+fn extract_contract_identity(
+    contract: &HostContractV1,
+) -> Result<BatchClassificationContractIdentityV1, BatchClassificationError> {
+    let payload: HostContractPayloadV1 = serde_json::from_value(contract.contract.clone())
+        .map_err(|error| {
+            BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_contract_select",
+                format!(
+                    "failed to decode host contract payload {}: {error}",
+                    contract.envelope.artifact_id
+                ),
+            )
+        })?;
+    let local_stable_id = payload
+        .core_contract
+        .identity_summary
+        .local_stable_id
+        .trim()
+        .to_string();
+    Ok(BatchClassificationContractIdentityV1 {
+        host_alias: contract.host_alias.clone(),
+        local_stable_id: (!local_stable_id.is_empty()).then_some(local_stable_id),
+    })
+}
+
+fn select_host_state_for_contract(
+    contract: &HostContractV1,
+    identity: &BatchClassificationContractIdentityV1,
+    host_states: &BatchClassificationStateIndexV1,
+) -> Result<Option<BatchClassificationStateSelectionV1>, BatchClassificationError> {
+    let alias_state = identity
+        .host_alias
+        .as_deref()
+        .and_then(|alias| host_states.by_host_alias.get(alias));
+
+    if let Some(local_stable_id) = identity.local_stable_id.as_deref() {
+        if let Some(state) = host_states.by_local_stable_id.get(local_stable_id) {
+            let mut matched = state.clone();
+            matched.report_ref.match_basis =
+                Some(BatchClassificationStateMatchBasisV1::LocalStableId);
+            return Ok(Some(matched));
+        }
+    }
+
+    if let Some(state) = alias_state {
+        if state.local_stable_id.is_some() {
+            return Err(BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_state_map",
+                format!(
+                    "host-state {} carries local identity that does not match contract {}",
+                    state.report_ref.artifact_id, contract.envelope.artifact_id
+                ),
+            ));
+        }
+
+        let mut matched = state.clone();
+        matched.report_ref.match_basis =
+            Some(BatchClassificationStateMatchBasisV1::HostAliasFallback);
+        return Ok(Some(matched));
+    }
+
+    Ok(None)
+}
+
 fn ensure_validated_at(validated_at: &str) -> Result<(), BatchClassificationError> {
     if validated_at.trim().is_empty() {
         return Err(BatchClassificationError::new(
@@ -679,14 +959,29 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
 
 fn build_report_artifact_id(
     validated_at: &str,
+    validation_mode: ValidationModeV1,
+    max_state_age_seconds: Option<u64>,
     ordered_contracts: &[BatchClassificationContractRefV1],
     ordered_service_profiles: &[BatchClassificationServiceProfileRefV1],
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(validated_at.as_bytes());
+    hasher.update(validation_mode.as_str().as_bytes());
+    if let Some(max_state_age_seconds) = max_state_age_seconds {
+        hasher.update(max_state_age_seconds.to_le_bytes());
+    }
     for contract in ordered_contracts {
         hasher.update(contract.artifact_id.as_bytes());
         hasher.update(contract.semantic_hash.as_bytes());
+        if let Some(matched_state) = contract.matched_state.as_ref() {
+            hasher.update(matched_state.artifact_id.as_bytes());
+            hasher.update(matched_state.semantic_hash.as_bytes());
+            hasher.update(matched_state.observed_at.as_bytes());
+            hasher.update(matched_state.freshness_state.as_str().as_bytes());
+            if let Some(match_basis) = matched_state.match_basis {
+                hasher.update(match_basis.as_str().as_bytes());
+            }
+        }
     }
     for profile in ordered_service_profiles {
         hasher.update(profile.artifact_id.as_bytes());
@@ -702,11 +997,32 @@ fn build_report_artifact_id(
 }
 
 fn build_correlation_id(
+    validation_mode: ValidationModeV1,
+    max_state_age_seconds: Option<u64>,
     ordered_contracts: &[BatchClassificationContractRefV1],
     ordered_service_profiles: &[BatchClassificationServiceProfileRefV1],
 ) -> String {
+    let state_artifact_ids = ordered_contracts
+        .iter()
+        .filter_map(|value| {
+            value.matched_state.as_ref().map(|state| {
+                let basis = state
+                    .match_basis
+                    .map(|value| value.as_str())
+                    .unwrap_or("<none>");
+                format!("{}:{basis}", state.artifact_id)
+            })
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(",");
     format!(
-        "contracts:{};profiles:{}",
+        "mode:{};max_state_age:{};contracts:{};profiles:{};states:{}",
+        validation_mode.as_str(),
+        max_state_age_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "<none>".to_string()),
         ordered_contracts
             .iter()
             .map(|value| value.artifact_id.as_str())
@@ -716,7 +1032,12 @@ fn build_correlation_id(
             .iter()
             .map(|value| value.artifact_id.as_str())
             .collect::<Vec<_>>()
-            .join(",")
+            .join(","),
+        if state_artifact_ids.is_empty() {
+            "<none>".to_string()
+        } else {
+            state_artifact_ids
+        }
     )
 }
 
@@ -776,6 +1097,23 @@ fn validate_batch_classification_report_json(raw: &Value) -> Result<(), BatchCla
         ],
         "batch classification envelope field",
     )?;
+    let schema_id = envelope
+        .get("schema_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            BatchClassificationError::new(
+                BatchClassificationErrorCode::BatchInputInvalid,
+                "batch_input_load",
+                "batch classification envelope schema_id must be a non-null string",
+            )
+        })?;
+    if !is_supported_batch_classification_report_schema_id(schema_id) {
+        return Err(BatchClassificationError::new(
+            BatchClassificationErrorCode::BatchSchemaUnsupported,
+            "batch_input_load",
+            format!("unsupported batch classification schema id {schema_id}"),
+        ));
+    }
 
     let provenance = require_object(envelope, "provenance", "batch classification provenance")?;
     reject_unknown_keys(
@@ -784,6 +1122,9 @@ fn validate_batch_classification_report_json(raw: &Value) -> Result<(), BatchCla
             "source",
             "collected_at",
             "fitctl_version",
+            "fitctl_vcs_revision",
+            "fitctl_vcs_describe",
+            "fitctl_build_dirty",
             "command_name",
             "correlation_id",
         ],
@@ -802,6 +1143,7 @@ fn validate_batch_classification_report_json(raw: &Value) -> Result<(), BatchCla
             "validated_at",
             "validation_engine_id",
             "validation_engine_version",
+            "max_state_age_seconds",
             "ordered_contracts",
             "ordered_service_profiles",
         ],

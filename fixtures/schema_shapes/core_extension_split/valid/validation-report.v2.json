@@ -1,0 +1,48 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-bare-metal-like-v1-general-compute-default-v1-service-profile-general-compute-contract-only-v1",
+    "provenance": {
+      "source": "validate:contract_only",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.0",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-bare-metal-like-v1-general-compute-default-v1-service-profile-general-compute-contract-only-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "contract_only",
+    "contract_artifact_id": "contract-linux-bare-metal-like-v1-general-compute-default-v1",
+    "service_profile_artifact_id": "service-profile-general-compute-contract-only-v1",
+    "contract_semantic_hash": "46ba25e741141496e57aaf6f6251a605ffd93197a99cb16704188edf4edb1d09",
+    "service_profile_semantic_hash": "3edfa2b00130ddf274b4e7f3c5f03b5de3fbfa4be2a400913507825c6fed6c0a",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "fit",
+    "primary_reason_code": "requirements_satisfied",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.primary_capability_class"
+    ],
+    "failed_requirements": [],
+    "evidence_refs": [
+      "$.survey.core_evidence.observations.cpu",
+      "$.survey.core_evidence.observations.memory",
+      "$.survey.core_evidence.execution_context",
+      "$.survey.core_evidence.observations.network"
+    ],
+    "policy_refs": [
+      "defaults/general_compute",
+      "site/general_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "summary": "service profile fits the general_compute capability baseline"
+  }
+}

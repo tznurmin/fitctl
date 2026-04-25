@@ -1,0 +1,107 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-workstation-like-v1-general-compute-default-v1-service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+    "provenance": {
+      "source": "validate:state_advisory",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-workstation-like-v1-general-compute-default-v1-service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "state_advisory",
+    "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+    "service_profile_artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+    "contract_semantic_hash": "5f0c7ac985e70d4d9b88d7a84aa3e14983c99d6741b950f7ab5ddf8e54608086",
+    "service_profile_semantic_hash": "ea84c3ea092c4e9ac011ec2427d4465420a7f27335b5f2fa07fc0debe5dfd5a2",
+    "state_artifact_id": "state-linux-gpu-workstation-like-cuda-runtime-stale-v1",
+    "state_semantic_hash": "5858581f22bbaa8d6d0f2ca8e4743df1f8e55c4343f5b189d4e21712daf0e09b",
+    "state_observed_at": "2025-04-19T14:37:19Z",
+    "state_freshness_state": "stale",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "indeterminate",
+    "primary_reason_code": "state_stale",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.primary_capability_class",
+      "extension_requirements.fitctl.runtime.cuda"
+    ],
+    "failed_requirements": [
+      "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+    ],
+    "evidence_refs": [
+      "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes",
+      "$.state.core_state.freshness.observed_at",
+      "$.state.core_state.freshness.freshness_state"
+    ],
+    "policy_refs": [
+      "defaults/general_compute",
+      "site/general_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [
+      "host-state snapshot is stale but no runtime-facing thresholds depend on it",
+      "stale host-state remains explicit for CUDA allocatable memory thresholds"
+    ],
+    "extension_diagnostics": {
+      "fitctl.runtime.cuda": {
+        "checkpoint": "runtime_extension_freshness",
+        "detail_code": "runtime_state_stale",
+        "diagnostic_model_id": "fitctl.cuda_runtime_validation_diagnostic.v1",
+        "diagnostic_model_version": 1,
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes",
+          "$.state.core_state.freshness.observed_at",
+          "$.state.core_state.freshness.freshness_state"
+        ],
+        "related_requirements": [
+          "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+        ],
+        "required_allocatable_memory_bytes": 17179869184
+      }
+    },
+    "explanations": [
+      {
+        "explanation_id": "explain-cuda-runtime-runtime_state_stale",
+        "reason_code": "state_stale",
+        "summary": "CUDA runtime state is stale for a required allocatable-memory threshold of 16.00 GiB.",
+        "related_requirements": [
+          "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+        ],
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes",
+          "$.state.core_state.freshness.observed_at",
+          "$.state.core_state.freshness.freshness_state"
+        ],
+        "policy_refs": []
+      }
+    ],
+    "remediation_hints": [
+      {
+        "hint_id": "refresh-cuda-runtime-state",
+        "reason_code": "state_stale",
+        "summary": "Refresh host-state so the CUDA allocatable-memory threshold uses current runtime evidence.",
+        "actions": [
+          {
+            "action_id": "collect-fresh-host-state",
+            "summary": "Collect a fresh host-state.v2 artifact with CUDA runtime extension state."
+          },
+          {
+            "action_id": "review-state-age-window",
+            "summary": "Review the configured max-state-age if CUDA runtime state is expiring sooner than intended."
+          }
+        ]
+      }
+    ],
+    "summary": "stale host-state remains explicit for CUDA allocatable memory thresholds"
+  }
+}

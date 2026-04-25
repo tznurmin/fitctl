@@ -1,0 +1,51 @@
+{
+  "schema_id": "fitctl.fixture.extension.runtime.cuda.state.corpus.v1",
+  "schema_version": 1,
+  "namespace": "fitctl.runtime.cuda",
+  "fixtures": [
+    {
+      "fixture_id": "linux-gpu-workstation-like-fresh-v1",
+      "path": "linux-gpu-workstation-like-fresh-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-fit-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-fit-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-insufficient-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-insufficient-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-stale-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-stale-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-missing-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-missing-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-default-view-gap-v1",
+      "path": "linux-gpu-workstation-like-cuda-default-view-gap-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-fit-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-fit-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-one-device-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-one-device-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-per-device-insufficient-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-per-device-insufficient-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-missing-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-missing-v1.json"
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-stale-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-stale-v1.json"
+    }
+  ]
+}

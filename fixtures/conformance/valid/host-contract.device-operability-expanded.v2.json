@@ -2,38 +2,78 @@
   "envelope": {
     "schema_id": "host-contract.v2",
     "schema_version": 2,
-    "artifact_id": "contract-device-operability-expanded-v1",
+    "artifact_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1",
     "provenance": {
-      "source": "policy:general_compute_default_v1",
-      "collected_at": "2025-04-21T14:37:19Z",
-      "fitctl_version": "0.2.0",
+      "source": "policy:gpu_compute_default_v1",
+      "collected_at": "unix:1776620421",
+      "fitctl_version": "0.2.1",
       "command_name": "contract",
-      "correlation_id": "contract-device-operability-expanded-v1"
+      "correlation_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
     },
     "redaction": null,
     "signatures": []
   },
+  "host_alias": "gpu-host-01",
+  "display_name": "gpu-host-01 / GPU compute default policy",
+  "short_display_name": "GPU compute default",
   "contract_basis": {
     "core_semantic_basis": {
-      "source_survey_semantic_hash": "6b58e19e1759ae3b15fe786ce3615c5cd9452fae41556e1c6f236c059eb2b863",
-      "policy_semantic_hash": "3ad4beaa05baaea5ae9a605a60fb4869d47859ad949bd618b770c5534ff8c15f",
+      "source_survey_semantic_hash": "717304ca16d7bd6afd91f2f9c2c09a232571e5ec394ccd1fdd7518235969b46c",
+      "policy_semantic_hash": "59986012973e6d2e12da482d7f94c4c9345697dcf944a5d21f4242f674e6fe9f",
       "derivation_engine_id": "fitctl.contract.v1",
       "derivation_engine_version": "1",
       "contract_schema_version": 2,
       "selected_policy_layers": [
-        "defaults/general_compute",
-        "site/general_compute"
+        "defaults/gpu_compute"
       ]
     },
     "derivation_provenance": {
-      "derived_at": "2025-04-21T14:37:19Z",
+      "derived_at": "unix:1776620421",
       "notes": null
     }
   },
   "contract": {
     "core_contract": {
+      "accelerator_summary": {
+        "accelerator_kinds": [
+          "gpu"
+        ],
+        "accelerator_numa_nodes": [
+          0
+        ],
+        "accelerators_with_known_memory": 2,
+        "accelerators_with_known_numa_node": 2,
+        "families": [
+          "nvidia_pci"
+        ],
+        "full_inventory_complete": true,
+        "gpu_accelerators": 2,
+        "integrated_accelerators": null,
+        "max_memory_bytes": 51539607552,
+        "models": [
+          "nvidia-gpu-2206",
+          "nvidia-gpu-2230"
+        ],
+        "operability": {
+          "driver_bound_devices": 2,
+          "static_operability": "operable",
+          "visible_device_nodes": [
+            "/dev/nvidia-uvm",
+            "/dev/nvidia0",
+            "/dev/nvidia1",
+            "/dev/nvidiactl"
+          ]
+        },
+        "policy_scoped_confirmed_accelerators": 2,
+        "policy_scoped_inventory_complete": true,
+        "policy_scoped_unresolved_accelerators": 0,
+        "total_accelerators": 2,
+        "vendors": [
+          "nvidia"
+        ]
+      },
       "capability_classes": {
-        "general_compute": {
+        "gpu_accelerated": {
           "admissible": true,
           "claim_metadata": {
             "assurance_source": "self_observed",
@@ -41,16 +81,19 @@
             "evidence_paths": [
               "$.survey.core_evidence.observations.cpu",
               "$.survey.core_evidence.observations.memory",
-              "$.survey.core_evidence.execution_context"
+              "$.survey.core_evidence.execution_context",
+              "$.survey.core_evidence.observations.network",
+              "$.survey.core_evidence.observations.accelerators"
             ],
-            "policy_rule_id": "site/general_compute",
+            "policy_rule_id": "defaults/gpu_compute",
             "source_collectors": [
               "procfs",
               "sysfs",
               "cgroupfs",
               "mountinfo",
               "netdev",
-              "block_and_filesystem"
+              "block_and_filesystem",
+              "pci_accelerators"
             ],
             "trust_evidence_refs": []
           },
@@ -58,13 +101,13 @@
             "$.survey.core_evidence.observations.cpu",
             "$.survey.core_evidence.observations.memory",
             "$.survey.core_evidence.execution_context",
-            "$.survey.core_evidence.observations.network"
+            "$.survey.core_evidence.observations.network",
+            "$.survey.core_evidence.observations.accelerators"
           ],
           "rule_ids": [
-            "defaults/general_compute",
-            "site/general_compute"
+            "defaults/gpu_compute"
           ],
-          "summary": "host satisfies the general_compute capability baseline"
+          "summary": "host satisfies the gpu_accelerated capability baseline"
         }
       },
       "execution_constraints": {
@@ -72,17 +115,22 @@
         "visibility_scope": "bare_metal_like"
       },
       "identity_summary": {
-        "composition_digest": "a8a5a40c33622bbe23b05a447af313cbad3c77ffa16c85d203e4becfeee1d05d",
+        "composition_digest": "b1e049da1b7d466351642603f7515dec8ed8e7e2427bbba6f87517c0224e35ca",
         "identity_class": "local_stable",
-        "local_stable_id": "78417113d2b6b33b934cda3f399c8af76e8d5e120d8445a38acba181fa2bbf9d",
-        "provenance_fingerprint": "4d85f7df8ece4ccffa0a4e6d6d255864227c4bb86a34282684be7dd7431a9840"
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "0cc6d9fb8690d1b2e9673018014d8b7ddb63c09a9b322152892f9e871f16fb4c",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "9fac516b9054244469ddd566541b3f36553ca8abd47a83b67b7890e49afddcea"
       },
       "network_summary": {
         "interface_kinds": [
           "ethernet",
           "loopback"
         ],
-        "max_observed_speed_mbps": 1000,
+        "max_observed_speed_mbps": 2500,
         "non_loopback_interfaces": 1,
         "operability": {
           "interfaces_with_known_speed": 1,
@@ -92,19 +140,14 @@
         "total_interfaces": 2
       },
       "storage_summary": {
-        "block_device_classes": [
-          "solid_state"
-        ],
-        "filesystem_types": [
-          "ext4",
-          "xfs"
-        ],
+        "block_device_classes": [],
+        "filesystem_types": [],
         "operability": {
-          "root_mount_present": true,
-          "static_operability": "operable",
-          "usable_block_devices": 1
+          "root_mount_present": false,
+          "static_operability": "not_operable",
+          "usable_block_devices": 0
         },
-        "total_block_devices": 1,
+        "total_block_devices": 2,
         "total_mounts": 2
       },
       "topology_summary": {

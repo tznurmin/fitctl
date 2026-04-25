@@ -95,6 +95,82 @@ impl IdentityClassV1 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalStableAnchorFamilyV1 {
+    MachineId,
+    DmiProductUuid,
+    Hostname,
+    Fixture,
+}
+
+impl LocalStableAnchorFamilyV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MachineId => "machine_id",
+            Self::DmiProductUuid => "dmi_product_uuid",
+            Self::Hostname => "hostname",
+            Self::Fixture => "fixture",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalStableAnchorSourceV1 {
+    EtcMachineId,
+    DbusMachineId,
+    SysfsDmiProductUuid,
+    KernelHostname,
+    FixtureAlias,
+}
+
+impl LocalStableAnchorSourceV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EtcMachineId => "etc_machine_id",
+            Self::DbusMachineId => "dbus_machine_id",
+            Self::SysfsDmiProductUuid => "sysfs_dmi_product_uuid",
+            Self::KernelHostname => "kernel_hostname",
+            Self::FixtureAlias => "fixture_alias",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalStableStabilityClassV1 {
+    OsInstanceLike,
+    FirmwareOrVmLike,
+    AliasOnly,
+    Fixture,
+}
+
+impl LocalStableStabilityClassV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OsInstanceLike => "os_instance_like",
+            Self::FirmwareOrVmLike => "firmware_or_vm_like",
+            Self::AliasOnly => "alias_only",
+            Self::Fixture => "fixture",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalStableIdDegradedReasonV1 {
+    HostnameFallback,
+}
+
+impl LocalStableIdDegradedReasonV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::HostnameFallback => "hostname_fallback",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 /// Identity material carried through survey and contract outputs.
@@ -105,8 +181,24 @@ pub struct IdentitySummaryV1 {
     pub identity_class: IdentityClassV1,
     #[serde(default)]
     pub local_stable_id: String,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub local_stable_id_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_stable_anchor_family: Option<LocalStableAnchorFamilyV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_stable_anchor_source: Option<LocalStableAnchorSourceV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_stable_stability_class: Option<LocalStableStabilityClassV1>,
+    #[serde(default)]
+    pub local_stable_id_degraded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_stable_id_degraded_reason: Option<LocalStableIdDegradedReasonV1>,
     #[serde(default)]
     pub composition_digest: String,
     #[serde(default)]
     pub provenance_fingerprint: String,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }

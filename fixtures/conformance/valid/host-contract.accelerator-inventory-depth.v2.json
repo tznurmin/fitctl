@@ -5,17 +5,20 @@
     "artifact_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1",
     "provenance": {
       "source": "policy:gpu_compute_default_v1",
-      "collected_at": "unix:1776429614",
-      "fitctl_version": "0.2.0",
+      "collected_at": "unix:1776620421",
+      "fitctl_version": "0.2.1",
       "command_name": "contract",
       "correlation_id": "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
     },
     "redaction": null,
     "signatures": []
   },
+  "host_alias": "gpu-host-01",
+  "display_name": "gpu-host-01 / GPU compute default policy",
+  "short_display_name": "GPU compute default",
   "contract_basis": {
     "core_semantic_basis": {
-      "source_survey_semantic_hash": "e0d736964be542d21a6dc506816588708eebd8ae5edd5376d01b8635dcbc5857",
+      "source_survey_semantic_hash": "717304ca16d7bd6afd91f2f9c2c09a232571e5ec394ccd1fdd7518235969b46c",
       "policy_semantic_hash": "59986012973e6d2e12da482d7f94c4c9345697dcf944a5d21f4242f674e6fe9f",
       "derivation_engine_id": "fitctl.contract.v1",
       "derivation_engine_version": "1",
@@ -25,7 +28,7 @@
       ]
     },
     "derivation_provenance": {
-      "derived_at": "unix:1776429614",
+      "derived_at": "unix:1776620421",
       "notes": null
     }
   },
@@ -43,6 +46,7 @@
         "families": [
           "nvidia_pci"
         ],
+        "full_inventory_complete": true,
         "gpu_accelerators": 2,
         "integrated_accelerators": null,
         "max_memory_bytes": 51539607552,
@@ -60,6 +64,9 @@
             "/dev/nvidiactl"
           ]
         },
+        "policy_scoped_confirmed_accelerators": 2,
+        "policy_scoped_inventory_complete": true,
+        "policy_scoped_unresolved_accelerators": 0,
         "total_accelerators": 2,
         "vendors": [
           "nvidia"
@@ -110,8 +117,13 @@
       "identity_summary": {
         "composition_digest": "b1e049da1b7d466351642603f7515dec8ed8e7e2427bbba6f87517c0224e35ca",
         "identity_class": "local_stable",
-        "local_stable_id": "0f99f1b6cab7b29aeab45b4b9b4d7fb659e9efa3eb4e7180ecc07cc69f085946",
-        "provenance_fingerprint": "df10acd9f4be5c948b53a8b23c4642a07a15f7fd082f87bab7c39800984e45d1"
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "0cc6d9fb8690d1b2e9673018014d8b7ddb63c09a9b322152892f9e871f16fb4c",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "9fac516b9054244469ddd566541b3f36553ca8abd47a83b67b7890e49afddcea"
       },
       "network_summary": {
         "interface_kinds": [

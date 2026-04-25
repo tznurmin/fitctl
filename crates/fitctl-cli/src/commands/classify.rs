@@ -16,7 +16,8 @@ use fitctl_core::config::{
     resolve_service_profile_from_catalogue_path,
 };
 use fitctl_core::validate::{
-    load_contract_artifact_for_validation, load_service_profile_artifact_for_validation,
+    load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
+    load_service_profile_artifact_for_validation, ValidationModeV1,
 };
 
 pub fn run(args: &[String]) -> ExitCode {
@@ -27,9 +28,13 @@ pub fn run(args: &[String]) -> ExitCode {
 
     let mut contract_paths = Vec::new();
     let mut profile_paths = Vec::new();
+    let mut state_paths = Vec::new();
     let mut service_profile_catalogue_path: Option<PathBuf> = None;
     let mut profile_ids = Vec::new();
     let mut invocation_context_path: Option<PathBuf> = None;
+    let mut validation_mode = ValidationModeV1::ContractOnly;
+    let mut validation_mode_explicit = false;
+    let mut max_state_age_seconds: Option<u64> = None;
     let mut validated_at: Option<String> = None;
     let mut export_view: Option<BatchClassificationExportViewV1> = None;
 
@@ -52,6 +57,14 @@ pub fn run(args: &[String]) -> ExitCode {
                 profile_paths.push(PathBuf::from(value));
                 index += 2;
             }
+            "--state" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl classify: --state requires a path");
+                    return ExitCode::from(2);
+                };
+                state_paths.push(PathBuf::from(value));
+                index += 2;
+            }
             "--service-profile-catalogue" => {
                 let Some(value) = args.get(index + 1) else {
                     eprintln!("fitctl classify: --service-profile-catalogue requires a path");
@@ -72,6 +85,43 @@ pub fn run(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 };
                 profile_ids.push(value.clone());
+                index += 2;
+            }
+            "--validation-mode" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl classify: --validation-mode requires a value");
+                    return ExitCode::from(2);
+                };
+                if validation_mode_explicit {
+                    eprintln!("fitctl classify: --validation-mode may be specified only once");
+                    return ExitCode::from(2);
+                }
+                validation_mode = match parse_primary_validation_mode(value) {
+                    Ok(mode) => mode,
+                    Err(error) => {
+                        eprintln!("fitctl classify: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+                validation_mode_explicit = true;
+                index += 2;
+            }
+            "--max-state-age" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl classify: --max-state-age requires a value");
+                    return ExitCode::from(2);
+                };
+                if max_state_age_seconds.is_some() {
+                    eprintln!("fitctl classify: --max-state-age may be specified only once");
+                    return ExitCode::from(2);
+                }
+                max_state_age_seconds = match parse_max_state_age_seconds(value) {
+                    Ok(value) => Some(value),
+                    Err(error) => {
+                        eprintln!("fitctl classify: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
                 index += 2;
             }
             "--invocation-context" => {
@@ -195,6 +245,17 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     }
 
+    let mut host_states = Vec::new();
+    for path in state_paths {
+        match load_host_state_artifact_for_validation(&path) {
+            Ok(host_state) => host_states.push(host_state),
+            Err(error) => {
+                eprintln!("fitctl classify: {error}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+
     let mut service_profiles = Vec::new();
     if !profile_paths.is_empty() {
         for path in profile_paths {
@@ -236,6 +297,9 @@ pub fn run(args: &[String]) -> ExitCode {
     match classify_batch_v1(BatchClassificationRequestV1 {
         contracts,
         service_profiles,
+        host_states,
+        validation_mode,
+        max_state_age_seconds,
         validated_at: validated_at.unwrap_or_else(current_epoch_marker),
     }) {
         Ok(report) => {
@@ -264,7 +328,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl classify --contract <path> --contract <path> (--profile <path> ... | --service-profile-catalogue <path> (--profile-id <id> ... | --invocation-context <path>)) [--validated-at <timestamp>] [--export-view <rows_csv|contract_summary_csv|service_profile_summary_csv>]\n"
+    "Usage:\n  fitctl classify --contract <path> --contract <path> (--profile <path> ... | --service-profile-catalogue <path> (--profile-id <id> ... | --invocation-context <path>)) [--state <path> ...] [--validation-mode <contract_only|state_advisory|state_required>] [--max-state-age <value>] [--validated-at <timestamp>] [--export-view <rows_csv|contract_summary_csv|service_profile_summary_csv>]\n"
 }
 
 fn current_epoch_marker() -> String {
@@ -273,4 +337,38 @@ fn current_epoch_marker() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("unix:{seconds}")
+}
+
+fn parse_primary_validation_mode(value: &str) -> Result<ValidationModeV1, String> {
+    match value {
+        "contract_only" => Ok(ValidationModeV1::ContractOnly),
+        "state_advisory" => Ok(ValidationModeV1::StateAdvisory),
+        "state_required" => Ok(ValidationModeV1::StateRequired),
+        unknown => Err(format!("unsupported validation mode '{unknown}'")),
+    }
+}
+
+fn parse_max_state_age_seconds(value: &str) -> Result<u64, String> {
+    if value.trim().is_empty() {
+        return Err("max-state-age must be a non-blank duration value".to_string());
+    }
+
+    let (digits, multiplier) = match value.chars().last() {
+        Some('s') => (&value[..value.len() - 1], 1_u64),
+        Some('m') => (&value[..value.len() - 1], 60_u64),
+        Some('h') => (&value[..value.len() - 1], 3_600_u64),
+        Some(last) if last.is_ascii_digit() => (value, 1_u64),
+        _ => {
+            return Err(format!(
+                "max-state-age '{value}' must use seconds, minutes, or hours"
+            ));
+        }
+    };
+
+    let scalar = digits
+        .parse::<u64>()
+        .map_err(|_| format!("max-state-age '{value}' is not a valid duration"))?;
+    scalar
+        .checked_mul(multiplier)
+        .ok_or_else(|| format!("max-state-age '{value}' overflows the supported range"))
 }

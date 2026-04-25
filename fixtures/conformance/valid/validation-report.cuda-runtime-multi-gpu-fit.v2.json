@@ -1,0 +1,86 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1-service-profile-gpu-two-required-cuda-runtime-required-v1",
+    "provenance": {
+      "source": "validate:state_required",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1-service-profile-gpu-two-required-cuda-runtime-required-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "state_required",
+    "contract_artifact_id": "contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1",
+    "service_profile_artifact_id": "service-profile-gpu-two-required-cuda-runtime-required-v1",
+    "contract_semantic_hash": "49958833e6010268dd6a9a42c56f165f977526f46ddf9b04e6d745c2e5d6abc5",
+    "service_profile_semantic_hash": "6230104098593f360199913aa76051b7e73939b0156df1c30d56e5fc0a32c1f3",
+    "state_artifact_id": "state-linux-gpu-dual-numa-like-cuda-runtime-fit-v1",
+    "state_semantic_hash": "8cbd7940453b000d2bf2efa55a913016546d9976c011703fd1f8a1cfefa0389b",
+    "state_observed_at": "2025-04-21T14:37:19Z",
+    "state_freshness_state": "fresh",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "fit",
+    "primary_reason_code": "requirements_satisfied",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.min_policy_scoped_accelerators",
+      "core_requirements.primary_capability_class",
+      "extension_requirements.fitctl.runtime.cuda"
+    ],
+    "failed_requirements": [],
+    "evidence_refs": [
+      "$.state.extension_state.fitctl.runtime.cuda.devices",
+      "$.survey.core_evidence.execution_context",
+      "$.survey.core_evidence.observations.accelerators",
+      "$.survey.core_evidence.observations.cpu",
+      "$.survey.core_evidence.observations.memory",
+      "$.survey.core_evidence.observations.network"
+    ],
+    "policy_refs": [
+      "defaults/nvidia_gpu_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "extension_diagnostics": {
+      "fitctl.runtime.cuda": {
+        "checkpoint": "runtime_extension_summary",
+        "detail_code": "qualifying_device_threshold_satisfied",
+        "diagnostic_model_id": "fitctl.cuda_runtime_validation_diagnostic.v1",
+        "diagnostic_model_version": 1,
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.devices"
+        ],
+        "observed_qualifying_device_count": 2,
+        "related_requirements": [
+          "core_requirements.min_policy_scoped_accelerators"
+        ],
+        "required_qualifying_device_count": 2
+      }
+    },
+    "explanations": [
+      {
+        "explanation_id": "explain-cuda-runtime-qualifying_device_threshold_satisfied",
+        "reason_code": "requirements_satisfied",
+        "summary": "CUDA qualifying device count 2 satisfies the required threshold 2.",
+        "related_requirements": [
+          "core_requirements.min_policy_scoped_accelerators"
+        ],
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.devices"
+        ],
+        "policy_refs": []
+      }
+    ],
+    "remediation_hints": [],
+    "summary": "service profile fits the gpu_accelerated capability baseline"
+  }
+}

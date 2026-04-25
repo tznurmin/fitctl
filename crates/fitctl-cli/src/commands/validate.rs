@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use fitctl_core::artifacts::validation_v1::validate_host_state;
 use fitctl_core::config::{
     load_invocation_context_from_path, resolve_invocation_selected_policy_id_v1,
     resolve_invocation_selected_service_profile_id_v1, resolve_policy_from_pack_path,
@@ -18,11 +19,20 @@ use fitctl_core::contract::{
     DerivationContextV1,
 };
 use fitctl_core::policy::load_policy_document_from_path;
+use fitctl_core::state::{LocalLiveStateProbeV1, StateEngineV1, StateModeV1};
 use fitctl_core::validate::{
     load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
     load_service_profile_artifact_for_validation, validate_request_v1, ValidationModeV1,
     ValidationRequestV1,
 };
+
+use crate::commands::state_support::{
+    apply_state_extension_selection_v1, default_state_replay_extensions_root_v1,
+    prepare_state_extension_selection_v1, CudaSelectedEnvironmentCliInputV1,
+};
+
+const TEST_LIVE_STATE_FIXTURE_ID_ENV: &str = "FITCTL_VALIDATE_TEST_LIVE_STATE_FIXTURE_ID";
+const TEST_LIVE_STATE_FIXTURES_ROOT_ENV: &str = "FITCTL_VALIDATE_TEST_LIVE_STATE_FIXTURES_ROOT";
 
 pub fn run(args: &[String]) -> ExitCode {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -42,6 +52,9 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut profile_id: Option<String> = None;
     let mut invocation_context_path: Option<PathBuf> = None;
     let mut state_path: Option<PathBuf> = None;
+    let mut live_state_requested = false;
+    let mut extension_pack_paths = Vec::new();
+    let mut enabled_extension_namespaces = Vec::new();
     let mut mode = ValidationModeV1::ContractOnly;
     let mut max_state_age_seconds: Option<u64> = None;
     let mut validated_at: Option<String> = None;
@@ -145,6 +158,26 @@ pub fn run(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 };
                 state_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--live-state" => {
+                live_state_requested = true;
+                index += 1;
+            }
+            "--extension-pack" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --extension-pack requires a path");
+                    return ExitCode::from(2);
+                };
+                extension_pack_paths.push(PathBuf::from(value));
+                index += 2;
+            }
+            "--enable-extension" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --enable-extension requires a namespace");
+                    return ExitCode::from(2);
+                };
+                enabled_extension_namespaces.push(value.clone());
                 index += 2;
             }
             "--validation-mode" => {
@@ -387,16 +420,41 @@ pub fn run(args: &[String]) -> ExitCode {
         eprintln!("fitctl validate: --state is not allowed in contract_only mode");
         return ExitCode::from(2);
     }
+    if live_state_requested && state_path.is_some() {
+        eprintln!("fitctl validate: --live-state cannot be combined with --state");
+        return ExitCode::from(2);
+    }
+    if !live_state_requested
+        && (!extension_pack_paths.is_empty() || !enabled_extension_namespaces.is_empty())
+    {
+        eprintln!("fitctl validate: --extension-pack and --enable-extension require --live-state");
+        return ExitCode::from(2);
+    }
+    if live_state_requested && mode == ValidationModeV1::ContractOnly {
+        eprintln!("fitctl validate: --live-state is not allowed in contract_only mode");
+        return ExitCode::from(2);
+    }
     if mode == ValidationModeV1::ContractOnly && max_state_age_seconds.is_some() {
         eprintln!("fitctl validate: --max-state-age is not allowed in contract_only mode");
         return ExitCode::from(2);
     }
-    if max_state_age_seconds.is_some() && state_path.is_none() {
+    if live_state_requested && max_state_age_seconds.is_some() {
+        eprintln!("fitctl validate: --max-state-age is not allowed with --live-state");
+        return ExitCode::from(2);
+    }
+    if max_state_age_seconds.is_some() && state_path.is_none() && !live_state_requested {
         eprintln!("fitctl validate: --max-state-age requires --state");
         return ExitCode::from(2);
     }
-    if mode == ValidationModeV1::StateAware && state_path.is_none() {
-        eprintln!("fitctl validate: --mode state_aware requires --state");
+    if mode == ValidationModeV1::StateAware && state_path.is_none() && !live_state_requested {
+        eprintln!("fitctl validate: --mode state_aware requires --state or --live-state");
+        return ExitCode::from(2);
+    }
+    if matches!(mode, ValidationModeV1::StateRequired)
+        && state_path.is_none()
+        && !live_state_requested
+    {
+        eprintln!("fitctl validate: state-aware validation requires --state or --live-state");
         return ExitCode::from(2);
     }
 
@@ -622,6 +680,27 @@ pub fn run(args: &[String]) -> ExitCode {
             }
         }
     };
+    let extension_selection = if live_state_requested {
+        match prepare_state_extension_selection_v1(
+            true,
+            invocation_context
+                .as_ref()
+                .map(|context| context.enabled_extension_namespaces.as_slice())
+                .unwrap_or(&[]),
+            &extension_pack_paths,
+            &enabled_extension_namespaces,
+            &CudaSelectedEnvironmentCliInputV1::default(),
+        ) {
+            Ok(selection) => Some(selection),
+            Err(error) => {
+                eprintln!("fitctl validate: {error}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        None
+    };
+
     let host_state = match state_path {
         Some(path) => match load_host_state_artifact_for_validation(&path) {
             Ok(state) => Some(state),
@@ -630,6 +709,42 @@ pub fn run(args: &[String]) -> ExitCode {
                 return ExitCode::from(2);
             }
         },
+        None if live_state_requested => {
+            let mode = resolve_inline_live_state_mode_v1();
+            let replay_extensions_root = match &mode {
+                StateModeV1::Replay { fixtures_root, .. } => {
+                    Some(default_state_replay_extensions_root_v1(fixtures_root))
+                }
+                StateModeV1::Live => None,
+            };
+            let engine = StateEngineV1::new(LocalLiveStateProbeV1);
+            let state = match engine.collect_host_state(mode) {
+                Ok(state) => state,
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            let selection = extension_selection
+                .as_ref()
+                .expect("live-state selection must be prepared");
+            let state = match apply_state_extension_selection_v1(
+                state,
+                selection,
+                replay_extensions_root.as_deref(),
+            ) {
+                Ok(state) => state,
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            if let Err(error) = validate_host_state(&state) {
+                eprintln!("fitctl validate: {}", error.message);
+                return ExitCode::from(2);
+            }
+            Some(state)
+        }
         None => None,
     };
 
@@ -660,7 +775,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path>] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n"
+    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n\nModes:\n  - contract_only decides from the contract and service profile only\n  - state_advisory uses host-state when provided and keeps missing or stale runtime evidence explicit\n  - state_required uses host-state for runtime-sensitive checks and treats missing or stale state as blocking evidence\n\nFreshness:\n  - --validated-at <timestamp> sets the decision timestamp used for state freshness checks\n    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n  - --max-state-age <value> requires explicit --state input and rejects state older than that age\n    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n\nNotes:\n  - contract_only does not accept host-state input\n  - --max-state-age is not allowed with --live-state\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n"
 }
 
 fn current_epoch_marker() -> String {
@@ -732,4 +847,16 @@ enum ValidationModeSourceV1 {
     Default,
     Primary,
     Legacy,
+}
+
+fn resolve_inline_live_state_mode_v1() -> StateModeV1 {
+    match std::env::var(TEST_LIVE_STATE_FIXTURE_ID_ENV) {
+        Ok(fixture_id) if !fixture_id.trim().is_empty() => StateModeV1::Replay {
+            fixtures_root: std::env::var_os(TEST_LIVE_STATE_FIXTURES_ROOT_ENV)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("fixtures/host_state")),
+            fixture_id,
+        },
+        _ => StateModeV1::Live,
+    }
 }

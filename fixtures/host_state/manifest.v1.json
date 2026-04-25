@@ -47,6 +47,165 @@
       "related_survey_fixtures": [
         "linux-container-restricted-v1"
       ]
+    },
+    {
+      "fixture_id": "linux-container-machine-id-runtime-missing-v1",
+      "path": "linux-container-machine-id-runtime-missing-v1.json",
+      "coverage_tags": [
+        "container_restricted",
+        "runtime_collector_gap",
+        "limited_privilege"
+      ],
+      "related_survey_fixtures": [
+        "linux-container-machine-id-visible-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-container-hostname-fallback-runtime-missing-v1",
+      "path": "linux-container-hostname-fallback-runtime-missing-v1.json",
+      "coverage_tags": [
+        "container_restricted",
+        "runtime_collector_gap",
+        "limited_privilege"
+      ],
+      "related_survey_fixtures": [
+        "linux-container-hostname-fallback-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-fresh-v1",
+      "path": "linux-gpu-workstation-like-fresh-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-fit-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-fit-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-insufficient-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-insufficient-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-stale-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-stale-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "stale_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-runtime-missing-v1",
+      "path": "linux-gpu-workstation-like-cuda-runtime-missing-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu",
+        "runtime_collector_gap"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-workstation-like-cuda-default-view-gap-v1",
+      "path": "linux-gpu-workstation-like-cuda-default-view-gap-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu",
+        "runtime_collector_gap"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-fit-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-fit-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-dual-numa-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-one-device-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-one-device-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-dual-numa-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-per-device-insufficient-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-per-device-insufficient-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-dual-numa-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-missing-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-missing-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu",
+        "runtime_collector_gap"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-dual-numa-like-v1"
+      ]
+    },
+    {
+      "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-stale-v1",
+      "path": "linux-gpu-dual-numa-like-cuda-runtime-stale-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "stale_state",
+        "discrete_gpu"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-dual-numa-like-v1"
+      ]
     }
   ]
 }

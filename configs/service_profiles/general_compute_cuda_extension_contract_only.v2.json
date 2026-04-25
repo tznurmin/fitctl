@@ -22,8 +22,8 @@
       ]
     },
     "extension_requirements": {
-      "org.example.runtime.cuda": {
-        "schema_id": "fitctl.extension.org.example.runtime.cuda.requirement.v1",
+      "fitctl.runtime.cuda": {
+        "schema_id": "fitctl.extension.runtime.cuda.requirement.v1",
         "schema_version": 1,
         "required_runtime": "cuda",
         "require_presence": true,

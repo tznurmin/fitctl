@@ -1,0 +1,35 @@
+{
+  "schema_id": "fitctl.fixture.extension.runtime.cuda.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-dual-numa-like-v1",
+  "namespace": "fitctl.runtime.cuda",
+  "evidence": {
+    "schema_id": "fitctl.extension.runtime.cuda.evidence.v1",
+    "schema_version": 1,
+    "collector": {
+      "collector_id": "fitctl.runtime.cuda.collector.v1",
+      "collector_version": "1",
+      "source_family": "fixture_replay"
+    },
+    "claim_metadata": {
+      "assurance_source": "self_observed",
+      "derivation_stage": "normalized",
+      "source_collectors": [
+        "fitctl.runtime.cuda.collector.v1"
+      ],
+      "evidence_paths": [
+        "$.survey.extension_evidence.fitctl.runtime.cuda"
+      ],
+      "policy_rule_id": null,
+      "trust_evidence_refs": []
+    },
+    "runtime_id": "cuda",
+    "runtime_state": "observed",
+    "executable_path": "/usr/local/cuda/bin/nvcc",
+    "version": {
+      "major": 12,
+      "minor": 4,
+      "patch": 131
+    }
+  }
+}

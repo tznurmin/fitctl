@@ -1,0 +1,34 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-gpu-two-required-contract-only-v1",
+    "provenance": {
+      "source": "config:service_profiles/gpu_two_required_contract_only.v2.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "gpu_two_required_contract_only_v1",
+    "display_name": "2 GPUs required",
+    "short_display_name": "2 GPUs required",
+    "core_requirements": {
+      "primary_capability_class": "gpu_accelerated",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "min_policy_scoped_accelerators": 2
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

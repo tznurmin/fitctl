@@ -3,7 +3,7 @@
 
 //! Semantic drift classification for typed artifacts.
 //!
-//! The diff surface compares semantic content rather than presentation details so operators can
+//! The diff command compares semantic content rather than presentation details so operators can
 //! tell whether a change is materially meaningful.
 
 use serde::{Deserialize, Serialize};

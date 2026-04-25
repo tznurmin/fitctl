@@ -2,19 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-name = "fitctl-cli"
+name = "fitctl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "CLI for host survey, contract derivation, and workload-fit validation"
-readme = "../../README.md"
+readme = "README.md"
 repository = "https://github.com/tznurmin/fitctl"
 homepage = "https://github.com/tznurmin/fitctl"
 keywords = ["host", "cli", "policy", "validation"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-fitctl-core = { path = "../fitctl-core" }
+fitctl-core = { version = "0.3.0", path = "../fitctl-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

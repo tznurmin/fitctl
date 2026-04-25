@@ -8,8 +8,9 @@ use std::collections::BTreeSet;
 use crate::contract::{ContractDerivationError, ContractDerivationErrorCode};
 use crate::policy::schema_v1::{
     validate_policy_document, PolicyDocumentV1, PolicyLayerKindV1, PolicyRulesOverrideV1,
+    PolicyScopedAcceleratorInventoryModeV1,
 };
-use crate::survey::AcceleratorKindV1;
+use crate::survey::{AcceleratorIntegrationV1, AcceleratorKindV1};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectivePolicyV1 {
@@ -21,7 +22,10 @@ pub struct EffectivePolicyV1 {
     pub allow_container_restricted: bool,
     pub require_network_visibility: bool,
     pub required_accelerator_kind: Option<AcceleratorKindV1>,
+    pub required_accelerator_vendor: Option<String>,
+    pub required_accelerator_integration: Option<AcceleratorIntegrationV1>,
     pub min_accelerator_devices: Option<u32>,
+    pub policy_scoped_accelerator_inventory_mode: Option<PolicyScopedAcceleratorInventoryModeV1>,
 }
 
 #[derive(Default)]
@@ -32,7 +36,10 @@ struct LayeredRuleAccumV1 {
     allow_container_restricted: Option<bool>,
     require_network_visibility: Option<bool>,
     required_accelerator_kind: Option<AcceleratorKindV1>,
+    required_accelerator_vendor: Option<String>,
+    required_accelerator_integration: Option<AcceleratorIntegrationV1>,
     min_accelerator_devices: Option<u32>,
+    policy_scoped_accelerator_inventory_mode: Option<PolicyScopedAcceleratorInventoryModeV1>,
 }
 
 pub fn merge_policy_document_v1(
@@ -112,6 +119,16 @@ pub fn merge_policy_document_v1(
         ));
     }
 
+    if layered.policy_scoped_accelerator_inventory_mode.is_some()
+        && layered.required_accelerator_kind.is_none()
+    {
+        return Err(ContractDerivationError::new(
+            ContractDerivationErrorCode::PolicyDocumentInvalid,
+            "accelerator_scope_mode_validate",
+            "policy_scoped_accelerator_inventory_mode requires required_accelerator_kind in this version",
+        ));
+    }
+
     Ok(EffectivePolicyV1 {
         policy_id: policy.policy_id.clone(),
         selected_policy_layers,
@@ -121,7 +138,10 @@ pub fn merge_policy_document_v1(
         allow_container_restricted,
         require_network_visibility,
         required_accelerator_kind: layered.required_accelerator_kind,
+        required_accelerator_vendor: layered.required_accelerator_vendor,
+        required_accelerator_integration: layered.required_accelerator_integration,
         min_accelerator_devices: layered.min_accelerator_devices,
+        policy_scoped_accelerator_inventory_mode: layered.policy_scoped_accelerator_inventory_mode,
     })
 }
 
@@ -144,7 +164,16 @@ fn apply_rules(rules: &PolicyRulesOverrideV1, layered: &mut LayeredRuleAccumV1) 
     if let Some(value) = rules.required_accelerator_kind {
         layered.required_accelerator_kind = Some(value);
     }
+    if let Some(value) = &rules.required_accelerator_vendor {
+        layered.required_accelerator_vendor = Some(value.clone());
+    }
+    if let Some(value) = rules.required_accelerator_integration {
+        layered.required_accelerator_integration = Some(value);
+    }
     if let Some(value) = rules.min_accelerator_devices {
         layered.min_accelerator_devices = Some(value);
+    }
+    if let Some(value) = rules.policy_scoped_accelerator_inventory_mode {
+        layered.policy_scoped_accelerator_inventory_mode = Some(value);
     }
 }

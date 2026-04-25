@@ -13,8 +13,10 @@ use std::path::Path;
 
 use serde_json::Value;
 
+mod field_diagnostic;
 mod format;
 
+use self::field_diagnostic::*;
 use self::format::*;
 
 use crate::artifacts::batch_classification_report_v1::BatchClassificationReportV1;
@@ -22,6 +24,9 @@ use crate::artifacts::config_bundle_v1::ConfigBundleV1;
 use crate::artifacts::contract_v1::HostContractV1;
 use crate::artifacts::decision_bundle_v1::DecisionBundleV1;
 use crate::artifacts::envelope_v1::{ArtifactEnvelopeV1, SignatureEnvelopeV1};
+use crate::artifacts::field_diagnostic_v1::{
+    FieldDiagnosticProbeStatusV1, FieldDiagnosticSourceTierV1,
+};
 use crate::artifacts::metadata_v1::CollectorMetadataV1;
 use crate::artifacts::recommendation_report_v1::{
     RecommendationConfidenceV1, RecommendationFreshnessStateV1, RecommendationReportV1,
@@ -31,29 +36,37 @@ use crate::artifacts::record_v1::{
     ArtifactRecordV1,
 };
 use crate::artifacts::schema_ids_v1::{
-    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, RECOMMENDATION_REPORT_SCHEMA_ID,
+    is_supported_batch_classification_report_schema_id, RECOMMENDATION_REPORT_SCHEMA_ID,
 };
 use crate::artifacts::service_profile_v1::{
     AssurancePredicateV1, DegradationTierV1, ServiceProfileV1,
 };
-use crate::artifacts::state_v1::{HostStateV1, StateFieldV1};
+use crate::artifacts::state_v1::{HostRuntimeResourcesV1, HostStateV1, StateFieldV1};
 use crate::artifacts::survey_v1::{decode_host_survey_payload, HostSurveyV1};
 use crate::artifacts::validation_report_v1::ValidationReportV1;
 use crate::classify::{
     load_batch_classification_report_from_path, load_batch_classification_report_from_value,
 };
+use crate::config::CudaEnvironmentSelectionKindV1;
 use crate::contract::HostContractPayloadV1;
+use crate::extensions::cuda_runtime_v1::{
+    CudaDefaultViewFieldDiagnosticV1, CudaInstalledToolkitV1,
+};
 use crate::extensions::{
     decode_cuda_runtime_contract_from_value, decode_cuda_runtime_evidence_from_value,
-    decode_cuda_runtime_requirement_from_value, decode_node_runtime_contract_from_value,
+    decode_cuda_runtime_requirement_from_value, decode_cuda_runtime_state_from_value,
+    decode_cuda_runtime_validation_diagnostic_from_value, decode_node_runtime_contract_from_value,
     decode_node_runtime_evidence_from_value, decode_node_runtime_requirement_from_value,
     decode_python_runtime_contract_from_value, decode_python_runtime_evidence_from_value,
     decode_python_runtime_requirement_from_value, format_cuda_runtime_contract_for_inspect,
     format_cuda_runtime_evidence_for_inspect, format_cuda_runtime_requirement_for_inspect,
+    format_cuda_runtime_state_for_inspect, format_cuda_runtime_validation_diagnostic_for_inspect,
     format_node_runtime_contract_for_inspect, format_node_runtime_evidence_for_inspect,
     format_node_runtime_requirement_for_inspect, format_python_runtime_contract_for_inspect,
     format_python_runtime_evidence_for_inspect, format_python_runtime_requirement_for_inspect,
-    CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
+    CudaRuntimeContractV1, CudaRuntimeDeviceStateV1, CudaRuntimeEvidenceV1, CudaRuntimeStateV1,
+    CudaRuntimeVersionV1, CudaSelectedEnvironmentV1, CUDA_RUNTIME_NAMESPACE,
+    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
 };
 use crate::recommendation::{
     load_recommendation_report_from_path, load_recommendation_report_from_value,
@@ -62,7 +75,7 @@ use crate::survey::{
     AcceleratorDetailsV1, AcceleratorOperabilityV1, CpuCacheSummaryBasisV1, CpuCacheSummaryV1,
     CpuDetailsV1, NetworkCarrierStateV1, NetworkDetailsV1, NetworkDuplexV1,
     NetworkInterfaceVirtualityV1, ObservationLimitationReasonV1, ObservationStateV1,
-    PrivilegeLevelV1, StorageDetailsV1, SurveyFieldV1, VisibilityScopeV1,
+    PrivilegeLevelV1, StorageDetailsV1, SurveyFieldV1, TopologyDetailsV1, VisibilityScopeV1,
 };
 use crate::validate::{ValidationModeV1, ValidationReasonCodeV1, ValidationVerdictV1};
 
@@ -129,6 +142,7 @@ impl std::error::Error for InspectError {}
 pub enum InspectViewV1 {
     #[default]
     Summary,
+    Coverage,
     Matrix,
 }
 
@@ -182,7 +196,7 @@ impl InspectArtifactV1 {
 pub fn load_artifact_record_for_inspect(path: &Path) -> Result<InspectArtifactV1, InspectError> {
     let schema_id = load_schema_id_for_inspect(path)?;
 
-    if schema_id == BATCH_CLASSIFICATION_REPORT_SCHEMA_ID {
+    if is_supported_batch_classification_report_schema_id(&schema_id) {
         return load_batch_classification_report_from_path(path)
             .map(Box::new)
             .map(InspectArtifactV1::BatchClassificationReport)
@@ -230,7 +244,7 @@ pub fn load_artifact_record_for_inspect_from_value(
 ) -> Result<InspectArtifactV1, InspectError> {
     let schema_id = load_schema_id_for_inspect_from_value(&raw)?;
 
-    if schema_id == BATCH_CLASSIFICATION_REPORT_SCHEMA_ID {
+    if is_supported_batch_classification_report_schema_id(&schema_id) {
         return load_batch_classification_report_from_value(raw)
             .map(Box::new)
             .map(InspectArtifactV1::BatchClassificationReport)
@@ -378,6 +392,7 @@ pub fn render_inspect_artifact_summary_with_options_v1(
         "{}",
         match options.view {
             InspectViewV1::Summary => "Summary",
+            InspectViewV1::Coverage => "Coverage",
             InspectViewV1::Matrix => "Matrix",
         }
     )
@@ -390,52 +405,22 @@ pub fn render_inspect_artifact_summary_with_options_v1(
     })?;
 
     let collectors = match (artifact, options.view) {
-        (InspectArtifactV1::Core(artifact), InspectViewV1::Summary) => match artifact.as_ref() {
-            ArtifactRecordV1::Survey(artifact) => {
-                render_survey_summary(&mut output, artifact, options)?;
-                Some(
-                    decode_host_survey_payload(&artifact.survey)
-                        .map_err(|error| {
-                            InspectError::new(
-                                InspectErrorCode::InspectInputInvalid,
-                                "inspect_decode",
-                                format!(
-                                    "failed to decode host survey payload for inspect: {error}"
-                                ),
-                            )
-                        })?
-                        .core_evidence
-                        .collectors,
-                )
-            }
-            ArtifactRecordV1::Contract(artifact) => {
-                render_contract_summary(&mut output, artifact, options)?;
-                None
-            }
-            ArtifactRecordV1::ServiceProfile(artifact) => {
-                render_service_profile_summary(&mut output, artifact)?;
-                None
-            }
-            ArtifactRecordV1::State(artifact) => {
-                render_state_summary(&mut output, artifact, options)?;
-                Some(artifact.state.core_state.collectors.clone())
-            }
-            ArtifactRecordV1::ValidationReport(artifact) => {
-                render_validation_report_summary(&mut output, artifact, options)?;
-                None
-            }
-            ArtifactRecordV1::ConfigBundle(artifact) => {
-                render_config_bundle_summary(&mut output, artifact)?;
-                None
-            }
-            ArtifactRecordV1::DecisionBundle(artifact) => {
-                render_decision_bundle_summary(&mut output, artifact, options)?;
-                None
-            }
-        },
+        (InspectArtifactV1::Core(artifact), InspectViewV1::Summary) => {
+            render_core_inspect_summary_view(&mut output, artifact, options)?
+        }
+        (InspectArtifactV1::Core(artifact), InspectViewV1::Coverage) => {
+            render_core_inspect_coverage_view(&mut output, artifact, options)?
+        }
         (InspectArtifactV1::BatchClassificationReport(artifact), InspectViewV1::Summary) => {
             render_batch_classification_report_summary(&mut output, artifact, options)?;
             None
+        }
+        (InspectArtifactV1::BatchClassificationReport(_), InspectViewV1::Coverage) => {
+            return Err(InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_view_select",
+                "coverage view is supported only for survey, contract, and state artifacts",
+            ));
         }
         (InspectArtifactV1::BatchClassificationReport(artifact), InspectViewV1::Matrix) => {
             render_batch_classification_report_matrix(&mut output, artifact, options)?;
@@ -445,14 +430,18 @@ pub fn render_inspect_artifact_summary_with_options_v1(
             render_recommendation_report_summary(&mut output, artifact, options)?;
             None
         }
+        (InspectArtifactV1::RecommendationReport(_), InspectViewV1::Coverage) => {
+            return Err(InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_view_select",
+                "coverage view is supported only for survey, contract, and state artifacts",
+            ));
+        }
         (_, InspectViewV1::Matrix) => {
             return Err(InspectError::new(
                 InspectErrorCode::InspectInputInvalid,
                 "inspect_view_select",
-                format!(
-                    "matrix view is supported only for {} artifacts",
-                    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID
-                ),
+                "matrix view is supported only for batch-classification report artifacts",
             ));
         }
     };
@@ -496,11 +485,37 @@ fn render_survey_summary(
         )
     })?;
 
-    push_line(output, "Host alias", payload.host_alias)?;
-    push_line(output, "Collection mode", payload.collection_mode)?;
+    push_summary_group_header(output, "Host")?;
+    let host_alias = payload.host_alias.clone();
+    push_summary_group_line(output, "Host alias", &host_alias)?;
+    if should_render_survey_summary_hostname_line(
+        &host_alias,
+        &payload.core_evidence.observations.hostname,
+        options,
+    ) {
+        let hostname = if options.verbose {
+            format_survey_field(&payload.core_evidence.observations.hostname, |value| {
+                value.clone()
+            })
+        } else {
+            format_survey_field_compact(&payload.core_evidence.observations.hostname, |value| {
+                value.clone()
+            })
+        };
+        push_summary_group_line(output, "Hostname", hostname)?;
+    }
+    push_summary_group_line(
+        output,
+        "Local stable identity",
+        format_local_stable_identity_for_inspect(&payload.core_evidence.identity_summary, options),
+    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Collection")?;
+    push_summary_group_line(output, "Collection mode", payload.collection_mode)?;
     if options.verbose {
-        push_line(output, "Snapshot id", payload.snapshot_id)?;
-        push_line(output, "Source ref", payload.source_ref)?;
+        push_summary_group_line(output, "Snapshot id", payload.snapshot_id)?;
+        push_summary_group_line(output, "Source ref", payload.source_ref)?;
     }
     if options.verbose
         || !matches!(
@@ -508,13 +523,13 @@ fn render_survey_summary(
             VisibilityScopeV1::BareMetalLike
         )
     {
-        push_line(
+        push_summary_group_line(
             output,
             "Visibility scope",
             format_visibility_scope(&payload.core_evidence.execution_context.visibility_scope),
         )?;
     }
-    push_line(
+    push_summary_group_line(
         output,
         "Privilege level",
         format_privilege_level(&payload.core_evidence.execution_context.privilege_level),
@@ -526,7 +541,7 @@ fn render_survey_summary(
             .container_runtime
             .is_some()
     {
-        push_line(
+        push_summary_group_line(
             output,
             "Container runtime",
             format_optional_str(
@@ -539,124 +554,124 @@ fn render_survey_summary(
         )?;
     }
     if options.verbose || !payload.core_evidence.execution_context.notes.is_empty() {
-        push_line(
+        push_summary_group_line(
             output,
             "Execution notes",
             join_or_placeholder(&payload.core_evidence.execution_context.notes),
         )?;
     }
-    push_line(
-        output,
-        "Hostname",
-        format_survey_field(&payload.core_evidence.observations.hostname, |value| {
-            value.clone()
-        }),
-    )?;
-    push_line(
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Core")?;
+    push_summary_group_line(
         output,
         "CPU",
-        format_survey_field(&payload.core_evidence.observations.cpu, |value| {
-            format_cpu_details_for_inspect(value, options)
-        }),
+        if options.verbose {
+            format_survey_field(&payload.core_evidence.observations.cpu, |value| {
+                format_cpu_details_for_inspect(value, options)
+            })
+        } else {
+            format_survey_field_compact(&payload.core_evidence.observations.cpu, |value| {
+                format_cpu_details_for_inspect(value, options)
+            })
+        },
     )?;
-    push_line(
+    push_summary_group_line(
         output,
         "Memory total",
-        format_survey_field(&payload.core_evidence.observations.memory, |value| {
-            format_bytes(value.total_bytes)
-        }),
+        if options.verbose {
+            format_survey_field(&payload.core_evidence.observations.memory, |value| {
+                format_bytes(value.total_bytes)
+            })
+        } else {
+            format_survey_field_compact(&payload.core_evidence.observations.memory, |value| {
+                format_bytes_human_first(value.total_bytes)
+            })
+        },
     )?;
-    push_line(
+    push_summary_group_line(
         output,
         "Storage",
-        format_survey_field(&payload.core_evidence.observations.storage, |value| {
-            format_storage_details_for_inspect(value)
-        }),
+        if options.verbose {
+            format_survey_field(&payload.core_evidence.observations.storage, |value| {
+                format_storage_details_for_inspect(value)
+            })
+        } else {
+            format_survey_field_compact(&payload.core_evidence.observations.storage, |value| {
+                format_storage_details_for_inspect(value)
+            })
+        },
     )?;
     if options.verbose {
         if let Some(value) = payload.core_evidence.observations.storage.value.as_ref() {
-            push_line(
+            push_summary_group_line(
                 output,
                 "Storage filesystems",
                 format_storage_filesystems_for_verbose_inspect(value),
             )?;
-            push_line(
+            push_summary_group_line(
                 output,
                 "Storage roles",
                 format_storage_roles_for_verbose_inspect(value),
             )?;
         }
     }
-    push_line(
+    push_summary_group_line(
         output,
         "Network",
-        format_survey_field(&payload.core_evidence.observations.network, |value| {
-            format_network_details_for_inspect(value)
-        }),
+        if options.verbose {
+            format_survey_field(&payload.core_evidence.observations.network, |value| {
+                format_network_details_for_inspect(value)
+            })
+        } else {
+            format_survey_field_compact(&payload.core_evidence.observations.network, |value| {
+                format_network_details_for_inspect(value)
+            })
+        },
     )?;
     if options.verbose {
         if let Some(value) = payload.core_evidence.observations.network.value.as_ref() {
-            push_line(
+            push_summary_group_line(
                 output,
                 "Network addressability",
                 format_network_addressability_for_verbose_inspect(value),
             )?;
-            push_line(
+            push_summary_group_line(
                 output,
                 "Network carrier",
                 format_network_carrier_for_verbose_inspect(value),
             )?;
-            push_line(
+            push_summary_group_line(
                 output,
                 "Network duplex",
                 format_network_duplex_for_verbose_inspect(value),
             )?;
         }
     }
-    push_line(
-        output,
-        "Graphics / accelerators",
-        format_survey_field(&payload.core_evidence.observations.accelerators, |value| {
-            format_accelerator_details_for_inspect(value, options)
-        }),
-    )?;
-    push_line(
-        output,
-        "Topology",
-        format_survey_field(&payload.core_evidence.observations.topology, |value| {
-            format!(
-                "{} NUMA nodes; {} CPU packages",
-                value.numa_nodes, value.cpu_packages
-            )
-        }),
-    )?;
-    push_line(
-        output,
-        "Local stable identity",
-        format_identifier_value_for_inspect(
-            &payload.core_evidence.identity_summary.local_stable_id,
-            options,
-        ),
-    )?;
-    push_line(
-        output,
-        "Composition digest",
-        format_identifier_value_for_inspect(
-            &payload.core_evidence.identity_summary.composition_digest,
-            options,
-        ),
-    )?;
-    push_line(
-        output,
-        "Provenance fingerprint",
-        format_identifier_value_for_inspect(
-            &payload
-                .core_evidence
-                .identity_summary
-                .provenance_fingerprint,
-            options,
-        ),
-    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Accelerators")?;
+    if options.verbose
+        || !try_render_compact_survey_accelerator_lines_grouped(
+            output,
+            &payload.core_evidence.observations.accelerators,
+        )?
+    {
+        push_summary_group_line(
+            output,
+            "Graphics / accelerators",
+            if options.verbose {
+                format_survey_field(&payload.core_evidence.observations.accelerators, |value| {
+                    format_accelerator_details_for_inspect(value, options)
+                })
+            } else {
+                format_survey_field_compact(
+                    &payload.core_evidence.observations.accelerators,
+                    |value| format_accelerator_details_for_inspect(value, options),
+                )
+            },
+        )?;
+    }
     if let Some(value) = payload.extension_evidence.get(CUDA_RUNTIME_NAMESPACE) {
         let evidence = decode_cuda_runtime_evidence_from_value(value).map_err(|error| {
             InspectError::new(
@@ -665,10 +680,34 @@ fn render_survey_summary(
                 error.message,
             )
         })?;
-        push_line(
+        render_cuda_runtime_evidence_summary_grouped(output, &evidence, options)?;
+    }
+
+    let render_context_group = options.verbose
+        || should_render_survey_summary_topology_line(
+            &payload.core_evidence.observations.topology,
+            options,
+        )
+        || payload
+            .extension_evidence
+            .contains_key(PYTHON_RUNTIME_NAMESPACE)
+        || payload
+            .extension_evidence
+            .contains_key(NODE_RUNTIME_NAMESPACE);
+    if render_context_group {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "Context")?;
+        push_survey_summary_topology_line(
             output,
-            "CUDA runtime extension",
-            format_cuda_runtime_evidence_for_inspect(&evidence, true),
+            "Topology",
+            &payload.core_evidence.observations.topology,
+            options,
+            |value| {
+                format!(
+                    "{} NUMA nodes; {} CPU packages",
+                    value.numa_nodes, value.cpu_packages
+                )
+            },
         )?;
     }
     if let Some(value) = payload.extension_evidence.get(PYTHON_RUNTIME_NAMESPACE) {
@@ -679,7 +718,7 @@ fn render_survey_summary(
                 error.message,
             )
         })?;
-        push_line(
+        push_summary_group_line(
             output,
             "Python runtime extension",
             format_python_runtime_evidence_for_inspect(&evidence, true),
@@ -693,14 +732,710 @@ fn render_survey_summary(
                 error.message,
             )
         })?;
-        push_line(
+        push_summary_group_line(
             output,
             "Node runtime extension",
             format_node_runtime_evidence_for_inspect(&evidence, true),
         )?;
     }
 
+    let render_provenance_group = options.verbose || options.show_identifiers;
+    if render_provenance_group {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "Provenance")?;
+    }
+    push_survey_summary_value_line(
+        output,
+        "Composition digest",
+        format_identifier_value_for_inspect(
+            &payload.core_evidence.identity_summary.composition_digest,
+            options,
+        ),
+        options,
+        SurveySummaryCompactLinePolicyV1::HideInCompactUnlessShowIdentifiers,
+    )?;
+    push_survey_summary_value_line(
+        output,
+        "Provenance fingerprint",
+        format_identifier_value_for_inspect(
+            &payload
+                .core_evidence
+                .identity_summary
+                .provenance_fingerprint,
+            options,
+        ),
+        options,
+        SurveySummaryCompactLinePolicyV1::HideInCompactUnlessShowIdentifiers,
+    )?;
+
     Ok(())
+}
+
+fn render_core_inspect_summary_view(
+    output: &mut String,
+    artifact: &ArtifactRecordV1,
+    options: InspectRenderOptionsV1,
+) -> Result<Option<Vec<CollectorMetadataV1>>, InspectError> {
+    match artifact {
+        ArtifactRecordV1::Survey(artifact) => {
+            render_survey_summary(output, artifact, options)?;
+            Ok(Some(
+                decode_host_survey_payload(&artifact.survey)
+                    .map_err(|error| {
+                        InspectError::new(
+                            InspectErrorCode::InspectInputInvalid,
+                            "inspect_decode",
+                            format!("failed to decode host survey payload for inspect: {error}"),
+                        )
+                    })?
+                    .core_evidence
+                    .collectors,
+            ))
+        }
+        ArtifactRecordV1::Contract(artifact) => {
+            render_contract_summary(output, artifact, options)?;
+            Ok(None)
+        }
+        ArtifactRecordV1::ServiceProfile(artifact) => {
+            render_service_profile_summary(output, artifact)?;
+            Ok(None)
+        }
+        ArtifactRecordV1::State(artifact) => {
+            render_state_summary(output, artifact, options)?;
+            Ok(Some(artifact.state.core_state.collectors.clone()))
+        }
+        ArtifactRecordV1::ValidationReport(artifact) => {
+            render_validation_report_summary(output, artifact, options)?;
+            Ok(None)
+        }
+        ArtifactRecordV1::ConfigBundle(artifact) => {
+            render_config_bundle_summary(output, artifact)?;
+            Ok(None)
+        }
+        ArtifactRecordV1::DecisionBundle(artifact) => {
+            render_decision_bundle_summary(output, artifact, options)?;
+            Ok(None)
+        }
+    }
+}
+
+fn render_core_inspect_coverage_view(
+    output: &mut String,
+    artifact: &ArtifactRecordV1,
+    options: InspectRenderOptionsV1,
+) -> Result<Option<Vec<CollectorMetadataV1>>, InspectError> {
+    match artifact {
+        ArtifactRecordV1::Survey(artifact) => {
+            render_survey_coverage(output, artifact, options)?;
+            Ok(Some(
+                decode_host_survey_payload(&artifact.survey)
+                    .map_err(|error| {
+                        InspectError::new(
+                            InspectErrorCode::InspectInputInvalid,
+                            "inspect_decode",
+                            format!("failed to decode host survey payload for inspect: {error}"),
+                        )
+                    })?
+                    .core_evidence
+                    .collectors,
+            ))
+        }
+        ArtifactRecordV1::Contract(artifact) => {
+            render_contract_coverage(output, artifact, options)?;
+            Ok(None)
+        }
+        ArtifactRecordV1::State(artifact) => {
+            render_state_coverage(output, artifact, options)?;
+            Ok(Some(artifact.state.core_state.collectors.clone()))
+        }
+        _ => Err(InspectError::new(
+            InspectErrorCode::InspectInputInvalid,
+            "inspect_view_select",
+            "coverage view is supported only for survey, contract, and state artifacts",
+        )),
+    }
+}
+
+fn render_survey_coverage(
+    output: &mut String,
+    artifact: &HostSurveyV1,
+    _options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    let payload = decode_host_survey_payload(&artifact.survey).map_err(|error| {
+        InspectError::new(
+            InspectErrorCode::InspectInputInvalid,
+            "inspect_decode",
+            format!("failed to decode host survey payload for inspect: {error}"),
+        )
+    })?;
+
+    push_summary_group_header(output, "Host")?;
+    push_summary_group_line(
+        output,
+        "Hostname",
+        format_survey_field_coverage(&payload.core_evidence.observations.hostname),
+    )?;
+    push_summary_group_line(output, "Local stable identity", "present".to_string())?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Collection")?;
+    push_summary_group_line(output, "Visibility scope", "present")?;
+    push_summary_group_line(output, "Privilege level", "present")?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Core")?;
+    push_summary_group_line(
+        output,
+        "CPU",
+        format_survey_field_coverage(&payload.core_evidence.observations.cpu),
+    )?;
+    push_summary_group_line(
+        output,
+        "Memory total",
+        format_survey_field_coverage(&payload.core_evidence.observations.memory),
+    )?;
+    push_summary_group_line(
+        output,
+        "Storage",
+        format_survey_field_coverage(&payload.core_evidence.observations.storage),
+    )?;
+    push_summary_group_line(
+        output,
+        "Network",
+        format_survey_field_coverage(&payload.core_evidence.observations.network),
+    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Accelerators")?;
+    push_summary_group_line(
+        output,
+        "Graphics / accelerators",
+        format_survey_field_coverage(&payload.core_evidence.observations.accelerators),
+    )?;
+    if let Some(value) = payload.extension_evidence.get(CUDA_RUNTIME_NAMESPACE) {
+        let evidence = decode_cuda_runtime_evidence_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        push_summary_group_line(
+            output,
+            "CUDA runtime extension",
+            format_evidence_state_coverage(evidence.runtime_state),
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA default toolkit version",
+            format_optional_cuda_version_coverage(
+                evidence.version.as_ref(),
+                evidence
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.default_toolkit_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA driver version",
+            format_optional_cuda_version_coverage(
+                evidence.driver_version.as_ref(),
+                evidence
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.driver_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA driver-supported CUDA",
+            format_optional_cuda_version_coverage(
+                evidence.driver_supported_cuda_version.as_ref(),
+                evidence
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.driver_supported_cuda_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA default runtime version",
+            format_optional_cuda_version_coverage(
+                evidence.default_runtime_version.as_ref(),
+                evidence
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.default_runtime_version),
+            )?,
+        )?;
+        if evidence.selected_environment.is_some() {
+            push_summary_group_line(output, "CUDA selected environment", "present")?;
+            push_summary_group_line(
+                output,
+                "CUDA selected toolkit version",
+                format_optional_cuda_version_coverage(
+                    evidence.selected_environment_toolkit_version.as_ref(),
+                    evidence
+                        .selected_environment_probe_diagnostics
+                        .as_ref()
+                        .map(|diagnostics| &diagnostics.toolkit_version),
+                )?,
+            )?;
+            push_summary_group_line(
+                output,
+                "CUDA selected runtime version",
+                format_optional_cuda_version_coverage(
+                    evidence.selected_environment_runtime_version.as_ref(),
+                    evidence
+                        .selected_environment_probe_diagnostics
+                        .as_ref()
+                        .map(|diagnostics| &diagnostics.runtime_version),
+                )?,
+            )?;
+        }
+    }
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Context")?;
+    push_summary_group_line(
+        output,
+        "Topology",
+        format_survey_field_coverage(&payload.core_evidence.observations.topology),
+    )?;
+
+    Ok(())
+}
+
+fn render_contract_coverage(
+    output: &mut String,
+    artifact: &HostContractV1,
+    _options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    let payload: HostContractPayloadV1 = serde_json::from_value(artifact.contract.clone())
+        .map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                format!("failed to decode host contract payload for inspect: {error}"),
+            )
+        })?;
+
+    push_summary_group_header(output, "Host")?;
+    push_summary_group_line(
+        output,
+        "Host alias",
+        format_presence_coverage(artifact.host_alias.is_some()),
+    )?;
+    push_summary_group_line(output, "Local stable identity", "present")?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Collection")?;
+    push_summary_group_line(output, "Visibility scope", "present")?;
+    push_summary_group_line(
+        output,
+        "Container runtime",
+        format_presence_coverage(
+            payload
+                .core_contract
+                .execution_constraints
+                .container_runtime
+                .is_some(),
+        ),
+    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Core")?;
+    push_summary_group_line(
+        output,
+        "Capability classes",
+        format_presence_coverage(!payload.core_contract.capability_classes.is_empty()),
+    )?;
+    push_summary_group_line(output, "Network summary", "present")?;
+    push_summary_group_line(
+        output,
+        "Storage summary",
+        format_presence_coverage(
+            payload
+                .core_contract
+                .storage_summary
+                .total_block_devices
+                .is_some()
+                || payload.core_contract.storage_summary.total_mounts.is_some()
+                || !payload
+                    .core_contract
+                    .storage_summary
+                    .block_device_classes
+                    .is_empty()
+                || !payload
+                    .core_contract
+                    .storage_summary
+                    .filesystem_types
+                    .is_empty()
+                || payload.core_contract.storage_summary.operability.is_some(),
+        ),
+    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Accelerators")?;
+    push_summary_group_line(
+        output,
+        "Accelerator summary",
+        format_presence_coverage(contract_accelerator_summary_present(
+            &payload.core_contract.accelerator_summary,
+        )),
+    )?;
+    if let Some(value) = payload.extension_contract.get(CUDA_RUNTIME_NAMESPACE) {
+        let contract = decode_cuda_runtime_contract_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        push_summary_group_line(output, "CUDA runtime extension", "present")?;
+        push_summary_group_line(
+            output,
+            "CUDA default toolkit version",
+            format_optional_cuda_version_coverage(
+                contract.version.as_ref(),
+                contract
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.default_toolkit_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA driver version",
+            format_optional_cuda_version_coverage(
+                contract.driver_version.as_ref(),
+                contract
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.driver_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA driver-supported CUDA",
+            format_optional_cuda_version_coverage(
+                contract.driver_supported_cuda_version.as_ref(),
+                contract
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.driver_supported_cuda_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA default runtime version",
+            format_optional_cuda_version_coverage(
+                contract.default_runtime_version.as_ref(),
+                contract
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.default_runtime_version),
+            )?,
+        )?;
+    }
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Context")?;
+    push_summary_group_line(output, "Topology summary", "present")?;
+
+    Ok(())
+}
+
+fn render_state_coverage(
+    output: &mut String,
+    artifact: &HostStateV1,
+    _options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    push_summary_group_header(output, "Host")?;
+    push_summary_group_line(output, "Host alias", "present")?;
+    push_summary_group_line(
+        output,
+        "Local stable identity",
+        format_presence_coverage(artifact.state.local_identity.is_some()),
+    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Collection")?;
+    push_summary_group_line(output, "Collection mode", "present")?;
+    push_summary_group_line(output, "Freshness state", "present")?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Core")?;
+    push_summary_group_line(
+        output,
+        "Allocatable CPU",
+        format_state_field_coverage(
+            &artifact
+                .state
+                .core_state
+                .resources
+                .allocatable_cpu_logical_cores,
+        ),
+    )?;
+    push_summary_group_line(
+        output,
+        "Memory total",
+        format_state_field_coverage(&artifact.state.core_state.resources.memory_total_bytes),
+    )?;
+    push_summary_group_line(
+        output,
+        "Allocatable memory",
+        format_state_field_coverage(&artifact.state.core_state.resources.allocatable_memory_bytes),
+    )?;
+    push_summary_group_line(
+        output,
+        "Memory used excluding cache",
+        format_state_field_coverage(
+            &artifact
+                .state
+                .core_state
+                .resources
+                .memory_used_excluding_cache_bytes,
+        ),
+    )?;
+    push_summary_group_line(
+        output,
+        "Cgroup version",
+        format_state_field_coverage(&artifact.state.core_state.boundaries.cgroup_version),
+    )?;
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Accelerators")?;
+    if let Some(value) = artifact.state.extension_state.get(CUDA_RUNTIME_NAMESPACE) {
+        let state = decode_cuda_runtime_state_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        push_summary_group_line(
+            output,
+            "CUDA runtime state",
+            format_observation_surface(&state.runtime_state, state.limitation_reason.as_ref()),
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA total memory",
+            format_state_field_coverage(&state.total_memory_bytes),
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA allocatable memory",
+            format_state_field_coverage(&state.allocatable_memory_bytes),
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA default toolkit version",
+            format_cuda_state_version_coverage(
+                &state.default_toolkit_version,
+                state
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.default_toolkit_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA driver version",
+            format_cuda_state_version_coverage(
+                &state.driver_version,
+                state
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.driver_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA driver-supported CUDA",
+            format_cuda_state_version_coverage(
+                &state.driver_supported_cuda_version,
+                state
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.driver_supported_cuda_version),
+            )?,
+        )?;
+        push_summary_group_line(
+            output,
+            "CUDA default runtime version",
+            format_cuda_state_version_coverage(
+                &state.default_runtime_version,
+                state
+                    .default_view_probe_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| &diagnostics.default_runtime_version),
+            )?,
+        )?;
+        if state.selected_environment.is_some() {
+            push_summary_group_line(output, "CUDA selected environment", "present")?;
+            push_summary_group_line(
+                output,
+                "CUDA selected toolkit version",
+                format_cuda_state_version_coverage(
+                    &state.selected_environment_toolkit_version,
+                    state
+                        .selected_environment_probe_diagnostics
+                        .as_ref()
+                        .map(|diagnostics| &diagnostics.toolkit_version),
+                )?,
+            )?;
+            push_summary_group_line(
+                output,
+                "CUDA selected runtime version",
+                format_cuda_state_version_coverage(
+                    &state.selected_environment_runtime_version,
+                    state
+                        .selected_environment_probe_diagnostics
+                        .as_ref()
+                        .map(|diagnostics| &diagnostics.runtime_version),
+                )?,
+            )?;
+        }
+    }
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Context")?;
+    push_summary_group_line(
+        output,
+        "Visible NUMA nodes",
+        format_state_field_coverage(&artifact.state.core_state.topology.visible_numa_nodes),
+    )?;
+
+    Ok(())
+}
+
+fn format_presence_coverage(present: bool) -> &'static str {
+    if present {
+        "present"
+    } else {
+        "absent"
+    }
+}
+
+fn format_evidence_state_coverage(
+    state: crate::extensions::CudaRuntimeEvidenceStateV1,
+) -> &'static str {
+    match state {
+        crate::extensions::CudaRuntimeEvidenceStateV1::Observed => "observed",
+        crate::extensions::CudaRuntimeEvidenceStateV1::NotFound => "missing",
+    }
+}
+
+fn format_survey_field_coverage<T>(field: &SurveyFieldV1<T>) -> String {
+    format_observation_surface(&field.state, field.limitation_reason.as_ref())
+}
+
+fn format_state_field_coverage<T>(field: &StateFieldV1<T>) -> String {
+    format_observation_surface(&field.state, field.limitation_reason.as_ref())
+}
+
+fn contract_accelerator_summary_present(
+    summary: &crate::contract::payload_v1::ContractAcceleratorSummaryV1,
+) -> bool {
+    summary.total_accelerators.is_some()
+        || summary.gpu_accelerators.is_some()
+        || summary.full_inventory_complete.is_some()
+        || summary.policy_scoped_confirmed_accelerators.is_some()
+        || summary.policy_scoped_unresolved_accelerators.is_some()
+        || summary.policy_scoped_inventory_complete.is_some()
+        || summary.integrated_accelerators.is_some()
+        || summary.accelerators_with_known_memory.is_some()
+        || summary.accelerators_with_known_numa_node.is_some()
+        || summary.max_memory_bytes.is_some()
+        || !summary.accelerator_numa_nodes.is_empty()
+        || !summary.accelerator_kinds.is_empty()
+        || !summary.vendors.is_empty()
+        || !summary.families.is_empty()
+        || !summary.models.is_empty()
+        || summary.operability.is_some()
+}
+
+fn validate_field_diagnostic_for_coverage(
+    diagnostic: &CudaDefaultViewFieldDiagnosticV1,
+    value_observed: bool,
+) -> Result<(), InspectError> {
+    if diagnostic.source_ref.trim().is_empty() {
+        return Err(InspectError::new(
+            InspectErrorCode::InspectInputInvalid,
+            "inspect_coverage_diagnostic_validate",
+            "field diagnostic must use a non-blank source_ref",
+        ));
+    }
+    if value_observed && diagnostic.status != FieldDiagnosticProbeStatusV1::Observed {
+        return Err(InspectError::new(
+            InspectErrorCode::InspectInputInvalid,
+            "inspect_coverage_diagnostic_validate",
+            "observed coverage fields must use observed diagnostics when diagnostics are present",
+        ));
+    }
+    if !value_observed && diagnostic.status == FieldDiagnosticProbeStatusV1::Observed {
+        return Err(InspectError::new(
+            InspectErrorCode::InspectInputInvalid,
+            "inspect_coverage_diagnostic_validate",
+            "missing coverage fields must not use observed diagnostics when diagnostics are present",
+        ));
+    }
+    Ok(())
+}
+
+fn format_coverage_with_diagnostic(
+    base: &str,
+    diagnostic: &CudaDefaultViewFieldDiagnosticV1,
+    value_observed: bool,
+) -> Result<String, InspectError> {
+    validate_field_diagnostic_for_coverage(diagnostic, value_observed)?;
+    if diagnostic.status == FieldDiagnosticProbeStatusV1::Observed {
+        Ok(format!(
+            "{base}; {} {} via {}",
+            diagnostic.source_tier.as_str(),
+            diagnostic.source_kind.as_str(),
+            diagnostic.source_ref
+        ))
+    } else {
+        Ok(format!(
+            "{base}; {} {}; {} via {}",
+            diagnostic.source_tier.as_str(),
+            diagnostic.source_kind.as_str(),
+            diagnostic.status.as_str(),
+            diagnostic.source_ref
+        ))
+    }
+}
+
+fn format_optional_cuda_version_coverage(
+    version: Option<&CudaRuntimeVersionV1>,
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+) -> Result<String, InspectError> {
+    match (version, diagnostic) {
+        (Some(_), Some(diagnostic)) => {
+            format_coverage_with_diagnostic("observed", diagnostic, true)
+        }
+        (Some(_), None) => Ok("observed".to_string()),
+        (None, Some(diagnostic)) => format_coverage_with_diagnostic("missing", diagnostic, false),
+        (None, None) => Ok("missing".to_string()),
+    }
+}
+
+fn format_cuda_state_version_coverage(
+    field: &StateFieldV1<CudaRuntimeVersionV1>,
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+) -> Result<String, InspectError> {
+    let observed = field.state == ObservationStateV1::Observed
+        && field.limitation_reason.is_none()
+        && field.value.is_some();
+    let base = format_observation_surface(&field.state, field.limitation_reason.as_ref());
+    match diagnostic {
+        Some(diagnostic) => format_coverage_with_diagnostic(&base, diagnostic, observed),
+        None => Ok(base),
+    }
 }
 
 fn render_contract_summary(
@@ -957,6 +1692,51 @@ fn render_contract_summary(
             summary.push_str("; ");
             summary.push_str(&format!("{integrated_accelerators} integrated"));
         }
+        if let Some(full_inventory_complete) = payload
+            .core_contract
+            .accelerator_summary
+            .full_inventory_complete
+        {
+            summary.push_str("; ");
+            summary.push_str(&format!(
+                "full accelerator inventory {}",
+                if full_inventory_complete {
+                    "complete"
+                } else {
+                    "incomplete"
+                }
+            ));
+        }
+        if let (
+            Some(confirmed_scoped),
+            Some(unresolved_scoped),
+            Some(policy_scoped_inventory_complete),
+        ) = (
+            payload
+                .core_contract
+                .accelerator_summary
+                .policy_scoped_confirmed_accelerators,
+            payload
+                .core_contract
+                .accelerator_summary
+                .policy_scoped_unresolved_accelerators,
+            payload
+                .core_contract
+                .accelerator_summary
+                .policy_scoped_inventory_complete,
+        ) {
+            summary.push_str("; ");
+            summary.push_str(&format!(
+                "policy-scoped accelerator inventory {}; {} confirmed in-scope; {} unresolved in-scope",
+                if policy_scoped_inventory_complete {
+                    "complete"
+                } else {
+                    "incomplete"
+                },
+                confirmed_scoped,
+                unresolved_scoped
+            ));
+        }
         if let Some(known_memory_devices) = payload
             .core_contract
             .accelerator_summary
@@ -1024,10 +1804,7 @@ fn render_contract_summary(
     push_line(
         output,
         "Local stable identity",
-        format_identifier_value_for_inspect(
-            &payload.core_contract.identity_summary.local_stable_id,
-            options,
-        ),
+        format_local_stable_identity_for_inspect(&payload.core_contract.identity_summary, options),
     )?;
     push_line(
         output,
@@ -1130,11 +1907,7 @@ fn render_contract_summary(
                 error.message,
             )
         })?;
-        push_line(
-            output,
-            "CUDA runtime extension",
-            format_cuda_runtime_contract_for_inspect(&contract),
-        )?;
+        render_cuda_runtime_contract_summary(output, &contract, options)?;
     }
     if let Some(value) = payload.extension_contract.get(PYTHON_RUNTIME_NAMESPACE) {
         let contract = decode_python_runtime_contract_from_value(value).map_err(|error| {
@@ -1305,6 +2078,16 @@ fn render_service_profile_summary(
     )?;
     push_line(
         output,
+        "Minimum policy-scoped accelerators",
+        artifact
+            .profile
+            .core_requirements
+            .min_policy_scoped_accelerators
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "<none>".to_string()),
+    )?;
+    push_line(
+        output,
         "Require accelerator locality known",
         if artifact
             .profile
@@ -1436,131 +2219,1225 @@ fn render_state_summary(
     artifact: &HostStateV1,
     options: InspectRenderOptionsV1,
 ) -> Result<(), InspectError> {
-    push_line(output, "Host alias", artifact.state.host_alias.clone())?;
-    push_line(
+    push_summary_group_header(output, "Host")?;
+    push_summary_group_line(output, "Host alias", artifact.state.host_alias.clone())?;
+    if let Some(local_identity) = artifact.state.local_identity.as_ref() {
+        push_summary_group_line(
+            output,
+            "Local stable identity",
+            format_state_local_identity_for_inspect(local_identity, options),
+        )?;
+    }
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Collection")?;
+    push_summary_group_line(
         output,
         "Collection mode",
         artifact.state.collection_mode.as_str(),
     )?;
     if options.verbose {
-        push_line(output, "Snapshot id", artifact.state.snapshot_id.clone())?;
-        push_line(output, "Source ref", artifact.state.source_ref.clone())?;
+        push_summary_group_line(output, "Snapshot id", artifact.state.snapshot_id.clone())?;
+        push_summary_group_line(output, "Source ref", artifact.state.source_ref.clone())?;
     }
-    push_line(
+    push_summary_group_line(
         output,
         "Freshness state",
         artifact.state.core_state.freshness.freshness_state.as_str(),
     )?;
-    push_line(
+    push_summary_group_line(
         output,
         "Observed at",
         format_timestamp_for_inspect(&artifact.state.core_state.freshness.observed_at, options),
     )?;
-    push_line(
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Core")?;
+    push_summary_group_line(
         output,
         "Allocatable CPU",
-        format_state_field(
-            &artifact
-                .state
-                .core_state
-                .resources
-                .allocatable_cpu_logical_cores,
-            |value| value.to_string(),
-        ),
+        if options.verbose {
+            format_state_field(
+                &artifact
+                    .state
+                    .core_state
+                    .resources
+                    .allocatable_cpu_logical_cores,
+                |value| value.to_string(),
+            )
+        } else {
+            format_state_field_compact(
+                &artifact
+                    .state
+                    .core_state
+                    .resources
+                    .allocatable_cpu_logical_cores,
+                |value| value.to_string(),
+            )
+        },
     )?;
-    push_line(
-        output,
-        "Memory total",
-        format_state_field(
-            &artifact.state.core_state.resources.memory_total_bytes,
-            |value| format_bytes(*value),
-        ),
-    )?;
-    push_line(
-        output,
-        "Allocatable memory",
-        format_state_field(
-            &artifact.state.core_state.resources.allocatable_memory_bytes,
-            |value| format_bytes(*value),
-        ),
-    )?;
-    push_line(
-        output,
-        "Memory used excluding cache",
-        format_state_field(
-            &artifact
-                .state
-                .core_state
-                .resources
-                .memory_used_excluding_cache_bytes,
-            |value| format_bytes(*value),
-        ),
-    )?;
-    push_line(
+    let rendered_compact_memory = if options.verbose {
+        false
+    } else {
+        try_render_compact_state_memory_summary_line(output, &artifact.state.core_state.resources)?
+    };
+    if options.verbose || !rendered_compact_memory {
+        push_summary_group_line(
+            output,
+            "Memory total",
+            if options.verbose {
+                format_state_field(
+                    &artifact.state.core_state.resources.memory_total_bytes,
+                    |value| format_bytes(*value),
+                )
+            } else {
+                format_state_field_compact(
+                    &artifact.state.core_state.resources.memory_total_bytes,
+                    |value| format_bytes_human_first(*value),
+                )
+            },
+        )?;
+        push_summary_group_line(
+            output,
+            "Allocatable memory",
+            if options.verbose {
+                format_state_field(
+                    &artifact.state.core_state.resources.allocatable_memory_bytes,
+                    |value| format_bytes(*value),
+                )
+            } else {
+                format_state_field_compact(
+                    &artifact.state.core_state.resources.allocatable_memory_bytes,
+                    |value| format_bytes_human_first(*value),
+                )
+            },
+        )?;
+        push_summary_group_line(
+            output,
+            "Memory used excluding cache",
+            if options.verbose {
+                format_state_field(
+                    &artifact
+                        .state
+                        .core_state
+                        .resources
+                        .memory_used_excluding_cache_bytes,
+                    |value| format_bytes(*value),
+                )
+            } else {
+                format_state_field_compact(
+                    &artifact
+                        .state
+                        .core_state
+                        .resources
+                        .memory_used_excluding_cache_bytes,
+                    |value| format_bytes_human_first(*value),
+                )
+            },
+        )?;
+    }
+    push_state_summary_field_line(
         output,
         "Cgroup version",
-        format_state_field(
-            &artifact.state.core_state.boundaries.cgroup_version,
-            |value| value.clone(),
-        ),
+        &artifact.state.core_state.boundaries.cgroup_version,
+        options,
+        StateSummaryCompactFieldPolicyV1::Always,
+        |value| value.clone(),
     )?;
-    push_line(
-        output,
-        "Cpuset CPU ceiling",
-        format_state_field(
+    if should_render_state_summary_cpuset_line(
+        &artifact
+            .state
+            .core_state
+            .resources
+            .allocatable_cpu_logical_cores,
+        &artifact
+            .state
+            .core_state
+            .boundaries
+            .cpuset_cpu_logical_cores,
+        options,
+    ) {
+        push_state_summary_field_line(
+            output,
+            "Cpuset CPU ceiling",
             &artifact
                 .state
                 .core_state
                 .boundaries
                 .cpuset_cpu_logical_cores,
+            options,
+            StateSummaryCompactFieldPolicyV1::Always,
             |value| value.to_string(),
-        ),
-    )?;
-    push_line(
+        )?;
+    }
+    push_state_summary_field_line(
         output,
         "CPU quota ceiling",
-        format_state_field(
-            &artifact.state.core_state.boundaries.cpu_quota_logical_cores,
-            |value| value.to_string(),
-        ),
+        &artifact.state.core_state.boundaries.cpu_quota_logical_cores,
+        options,
+        StateSummaryCompactFieldPolicyV1::HidePlainUnknown,
+        |value| value.to_string(),
     )?;
-    push_line(
-        output,
-        "Memory limit",
-        format_state_field(
-            &artifact.state.core_state.boundaries.memory_limit_bytes,
-            |value| format_bytes(*value),
-        ),
-    )?;
-    push_line(
-        output,
-        "Memory current",
-        format_state_field(
-            &artifact.state.core_state.boundaries.memory_current_bytes,
-            |value| format_bytes(*value),
-        ),
-    )?;
-    push_line(
+    let memory_limit = &artifact.state.core_state.boundaries.memory_limit_bytes;
+    if should_render_state_summary_field_line(
+        memory_limit,
+        options,
+        StateSummaryCompactFieldPolicyV1::HidePlainUnknown,
+    ) {
+        push_summary_group_line(
+            output,
+            "Memory limit",
+            if options.verbose {
+                format_state_field(memory_limit, |value| format_bytes(*value))
+            } else {
+                format_state_field_compact(memory_limit, |value| format_bytes_human_first(*value))
+            },
+        )?;
+    }
+    let memory_current = &artifact.state.core_state.boundaries.memory_current_bytes;
+    if should_render_state_summary_field_line(
+        memory_current,
+        options,
+        StateSummaryCompactFieldPolicyV1::HidePlainUnknown,
+    ) {
+        push_summary_group_line(
+            output,
+            "Memory current",
+            if options.verbose {
+                format_state_field(memory_current, |value| format_bytes(*value))
+            } else {
+                format_state_field_compact(memory_current, |value| format_bytes_human_first(*value))
+            },
+        )?;
+    }
+    if artifact
+        .state
+        .extension_state
+        .contains_key(CUDA_RUNTIME_NAMESPACE)
+    {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "Accelerators")?;
+    }
+    if let Some(value) = artifact.state.extension_state.get(CUDA_RUNTIME_NAMESPACE) {
+        let state = decode_cuda_runtime_state_from_value(value).map_err(|error| {
+            InspectError::new(
+                InspectErrorCode::InspectInputInvalid,
+                "inspect_decode",
+                error.message,
+            )
+        })?;
+        render_cuda_runtime_state_summary_grouped(output, &state, options)?;
+    }
+
+    push_summary_group_separator(output)?;
+    push_summary_group_header(output, "Context")?;
+    push_state_summary_field_line(
         output,
         "Visible NUMA nodes",
-        format_state_field(
-            &artifact.state.core_state.topology.visible_numa_nodes,
-            |value| value.to_string(),
-        ),
+        &artifact.state.core_state.topology.visible_numa_nodes,
+        options,
+        StateSummaryCompactFieldPolicyV1::Always,
+        |value| value.to_string(),
     )?;
-    push_line(
+    push_state_summary_string_list_line(
         output,
         "Degraded capability classes",
-        join_or_placeholder(
-            &artifact
-                .state
-                .core_state
-                .operability
-                .degraded_capability_classes,
-        ),
+        &artifact
+            .state
+            .core_state
+            .operability
+            .degraded_capability_classes,
+        options,
+        StateSummaryCompactListPolicyV1::HideWhenEmpty,
     )?;
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StateSummaryCompactFieldPolicyV1 {
+    Always,
+    HidePlainUnknown,
+}
+
+enum SurveySummaryCompactLinePolicyV1 {
+    HideInCompactUnlessShowIdentifiers,
+}
+
+fn should_render_survey_summary_hostname_line(
+    host_alias: &str,
+    field: &SurveyFieldV1<String>,
+    options: InspectRenderOptionsV1,
+) -> bool {
+    if options.verbose {
+        return true;
+    }
+
+    !(field.state == ObservationStateV1::Observed
+        && field.limitation_reason.is_none()
+        && matches!(field.value.as_deref(), Some(value) if value == host_alias))
+}
+
+fn push_survey_summary_value_line(
+    output: &mut String,
+    label: &str,
+    value: impl Into<String>,
+    options: InspectRenderOptionsV1,
+    compact_policy: SurveySummaryCompactLinePolicyV1,
+) -> Result<(), InspectError> {
+    let value = value.into();
+    if should_render_survey_summary_value_line(options, compact_policy) {
+        push_summary_group_line(output, label, value)?;
+    }
+    Ok(())
+}
+
+fn should_render_survey_summary_value_line(
+    options: InspectRenderOptionsV1,
+    compact_policy: SurveySummaryCompactLinePolicyV1,
+) -> bool {
+    if options.verbose {
+        return true;
+    }
+
+    match compact_policy {
+        SurveySummaryCompactLinePolicyV1::HideInCompactUnlessShowIdentifiers => {
+            options.show_identifiers
+        }
+    }
+}
+
+fn push_survey_summary_topology_line(
+    output: &mut String,
+    label: &str,
+    field: &SurveyFieldV1<TopologyDetailsV1>,
+    options: InspectRenderOptionsV1,
+    value_formatter: impl Fn(&TopologyDetailsV1) -> String,
+) -> Result<(), InspectError> {
+    if should_render_survey_summary_topology_line(field, options) {
+        let rendered = if options.verbose {
+            format_survey_field(field, value_formatter)
+        } else {
+            format_survey_field_compact(field, value_formatter)
+        };
+        push_summary_group_line(output, label, rendered)?;
+    }
+    Ok(())
+}
+
+fn should_render_survey_summary_topology_line(
+    field: &SurveyFieldV1<TopologyDetailsV1>,
+    options: InspectRenderOptionsV1,
+) -> bool {
+    if options.verbose {
+        return true;
+    }
+
+    !(field.state == ObservationStateV1::Observed
+        && field.limitation_reason.is_none()
+        && matches!(
+            field.value.as_ref(),
+            Some(value) if value.numa_nodes == 1 && value.cpu_packages == 1
+        ))
+}
+
+fn push_state_summary_field_line<T>(
+    output: &mut String,
+    label: &str,
+    field: &StateFieldV1<T>,
+    options: InspectRenderOptionsV1,
+    compact_policy: StateSummaryCompactFieldPolicyV1,
+    value_formatter: impl Fn(&T) -> String,
+) -> Result<(), InspectError> {
+    if !should_render_state_summary_field_line(field, options, compact_policy) {
+        return Ok(());
+    }
+
+    let rendered = if options.verbose {
+        format_state_field(field, value_formatter)
+    } else {
+        format_state_field_compact(field, value_formatter)
+    };
+
+    push_summary_group_line(output, label, rendered)
+}
+
+fn should_render_state_summary_field_line<T>(
+    field: &StateFieldV1<T>,
+    options: InspectRenderOptionsV1,
+    compact_policy: StateSummaryCompactFieldPolicyV1,
+) -> bool {
+    if options.verbose {
+        return true;
+    }
+
+    match compact_policy {
+        StateSummaryCompactFieldPolicyV1::Always => true,
+        StateSummaryCompactFieldPolicyV1::HidePlainUnknown => {
+            !(field.state == ObservationStateV1::Unknown
+                && field.limitation_reason.is_none()
+                && field.value.is_none())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StateSummaryCompactListPolicyV1 {
+    HideWhenEmpty,
+}
+
+fn push_state_summary_string_list_line(
+    output: &mut String,
+    label: &str,
+    values: &[String],
+    options: InspectRenderOptionsV1,
+    compact_policy: StateSummaryCompactListPolicyV1,
+) -> Result<(), InspectError> {
+    if !should_render_state_summary_string_list_line(values, options, compact_policy) {
+        return Ok(());
+    }
+
+    push_summary_group_line(output, label, join_or_placeholder(values))
+}
+
+fn should_render_state_summary_string_list_line(
+    values: &[String],
+    options: InspectRenderOptionsV1,
+    compact_policy: StateSummaryCompactListPolicyV1,
+) -> bool {
+    if options.verbose {
+        return true;
+    }
+
+    match compact_policy {
+        StateSummaryCompactListPolicyV1::HideWhenEmpty => !values.is_empty(),
+    }
+}
+
+fn render_cuda_runtime_evidence_summary_grouped(
+    output: &mut String,
+    evidence: &CudaRuntimeEvidenceV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    let compact_default_view = if options.verbose {
+        None
+    } else {
+        format_cuda_default_view_compact_line_for_evidence(evidence)
+    };
+
+    if options.verbose
+        || evidence.runtime_state != crate::extensions::CudaRuntimeEvidenceStateV1::Observed
+    {
+        push_summary_group_line(
+            output,
+            "CUDA runtime extension",
+            format_cuda_runtime_evidence_for_inspect(evidence, false),
+        )?;
+    }
+    if let Some(default_view) = compact_default_view {
+        push_summary_group_line(output, "CUDA default view", default_view)?;
+    } else {
+        push_optional_cuda_runtime_version_line_grouped(
+            output,
+            "CUDA default toolkit version",
+            evidence.version.as_ref(),
+            evidence
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.default_toolkit_version),
+        )?;
+        push_optional_cuda_runtime_version_line_grouped(
+            output,
+            "CUDA driver version",
+            evidence.driver_version.as_ref(),
+            evidence
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.driver_version),
+        )?;
+        push_optional_cuda_runtime_version_line_grouped(
+            output,
+            "CUDA driver-supported CUDA",
+            evidence.driver_supported_cuda_version.as_ref(),
+            evidence
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.driver_supported_cuda_version),
+        )?;
+        push_optional_cuda_runtime_version_line_grouped(
+            output,
+            "CUDA default runtime version",
+            evidence.default_runtime_version.as_ref(),
+            evidence
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.default_runtime_version),
+        )?;
+    }
+    if let Some(selected_environment) = evidence.selected_environment.as_ref() {
+        push_summary_group_line(
+            output,
+            "CUDA selected environment",
+            format_cuda_selected_environment_for_inspect(selected_environment),
+        )?;
+    }
+    push_optional_cuda_runtime_version_line_grouped(
+        output,
+        "CUDA selected toolkit version",
+        evidence.selected_environment_toolkit_version.as_ref(),
+        evidence
+            .selected_environment_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.toolkit_version),
+    )?;
+    push_optional_cuda_runtime_version_line_grouped(
+        output,
+        "CUDA selected runtime version",
+        evidence.selected_environment_runtime_version.as_ref(),
+        evidence
+            .selected_environment_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.runtime_version),
+    )?;
+    if should_render_cuda_installed_toolkit_summary_in_compact(
+        &evidence.installed_toolkits,
+        options,
+    ) {
+        push_summary_group_line(
+            output,
+            "Installed CUDA toolkits",
+            format_cuda_installed_toolkit_summary_for_inspect(&evidence.installed_toolkits),
+        )?;
+    }
+    if options.verbose {
+        if let Some(path) = evidence.executable_path.as_deref() {
+            push_summary_group_line(output, "CUDA executable path", path)?;
+        }
+        push_cuda_installed_toolkit_entries_grouped(output, &evidence.installed_toolkits)?;
+    }
+    Ok(())
+}
+
+fn render_cuda_runtime_contract_summary(
+    output: &mut String,
+    contract: &CudaRuntimeContractV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    push_line(
+        output,
+        "CUDA runtime extension",
+        format_cuda_runtime_contract_for_inspect(contract),
+    )?;
+    push_optional_cuda_runtime_version_line(
+        output,
+        "CUDA default toolkit version",
+        contract.version.as_ref(),
+        contract
+            .default_view_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.default_toolkit_version),
+    )?;
+    push_optional_cuda_runtime_version_line(
+        output,
+        "CUDA driver version",
+        contract.driver_version.as_ref(),
+        contract
+            .default_view_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.driver_version),
+    )?;
+    push_optional_cuda_runtime_version_line(
+        output,
+        "CUDA driver-supported CUDA",
+        contract.driver_supported_cuda_version.as_ref(),
+        contract
+            .default_view_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.driver_supported_cuda_version),
+    )?;
+    push_optional_cuda_runtime_version_line(
+        output,
+        "CUDA default runtime version",
+        contract.default_runtime_version.as_ref(),
+        contract
+            .default_view_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.default_runtime_version),
+    )?;
+    if let Some(selected_environment) = contract.selected_environment.as_ref() {
+        push_line(
+            output,
+            "CUDA selected environment",
+            format_cuda_selected_environment_for_inspect(selected_environment),
+        )?;
+    }
+    push_optional_cuda_runtime_version_line(
+        output,
+        "CUDA selected toolkit version",
+        contract.selected_environment_toolkit_version.as_ref(),
+        contract
+            .selected_environment_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.toolkit_version),
+    )?;
+    push_optional_cuda_runtime_version_line(
+        output,
+        "CUDA selected runtime version",
+        contract.selected_environment_runtime_version.as_ref(),
+        contract
+            .selected_environment_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.runtime_version),
+    )?;
+    if !contract.installed_toolkits.is_empty() {
+        push_line(
+            output,
+            "Installed CUDA toolkits",
+            format_cuda_installed_toolkit_summary_for_inspect(&contract.installed_toolkits),
+        )?;
+    }
+    if options.verbose {
+        push_cuda_installed_toolkit_entries(output, &contract.installed_toolkits)?;
+    }
+    Ok(())
+}
+
+fn render_cuda_runtime_state_summary_grouped(
+    output: &mut String,
+    state: &CudaRuntimeStateV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    let rendered_compact_devices = if options.verbose {
+        false
+    } else {
+        try_render_compact_cuda_runtime_state_device_lines_grouped(output, state)?
+    };
+
+    if options.verbose || !rendered_compact_devices {
+        push_summary_group_line(
+            output,
+            "CUDA runtime state",
+            if options.verbose {
+                format_cuda_runtime_state_for_inspect(state)
+            } else {
+                format_cuda_runtime_state_compact_for_inspect(state)
+            },
+        )?;
+    }
+
+    if let Some(default_view) = if options.verbose {
+        None
+    } else {
+        format_cuda_default_view_compact_line_for_state(state)
+    } {
+        push_summary_group_line(output, "CUDA default view", default_view)?;
+    } else {
+        push_optional_cuda_runtime_state_version_line_grouped(
+            output,
+            "CUDA default toolkit version",
+            &state.default_toolkit_version,
+            state
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.default_toolkit_version),
+            options,
+        )?;
+        push_optional_cuda_runtime_state_version_line_grouped(
+            output,
+            "CUDA driver version",
+            &state.driver_version,
+            state
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.driver_version),
+            options,
+        )?;
+        push_optional_cuda_runtime_state_version_line_grouped(
+            output,
+            "CUDA driver-supported CUDA",
+            &state.driver_supported_cuda_version,
+            state
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.driver_supported_cuda_version),
+            options,
+        )?;
+        push_optional_cuda_runtime_state_version_line_grouped(
+            output,
+            "CUDA default runtime version",
+            &state.default_runtime_version,
+            state
+                .default_view_probe_diagnostics
+                .as_ref()
+                .map(|diagnostics| &diagnostics.default_runtime_version),
+            options,
+        )?;
+    }
+    if let Some(selected_environment) = state.selected_environment.as_ref() {
+        push_summary_group_line(
+            output,
+            "CUDA selected environment",
+            format_cuda_selected_environment_for_inspect(selected_environment),
+        )?;
+    }
+    push_optional_cuda_runtime_state_version_line_grouped(
+        output,
+        "CUDA selected toolkit version",
+        &state.selected_environment_toolkit_version,
+        state
+            .selected_environment_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.toolkit_version),
+        options,
+    )?;
+    push_optional_cuda_runtime_state_version_line_grouped(
+        output,
+        "CUDA selected runtime version",
+        &state.selected_environment_runtime_version,
+        state
+            .selected_environment_probe_diagnostics
+            .as_ref()
+            .map(|diagnostics| &diagnostics.runtime_version),
+        options,
+    )?;
+    if options.verbose {
+        if let Some(path) = state.probe_path.as_deref() {
+            push_summary_group_line(output, "CUDA probe path", path)?;
+        }
+        push_cuda_runtime_device_lines_grouped(output, &state.devices)?;
+    }
+    Ok(())
+}
+
+fn format_cuda_selected_environment_for_inspect(
+    selected_environment: &CudaSelectedEnvironmentV1,
+) -> String {
+    let kind = match selected_environment.selection.kind {
+        CudaEnvironmentSelectionKindV1::DefaultView => "default_view".to_string(),
+        CudaEnvironmentSelectionKindV1::ToolkitInstallRoot => format!(
+            "toolkit_install_root; {}",
+            selected_environment
+                .selection
+                .install_root
+                .as_deref()
+                .unwrap_or("<unknown>")
+        ),
+    };
+    format!("{}; {}", selected_environment.environment_id, kind)
+}
+
+fn push_optional_cuda_runtime_version_line(
+    output: &mut String,
+    label: &str,
+    version: Option<&CudaRuntimeVersionV1>,
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+) -> Result<(), InspectError> {
+    if let Some(version) = version {
+        push_line(
+            output,
+            label,
+            format_cuda_runtime_version_value_with_diagnostic_for_inspect(version, diagnostic),
+        )?;
+    } else if let Some(diagnostic) = diagnostic {
+        push_line(
+            output,
+            label,
+            format_missing_field_diagnostic_for_inspect(diagnostic),
+        )?;
+    }
+    Ok(())
+}
+
+fn push_optional_cuda_runtime_version_line_grouped(
+    output: &mut String,
+    label: &str,
+    version: Option<&CudaRuntimeVersionV1>,
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+) -> Result<(), InspectError> {
+    if let Some(version) = version {
+        push_summary_group_line(
+            output,
+            label,
+            format_cuda_runtime_version_value_with_diagnostic_for_inspect(version, diagnostic),
+        )?;
+    } else if let Some(diagnostic) = diagnostic {
+        push_summary_group_line(
+            output,
+            label,
+            format_missing_field_diagnostic_for_inspect(diagnostic),
+        )?;
+    }
+    Ok(())
+}
+
+fn push_optional_cuda_runtime_state_version_line_grouped(
+    output: &mut String,
+    label: &str,
+    field: &StateFieldV1<CudaRuntimeVersionV1>,
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    if field.state != ObservationStateV1::Missing {
+        let value = field.value.as_ref().ok_or_else(|| {
+            InspectError::new(
+                InspectErrorCode::InspectRenderFailed,
+                "inspect_render",
+                format!("state field {label} was not missing but had no value"),
+            )
+        })?;
+        let rendered_value =
+            format_cuda_runtime_version_value_with_diagnostic_for_inspect(value, diagnostic);
+        let rendered = if options.verbose {
+            format_state_field_rendered_value(
+                &field.state,
+                field.limitation_reason.as_ref(),
+                rendered_value,
+            )
+        } else {
+            format_state_field_rendered_value_compact(
+                &field.state,
+                field.limitation_reason.as_ref(),
+                rendered_value,
+            )
+        };
+        push_summary_group_line(output, label, rendered)?;
+    } else if let Some(diagnostic) = diagnostic {
+        push_summary_group_line(
+            output,
+            label,
+            format_missing_field_diagnostic_for_inspect(diagnostic),
+        )?;
+    }
+    Ok(())
+}
+
+fn try_render_compact_survey_accelerator_lines_grouped(
+    output: &mut String,
+    field: &SurveyFieldV1<AcceleratorDetailsV1>,
+) -> Result<bool, InspectError> {
+    if field.state != ObservationStateV1::Observed || field.limitation_reason.is_some() {
+        return Ok(false);
+    }
+    let Some(value) = field.value.as_ref() else {
+        return Ok(false);
+    };
+    if value.devices.is_empty() {
+        return Ok(false);
+    }
+
+    push_summary_group_line(
+        output,
+        &format_accelerator_compact_count_label_for_inspect(value),
+        value.devices.len().to_string(),
+    )?;
+    for (index, device) in value.devices.iter().enumerate() {
+        push_summary_group_line(
+            output,
+            &format_accelerator_device_label_for_inspect(device, value.devices.len(), index),
+            format_accelerator_device_value_for_inspect(
+                device,
+                value.operability.as_ref(),
+                value.devices.len(),
+            ),
+        )?;
+    }
+
+    Ok(true)
+}
+
+fn try_render_compact_cuda_runtime_state_device_lines_grouped(
+    output: &mut String,
+    state: &CudaRuntimeStateV1,
+) -> Result<bool, InspectError> {
+    if state.runtime_state != ObservationStateV1::Observed || state.limitation_reason.is_some() {
+        return Ok(false);
+    }
+    if state.devices.is_empty() {
+        return Ok(false);
+    }
+
+    push_summary_group_line(
+        output,
+        "Observed CUDA devices",
+        state.devices.len().to_string(),
+    )?;
+    push_cuda_runtime_device_lines_compact_grouped(output, &state.devices)?;
+    Ok(true)
+}
+
+fn format_cuda_default_view_compact_line_for_evidence(
+    evidence: &CudaRuntimeEvidenceV1,
+) -> Option<String> {
+    let diagnostics = evidence.default_view_probe_diagnostics.as_ref();
+    let toolkit = evidence.version.as_ref()?;
+    let driver = evidence.driver_version.as_ref()?;
+    let supported = evidence.driver_supported_cuda_version.as_ref()?;
+    let runtime = evidence.default_runtime_version.as_ref()?;
+
+    if !cuda_default_view_compaction_allowed(
+        diagnostics.map(|value| &value.default_toolkit_version),
+    ) || !cuda_default_view_compaction_allowed(diagnostics.map(|value| &value.driver_version))
+        || !cuda_default_view_compaction_allowed(
+            diagnostics.map(|value| &value.driver_supported_cuda_version),
+        )
+        || !cuda_default_view_compaction_allowed(
+            diagnostics.map(|value| &value.default_runtime_version),
+        )
+    {
+        return None;
+    }
+
+    Some(format_cuda_default_view_compact_line(
+        toolkit, driver, supported, runtime,
+    ))
+}
+
+fn format_cuda_default_view_compact_line_for_state(state: &CudaRuntimeStateV1) -> Option<String> {
+    let diagnostics = state.default_view_probe_diagnostics.as_ref();
+    let toolkit = observed_state_value_for_inspect(&state.default_toolkit_version)?;
+    let driver = observed_state_value_for_inspect(&state.driver_version)?;
+    let supported = observed_state_value_for_inspect(&state.driver_supported_cuda_version)?;
+    let runtime = observed_state_value_for_inspect(&state.default_runtime_version)?;
+
+    if !cuda_default_view_compaction_allowed(
+        diagnostics.map(|value| &value.default_toolkit_version),
+    ) || !cuda_default_view_compaction_allowed(diagnostics.map(|value| &value.driver_version))
+        || !cuda_default_view_compaction_allowed(
+            diagnostics.map(|value| &value.driver_supported_cuda_version),
+        )
+        || !cuda_default_view_compaction_allowed(
+            diagnostics.map(|value| &value.default_runtime_version),
+        )
+    {
+        return None;
+    }
+
+    Some(format_cuda_default_view_compact_line(
+        toolkit, driver, supported, runtime,
+    ))
+}
+
+fn format_cuda_default_view_compact_line(
+    toolkit: &CudaRuntimeVersionV1,
+    driver: &CudaRuntimeVersionV1,
+    supported: &CudaRuntimeVersionV1,
+    runtime: &CudaRuntimeVersionV1,
+) -> String {
+    format!(
+        "toolkit {}; driver {}; supported {}; runtime {}",
+        format_cuda_runtime_version_value_for_inspect(toolkit),
+        format_cuda_runtime_version_value_for_inspect(driver),
+        format_cuda_runtime_version_value_for_inspect(supported),
+        format_cuda_runtime_version_value_for_inspect(runtime)
+    )
+}
+
+fn cuda_default_view_compaction_allowed(
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+) -> bool {
+    diagnostic.is_none_or(|diagnostic| {
+        diagnostic.source_tier == FieldDiagnosticSourceTierV1::Primary
+            && diagnostic.status == FieldDiagnosticProbeStatusV1::Observed
+    })
+}
+
+fn should_render_cuda_installed_toolkit_summary_in_compact(
+    installed_toolkits: &[CudaInstalledToolkitV1],
+    options: InspectRenderOptionsV1,
+) -> bool {
+    if options.verbose {
+        return !installed_toolkits.is_empty();
+    }
+
+    if installed_toolkits.len() > 1 {
+        return true;
+    }
+
+    installed_toolkits
+        .iter()
+        .any(|entry| !entry.selected_by_default_toolkit_view)
+}
+
+fn push_cuda_installed_toolkit_entries(
+    output: &mut String,
+    installed_toolkits: &[CudaInstalledToolkitV1],
+) -> Result<(), InspectError> {
+    for (index, entry) in installed_toolkits.iter().enumerate() {
+        push_line(
+            output,
+            &format!("CUDA toolkit #{index}"),
+            format_cuda_installed_toolkit_entry_for_inspect(entry),
+        )?;
+    }
+    Ok(())
+}
+
+fn push_cuda_installed_toolkit_entries_grouped(
+    output: &mut String,
+    installed_toolkits: &[CudaInstalledToolkitV1],
+) -> Result<(), InspectError> {
+    for (index, entry) in installed_toolkits.iter().enumerate() {
+        push_summary_group_line(
+            output,
+            &format!("CUDA toolkit #{index}"),
+            format_cuda_installed_toolkit_entry_for_inspect(entry),
+        )?;
+    }
+    Ok(())
+}
+
+fn push_cuda_runtime_device_lines_grouped(
+    output: &mut String,
+    devices: &[CudaRuntimeDeviceStateV1],
+) -> Result<(), InspectError> {
+    for device in devices {
+        push_summary_group_line(
+            output,
+            &format!("CUDA device #{}", device.device_ordinal),
+            format_cuda_runtime_device_state_for_inspect(device),
+        )?;
+    }
+    Ok(())
+}
+
+fn push_cuda_runtime_device_lines_compact_grouped(
+    output: &mut String,
+    devices: &[CudaRuntimeDeviceStateV1],
+) -> Result<(), InspectError> {
+    for device in devices {
+        push_summary_group_line(
+            output,
+            &format_cuda_runtime_device_compact_label_for_inspect(device, devices.len()),
+            format_cuda_runtime_device_state_compact_for_inspect(device),
+        )?;
+    }
+    Ok(())
+}
+
+fn try_render_compact_state_memory_summary_line(
+    output: &mut String,
+    resources: &HostRuntimeResourcesV1,
+) -> Result<bool, InspectError> {
+    let Some(total) = scalar_state_value_for_inspect(&resources.memory_total_bytes) else {
+        return Ok(false);
+    };
+    let Some(allocatable) = scalar_state_value_for_inspect(&resources.allocatable_memory_bytes)
+    else {
+        return Ok(false);
+    };
+    let Some(used) = scalar_state_value_for_inspect(&resources.memory_used_excluding_cache_bytes)
+    else {
+        return Ok(false);
+    };
+
+    push_summary_group_line(
+        output,
+        "Memory",
+        format_state_memory_usage_compact(used, total, allocatable),
+    )?;
+    Ok(true)
+}
+
+fn scalar_state_value_for_inspect<T: Copy>(field: &StateFieldV1<T>) -> Option<T> {
+    if field.state == ObservationStateV1::Observed && field.limitation_reason.is_none() {
+        field.value
+    } else {
+        None
+    }
+}
+
+fn observed_state_value_for_inspect<T>(field: &StateFieldV1<T>) -> Option<&T> {
+    if field.state == ObservationStateV1::Observed && field.limitation_reason.is_none() {
+        field.value.as_ref()
+    } else {
+        None
+    }
+}
+
+fn format_cuda_runtime_version_value_for_inspect(version: &CudaRuntimeVersionV1) -> String {
+    format!("{}.{}.{}", version.major, version.minor, version.patch)
+}
+
+fn format_cuda_runtime_version_value_with_diagnostic_for_inspect(
+    version: &CudaRuntimeVersionV1,
+    diagnostic: Option<&CudaDefaultViewFieldDiagnosticV1>,
+) -> String {
+    let version = format_cuda_runtime_version_value_for_inspect(version);
+    let Some(diagnostic) = diagnostic else {
+        return version;
+    };
+    if diagnostic.source_tier == FieldDiagnosticSourceTierV1::AdvisoryFallback
+        && diagnostic.status == FieldDiagnosticProbeStatusV1::Observed
+    {
+        return format!(
+            "{version} (advisory fallback via {})",
+            diagnostic.source_ref
+        );
+    }
+    version
+}
+
+fn format_cuda_installed_toolkit_summary_for_inspect(
+    installed_toolkits: &[CudaInstalledToolkitV1],
+) -> String {
+    let mut parts = vec![
+        "advisory".to_string(),
+        format!("{} discovered", installed_toolkits.len()),
+    ];
+    if let Some(selected) = installed_toolkits
+        .iter()
+        .find(|entry| entry.selected_by_default_toolkit_view)
+    {
+        parts.push(format!(
+            "default {}",
+            format_cuda_runtime_version_value_for_inspect(&selected.version)
+        ));
+    }
+    parts.join("; ")
+}
+
+fn format_cuda_installed_toolkit_entry_for_inspect(entry: &CudaInstalledToolkitV1) -> String {
+    let mut parts = vec![format!(
+        "{} ({})",
+        entry.install_root,
+        format_cuda_runtime_version_value_for_inspect(&entry.version)
+    )];
+    if entry.selected_by_default_toolkit_view {
+        parts.push("selected by default toolkit view".to_string());
+    }
+    parts.join("; ")
+}
+
+fn format_cuda_runtime_device_state_for_inspect(device: &CudaRuntimeDeviceStateV1) -> String {
+    format!(
+        "{}; total {}; used {}; allocatable {}",
+        device.device_uuid,
+        format_state_field(&device.total_memory_bytes, |value| format_bytes(*value)),
+        format_state_field(&device.used_memory_bytes, |value| format_bytes(*value)),
+        format_state_field(&device.allocatable_memory_bytes, |value| format_bytes(
+            *value
+        ))
+    )
+}
+
+fn format_cuda_runtime_device_compact_label_for_inspect(
+    device: &CudaRuntimeDeviceStateV1,
+    total_devices: usize,
+) -> String {
+    if total_devices == 1 {
+        "CUDA device".to_string()
+    } else {
+        let trimmed = device.device_uuid.trim();
+        if trimmed.is_empty() {
+            format!("CUDA device #{}", device.device_ordinal)
+        } else {
+            format!("CUDA device {}", shorten_identifier_for_inspect(trimmed))
+        }
+    }
+}
+
+fn format_cuda_runtime_state_compact_for_inspect(state: &CudaRuntimeStateV1) -> String {
+    let mut parts = Vec::new();
+
+    if state.runtime_state != ObservationStateV1::Observed || state.limitation_reason.is_some() {
+        parts.push(format_observation_surface(
+            &state.runtime_state,
+            state.limitation_reason.as_ref(),
+        ));
+    }
+    if !state.devices.is_empty() {
+        parts.push(if state.devices.len() == 1 {
+            "1 device".to_string()
+        } else {
+            format!("{} devices", state.devices.len())
+        });
+    }
+    match (
+        scalar_state_value_for_inspect(&state.used_memory_bytes),
+        scalar_state_value_for_inspect(&state.allocatable_memory_bytes),
+        scalar_state_value_for_inspect(&state.total_memory_bytes),
+    ) {
+        (Some(used), Some(allocatable), Some(total))
+            if used <= total
+                && allocatable <= total
+                && used.saturating_add(allocatable) <= total =>
+        {
+            parts.push(format_cuda_memory_triplet_compact(used, allocatable, total))
+        }
+        (None, Some(allocatable), Some(total)) if allocatable <= total => {
+            parts.push(format_cuda_allocatable_memory_compact(allocatable, total))
+        }
+        (_, Some(allocatable), None) => parts.push(format!(
+            "allocatable {}",
+            format_bytes_human_first_compact(allocatable)
+        )),
+        (_, None, Some(total)) => {
+            parts.push(format!("total {}", format_bytes_human_first_compact(total)))
+        }
+        (_, Some(allocatable), Some(total)) => parts.push(format!(
+            "total {}; allocatable {}",
+            format_bytes_human_first_compact(total),
+            format_bytes_human_first_compact(allocatable)
+        )),
+        (_, None, None) => {}
+    }
+
+    if parts.is_empty() {
+        format_observation_surface(&state.runtime_state, state.limitation_reason.as_ref())
+    } else {
+        parts.join("; ")
+    }
+}
+
+fn format_cuda_runtime_device_state_compact_for_inspect(
+    device: &CudaRuntimeDeviceStateV1,
+) -> String {
+    match (
+        scalar_state_value_for_inspect(&device.used_memory_bytes),
+        scalar_state_value_for_inspect(&device.allocatable_memory_bytes),
+        scalar_state_value_for_inspect(&device.total_memory_bytes),
+    ) {
+        (Some(used), Some(allocatable), Some(total))
+            if used <= total
+                && allocatable <= total
+                && used.saturating_add(allocatable) <= total =>
+        {
+            format_cuda_memory_triplet_compact(used, allocatable, total)
+        }
+        (None, Some(allocatable), Some(total)) if allocatable <= total => {
+            format_cuda_allocatable_memory_compact(allocatable, total)
+        }
+        _ => format!(
+            "total {}; used {}; allocatable {}",
+            format_state_field_compact(&device.total_memory_bytes, |value| {
+                format_bytes_human_first(*value)
+            }),
+            format_state_field_compact(&device.used_memory_bytes, |value| {
+                format_bytes_human_first(*value)
+            }),
+            format_state_field_compact(&device.allocatable_memory_bytes, |value| {
+                format_bytes_human_first(*value)
+            })
+        ),
+    }
+}
+
+fn should_render_state_summary_cpuset_line(
+    allocatable_cpu: &StateFieldV1<u32>,
+    cpuset_cpu: &StateFieldV1<u32>,
+    options: InspectRenderOptionsV1,
+) -> bool {
+    if options.verbose {
+        return true;
+    }
+
+    !matches!(
+        (
+            scalar_state_value_for_inspect(allocatable_cpu),
+            scalar_state_value_for_inspect(cpuset_cpu),
+        ),
+        (Some(allocatable), Some(cpuset)) if allocatable == cpuset
+    )
 }
 
 fn render_validation_report_summary(
@@ -1625,6 +3502,11 @@ fn render_validation_report_summary(
         "Warnings",
         join_or_placeholder(&artifact.report.warnings),
     )?;
+    if let Some(extension_diagnostics) =
+        format_validation_extension_diagnostics_for_inspect(&artifact.report.extension_diagnostics)?
+    {
+        push_line(output, "Extension diagnostics", extension_diagnostics)?;
+    }
     push_line(
         output,
         "Explanations",
@@ -1696,6 +3578,37 @@ fn render_validation_report_summary(
     }
 
     Ok(())
+}
+
+fn format_validation_extension_diagnostics_for_inspect(
+    values: &BTreeMap<String, Value>,
+) -> Result<Option<String>, InspectError> {
+    let mut diagnostics = Vec::new();
+
+    if let Some(value) = values.get(CUDA_RUNTIME_NAMESPACE) {
+        let diagnostic =
+            decode_cuda_runtime_validation_diagnostic_from_value(value).map_err(|error| {
+                InspectError::new(
+                    InspectErrorCode::InspectInputInvalid,
+                    "inspect_decode",
+                    format!(
+                        "failed to decode CUDA runtime validation diagnostic for inspect: {}",
+                        error.message
+                    ),
+                )
+            })?;
+        diagnostics.push(format!(
+            "{}: {}",
+            CUDA_RUNTIME_NAMESPACE,
+            format_cuda_runtime_validation_diagnostic_for_inspect(&diagnostic)
+        ));
+    }
+
+    if diagnostics.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(diagnostics.join(", ")))
+    }
 }
 
 fn render_decision_bundle_summary(
@@ -2151,6 +4064,13 @@ fn render_batch_classification_report_summary(
         "Validation mode",
         format_validation_mode(artifact.classification_basis.validation_mode),
     )?;
+    if let Some(max_state_age_seconds) = artifact.classification_basis.max_state_age_seconds {
+        push_line(
+            output,
+            "Max state age",
+            format_duration_compact(max_state_age_seconds),
+        )?;
+    }
     push_line(
         output,
         "Validated at",
@@ -2180,6 +4100,13 @@ fn render_batch_classification_report_summary(
                 .collect::<Vec<_>>(),
         ),
     )?;
+    if artifact.classification_basis.validation_mode != ValidationModeV1::ContractOnly {
+        push_line(
+            output,
+            "State lineage",
+            format_batch_state_lineage(artifact, options),
+        )?;
+    }
     push_line(
         output,
         "Batch classification rows",
@@ -2232,11 +4159,25 @@ fn render_batch_classification_report_matrix(
         "Validation mode",
         format_validation_mode(artifact.classification_basis.validation_mode),
     )?;
+    if let Some(max_state_age_seconds) = artifact.classification_basis.max_state_age_seconds {
+        push_line(
+            output,
+            "Max state age",
+            format_duration_compact(max_state_age_seconds),
+        )?;
+    }
     push_line(
         output,
         "Validated at",
         format_timestamp_for_inspect(&artifact.classification_basis.validated_at, options),
     )?;
+    if artifact.classification_basis.validation_mode != ValidationModeV1::ContractOnly {
+        push_line(
+            output,
+            "State lineage",
+            format_batch_state_lineage(artifact, options),
+        )?;
+    }
     writeln!(output, "  Verdict matrix:").map_err(|error| {
         InspectError::new(
             InspectErrorCode::InspectRenderFailed,
@@ -2283,6 +4224,15 @@ fn render_metadata_section(
         format_optional_str(envelope.provenance.fitctl_version.as_deref()),
     )?;
     if options.verbose {
+        if let Some(vcs_revision) = envelope.provenance.fitctl_vcs_revision.as_deref() {
+            push_line(output, "fitctl vcs revision", vcs_revision)?;
+        }
+        if let Some(vcs_describe) = envelope.provenance.fitctl_vcs_describe.as_deref() {
+            push_line(output, "fitctl vcs describe", vcs_describe)?;
+        }
+        if let Some(build_dirty) = envelope.provenance.fitctl_build_dirty {
+            push_line(output, "fitctl build dirty", build_dirty.to_string())?;
+        }
         push_line(
             output,
             "Command name",
@@ -2409,4 +4359,37 @@ fn format_network_duplex_for_verbose_inspect(value: &NetworkDetailsV1) -> String
     }
 
     format!("physical full {full}; half {half}; unknown {unknown}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_cuda_device_formatter_falls_back_when_allocatable_exceeds_total() {
+        let device = CudaRuntimeDeviceStateV1 {
+            device_ordinal: 0,
+            device_uuid: "GPU-test".to_string(),
+            total_memory_bytes: StateFieldV1 {
+                state: ObservationStateV1::Observed,
+                limitation_reason: None,
+                value: Some(25_769_803_776),
+            },
+            allocatable_memory_bytes: StateFieldV1 {
+                state: ObservationStateV1::Observed,
+                limitation_reason: None,
+                value: Some(26_843_545_600),
+            },
+            used_memory_bytes: StateFieldV1 {
+                state: ObservationStateV1::Missing,
+                limitation_reason: None,
+                value: None,
+            },
+        };
+
+        assert_eq!(
+            format_cuda_runtime_device_state_compact_for_inspect(&device),
+            "total 24.00 GiB (25769803776 bytes); used missing; allocatable 25.00 GiB (26843545600 bytes)"
+        );
+    }
 }

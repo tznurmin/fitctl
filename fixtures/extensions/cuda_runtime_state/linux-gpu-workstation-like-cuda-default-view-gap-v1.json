@@ -1,0 +1,86 @@
+{
+  "schema_id": "fitctl.fixture.extension.runtime.cuda.state.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-workstation-like-cuda-default-view-gap-v1",
+  "namespace": "fitctl.runtime.cuda",
+  "state": {
+    "schema_id": "fitctl.extension.runtime.cuda.state.v1",
+    "schema_version": 1,
+    "collector": {
+      "collector_id": "fitctl.runtime.cuda.state_collector.v1",
+      "collector_version": "1",
+      "source_family": "fixture_replay"
+    },
+    "claim_metadata": {
+      "assurance_source": "self_observed",
+      "derivation_stage": "normalized",
+      "source_collectors": [
+        "fitctl.runtime.cuda.state_collector.v1"
+      ],
+      "evidence_paths": [
+        "$.state.extension_state.fitctl.runtime.cuda"
+      ],
+      "policy_rule_id": null,
+      "trust_evidence_refs": []
+    },
+    "runtime_id": "cuda",
+    "runtime_state": "observed",
+    "devices": [
+      {
+        "device_ordinal": 0,
+        "device_uuid": "GPU-redacted-default-view-gap-0",
+        "total_memory_bytes": {
+          "state": "observed",
+          "value": 25769803776
+        },
+        "allocatable_memory_bytes": {
+          "state": "observed",
+          "value": 24696061952
+        }
+      }
+    ],
+    "total_memory_bytes": {
+      "state": "observed",
+      "value": 25769803776
+    },
+    "allocatable_memory_bytes": {
+      "state": "observed",
+      "value": 24696061952
+    },
+    "driver_version": {
+      "state": "observed",
+      "value": {
+        "major": 570,
+        "minor": 42,
+        "patch": 3
+      }
+    },
+    "default_view_probe_diagnostics": {
+      "default_toolkit_version": {
+        "source_tier": "primary",
+        "source_kind": "command_probe",
+        "source_ref": "nvcc",
+        "status": "source_unavailable"
+      },
+      "driver_version": {
+        "source_tier": "primary",
+        "source_kind": "file_probe",
+        "source_ref": "/proc/driver/nvidia/version",
+        "status": "observed"
+      },
+      "driver_supported_cuda_version": {
+        "source_tier": "primary",
+        "source_kind": "dynamic_library_probe",
+        "source_ref": "libcuda.so.1, libcuda.so",
+        "status": "library_unavailable"
+      },
+      "default_runtime_version": {
+        "source_tier": "primary",
+        "source_kind": "dynamic_library_probe",
+        "source_ref": "libcudart.so, libcudart.so.12, libcudart.so.11.0",
+        "status": "library_unavailable"
+      }
+    },
+    "probe_path": "/run/current-system/sw/bin/nvidia-smi"
+  }
+}

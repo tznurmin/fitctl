@@ -148,6 +148,14 @@ pub struct ContractAcceleratorSummaryV1 {
     pub total_accelerators: Option<u32>,
     #[serde(default)]
     pub gpu_accelerators: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_inventory_complete: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_scoped_confirmed_accelerators: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_scoped_unresolved_accelerators: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_scoped_inventory_complete: Option<bool>,
     #[serde(default)]
     pub integrated_accelerators: Option<u32>,
     #[serde(default)]
@@ -174,6 +182,10 @@ impl ContractAcceleratorSummaryV1 {
     fn is_empty(&self) -> bool {
         self.total_accelerators.is_none()
             && self.gpu_accelerators.is_none()
+            && self.full_inventory_complete.is_none()
+            && self.policy_scoped_confirmed_accelerators.is_none()
+            && self.policy_scoped_unresolved_accelerators.is_none()
+            && self.policy_scoped_inventory_complete.is_none()
             && self.integrated_accelerators.is_none()
             && self.accelerators_with_known_memory.is_none()
             && self.accelerators_with_known_numa_node.is_none()

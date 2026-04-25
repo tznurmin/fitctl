@@ -836,6 +836,8 @@ fn policy_document_semantic_hash_hex(policy: &PolicyDocumentV1) -> Result<String
         allow_container_restricted: Option<bool>,
         require_network_visibility: Option<bool>,
         required_accelerator_kind: &'a Option<crate::survey::AcceleratorKindV1>,
+        required_accelerator_vendor: &'a Option<String>,
+        required_accelerator_integration: &'a Option<crate::survey::AcceleratorIntegrationV1>,
         min_accelerator_devices: Option<u32>,
     }
 
@@ -849,6 +851,8 @@ fn policy_document_semantic_hash_hex(policy: &PolicyDocumentV1) -> Result<String
         allow_container_restricted: bool,
         require_network_visibility: bool,
         required_accelerator_kind: &'a Option<crate::survey::AcceleratorKindV1>,
+        required_accelerator_vendor: &'a Option<String>,
+        required_accelerator_integration: &'a Option<crate::survey::AcceleratorIntegrationV1>,
         min_accelerator_devices: Option<u32>,
         layers: Vec<PolicyLayerSemanticProjection<'a>>,
         allowed_extension_namespaces: Vec<&'a str>,
@@ -886,6 +890,8 @@ fn policy_document_semantic_hash_hex(policy: &PolicyDocumentV1) -> Result<String
             allow_container_restricted: layer.rules.allow_container_restricted,
             require_network_visibility: layer.rules.require_network_visibility,
             required_accelerator_kind: &layer.rules.required_accelerator_kind,
+            required_accelerator_vendor: &layer.rules.required_accelerator_vendor,
+            required_accelerator_integration: &layer.rules.required_accelerator_integration,
             min_accelerator_devices: layer.rules.min_accelerator_devices,
         })
         .collect::<Vec<_>>();
@@ -906,6 +912,8 @@ fn policy_document_semantic_hash_hex(policy: &PolicyDocumentV1) -> Result<String
         allow_container_restricted: effective_policy.allow_container_restricted,
         require_network_visibility: effective_policy.require_network_visibility,
         required_accelerator_kind: &effective_policy.required_accelerator_kind,
+        required_accelerator_vendor: &effective_policy.required_accelerator_vendor,
+        required_accelerator_integration: &effective_policy.required_accelerator_integration,
         min_accelerator_devices: effective_policy.min_accelerator_devices,
         layers,
         allowed_extension_namespaces,

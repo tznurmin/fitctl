@@ -7,6 +7,7 @@
 //! and the logic that resolves them into one effective configuration view.
 
 pub mod catalogue_v1;
+pub mod cuda_environment_catalogue_v1;
 pub mod resolve_v1;
 pub mod schema_v1;
 
@@ -20,6 +21,14 @@ pub use catalogue_v1::{
     CATALOGUE_ERROR_MODEL_VERSION, POLICY_PACK_LOCK_PAYLOAD_ENCODING_V1,
     POLICY_PACK_LOCK_SCHEMA_ID, POLICY_PACK_LOCK_SIGNATURE_NAMESPACE_V1, POLICY_PACK_SCHEMA_ID,
     SERVICE_PROFILE_CATALOGUE_SCHEMA_ID,
+};
+pub use cuda_environment_catalogue_v1::{
+    load_cuda_environment_catalogue_from_path, resolve_cuda_environment_from_catalogue,
+    resolve_cuda_environment_from_catalogue_path, validate_cuda_environment_catalogue,
+    CudaEnvironmentCatalogueEntryV1, CudaEnvironmentCatalogueError,
+    CudaEnvironmentCatalogueErrorCode, CudaEnvironmentCatalogueV1, CudaEnvironmentSelectionKindV1,
+    CudaEnvironmentSelectionV1, CUDA_ENVIRONMENT_CATALOGUE_ERROR_MODEL_ID,
+    CUDA_ENVIRONMENT_CATALOGUE_ERROR_MODEL_VERSION, CUDA_ENVIRONMENT_CATALOGUE_SCHEMA_ID,
 };
 pub use resolve_v1::{
     build_extension_basis_v1, resolve_configuration_v1, resolve_invocation_selected_policy_id_v1,

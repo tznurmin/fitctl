@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use crate::artifacts::batch_classification_report_v1::{
     BatchClassificationBasisV1, BatchClassificationContractRefV1,
     BatchClassificationReportPayloadV1, BatchClassificationReportV1,
-    BatchClassificationServiceProfileRefV1,
+    BatchClassificationServiceProfileRefV1, BatchClassificationStateRefV1,
 };
 use crate::artifacts::config_bundle_v1::{ConfigBundleBasisV1, ConfigBundleV1};
 use crate::artifacts::contract_v1::ContractExtensionBasisV1;
@@ -512,6 +512,7 @@ struct StatePayloadSemanticProjection {
     snapshot_id: String,
     host_alias: String,
     source_ref: String,
+    local_identity: Option<crate::artifacts::state_v1::StateLocalIdentityV1>,
     core_state: StateCoreSemanticProjection,
     extension_state: std::collections::BTreeMap<String, Value>,
 }
@@ -523,6 +524,7 @@ impl From<&HostStatePayloadV1> for StatePayloadSemanticProjection {
             snapshot_id: state.snapshot_id.clone(),
             host_alias: state.host_alias.clone(),
             source_ref: state.source_ref.clone(),
+            local_identity: state.local_identity.clone(),
             core_state: StateCoreSemanticProjection::from(&state.core_state),
             extension_state: state.extension_state.clone(),
         }
@@ -760,6 +762,7 @@ impl From<&BatchClassificationReportV1> for BatchClassificationReportSemanticPro
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct BatchClassificationBasisSemanticProjection {
     validation_mode: crate::artifacts::validation_report_v1::ValidationModeV1,
+    max_state_age_seconds: Option<u64>,
     validation_engine_id: String,
     validation_engine_version: String,
     ordered_contracts: Vec<BatchClassificationContractRefSemanticProjection>,
@@ -770,6 +773,7 @@ impl From<&BatchClassificationBasisV1> for BatchClassificationBasisSemanticProje
     fn from(basis: &BatchClassificationBasisV1) -> Self {
         Self {
             validation_mode: basis.validation_mode,
+            max_state_age_seconds: basis.max_state_age_seconds,
             validation_engine_id: basis.validation_engine_id.clone(),
             validation_engine_version: basis.validation_engine_version.clone(),
             ordered_contracts: basis
@@ -790,6 +794,7 @@ impl From<&BatchClassificationBasisV1> for BatchClassificationBasisSemanticProje
 struct BatchClassificationContractRefSemanticProjection {
     artifact_id: String,
     semantic_hash: String,
+    matched_state: Option<BatchClassificationStateRefSemanticProjection>,
 }
 
 impl From<&BatchClassificationContractRefV1> for BatchClassificationContractRefSemanticProjection {
@@ -797,6 +802,31 @@ impl From<&BatchClassificationContractRefV1> for BatchClassificationContractRefS
         Self {
             artifact_id: value.artifact_id.clone(),
             semantic_hash: value.semantic_hash.clone(),
+            matched_state: value
+                .matched_state
+                .as_ref()
+                .map(BatchClassificationStateRefSemanticProjection::from),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct BatchClassificationStateRefSemanticProjection {
+    artifact_id: String,
+    semantic_hash: String,
+    freshness_state: crate::artifacts::state_v1::FreshnessStateV1,
+    match_basis: Option<
+        crate::artifacts::batch_classification_report_v1::BatchClassificationStateMatchBasisV1,
+    >,
+}
+
+impl From<&BatchClassificationStateRefV1> for BatchClassificationStateRefSemanticProjection {
+    fn from(value: &BatchClassificationStateRefV1) -> Self {
+        Self {
+            artifact_id: value.artifact_id.clone(),
+            semantic_hash: value.semantic_hash.clone(),
+            freshness_state: value.freshness_state,
+            match_basis: value.match_basis,
         }
     }
 }

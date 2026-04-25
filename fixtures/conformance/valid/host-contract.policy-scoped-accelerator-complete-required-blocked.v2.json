@@ -1,0 +1,159 @@
+{
+  "envelope": {
+    "schema_id": "host-contract.v2",
+    "schema_version": 2,
+    "artifact_id": "contract-linux-gpu-workstation-partial-discrete-like-v1-nvidia-gpu-complete-required-v1",
+    "provenance": {
+      "source": "policy:nvidia_gpu_complete_required_v1",
+      "collected_at": "unix:1776620421",
+      "fitctl_version": "0.2.1",
+      "command_name": "contract",
+      "correlation_id": "contract-linux-gpu-workstation-partial-discrete-like-v1-nvidia-gpu-complete-required-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "host_alias": "gpu-host-01",
+  "display_name": "gpu-host-01 / NVIDIA GPU complete-required policy",
+  "short_display_name": "NVIDIA GPU complete-required",
+  "contract_basis": {
+    "core_semantic_basis": {
+      "source_survey_semantic_hash": "ce23a30e0cc98efb39c5fefbba58ff821b6dcbbc5e4665b603dbe813b900a706",
+      "policy_semantic_hash": "44b64c111aa32ff5a6a7cbbb6a7455caabbc21fa37eb2c269072cfdc2a1489bb",
+      "derivation_engine_id": "fitctl.contract.v1",
+      "derivation_engine_version": "1",
+      "contract_schema_version": 2,
+      "selected_policy_layers": [
+        "defaults/nvidia_gpu_complete_required"
+      ]
+    },
+    "derivation_provenance": {
+      "derived_at": "unix:1776620421",
+      "notes": null
+    }
+  },
+  "contract": {
+    "core_contract": {
+      "accelerator_summary": {
+        "accelerator_kinds": [
+          "gpu"
+        ],
+        "accelerator_numa_nodes": [
+          0
+        ],
+        "accelerators_with_known_memory": 2,
+        "accelerators_with_known_numa_node": 2,
+        "families": [
+          "nvidia_pci"
+        ],
+        "full_inventory_complete": false,
+        "gpu_accelerators": 3,
+        "integrated_accelerators": null,
+        "max_memory_bytes": 51539607552,
+        "models": [
+          "nvidia-gpu-2206",
+          "nvidia-gpu-2230"
+        ],
+        "operability": {
+          "driver_bound_devices": 2,
+          "static_operability": "indeterminate",
+          "visible_device_nodes": [
+            "/dev/nvidia-uvm",
+            "/dev/nvidia0",
+            "/dev/nvidia1",
+            "/dev/nvidiactl"
+          ]
+        },
+        "policy_scoped_confirmed_accelerators": 2,
+        "policy_scoped_inventory_complete": false,
+        "policy_scoped_unresolved_accelerators": 1,
+        "total_accelerators": 3,
+        "vendors": [
+          "nvidia"
+        ]
+      },
+      "capability_classes": {
+        "gpu_accelerated": {
+          "admissible": false,
+          "claim_metadata": {
+            "assurance_source": "self_observed",
+            "derivation_stage": "policy_asserted",
+            "evidence_paths": [
+              "$.survey.core_evidence.observations.cpu",
+              "$.survey.core_evidence.observations.memory",
+              "$.survey.core_evidence.execution_context",
+              "$.survey.core_evidence.observations.network",
+              "$.survey.core_evidence.observations.accelerators"
+            ],
+            "policy_rule_id": "defaults/nvidia_gpu_complete_required",
+            "source_collectors": [
+              "procfs",
+              "sysfs",
+              "cgroupfs",
+              "mountinfo",
+              "netdev",
+              "block_and_filesystem",
+              "pci_accelerators"
+            ],
+            "trust_evidence_refs": []
+          },
+          "evidence_refs": [
+            "$.survey.core_evidence.observations.cpu",
+            "$.survey.core_evidence.observations.memory",
+            "$.survey.core_evidence.execution_context",
+            "$.survey.core_evidence.observations.network",
+            "$.survey.core_evidence.observations.accelerators"
+          ],
+          "rule_ids": [
+            "defaults/nvidia_gpu_complete_required"
+          ],
+          "summary": "policy-scoped accelerator inventory is incomplete under complete_required mode with 1 unresolved in-scope candidate(s)"
+        }
+      },
+      "execution_constraints": {
+        "container_runtime": null,
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "9d574c5c1886ceed718a6d37da400f8b356711b9da6e52b8525b88b7cee039c4",
+        "identity_class": "local_stable",
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "0cc6d9fb8690d1b2e9673018014d8b7ddb63c09a9b322152892f9e871f16fb4c",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "9fac516b9054244469ddd566541b3f36553ca8abd47a83b67b7890e49afddcea"
+      },
+      "network_summary": {
+        "interface_kinds": [
+          "ethernet",
+          "loopback"
+        ],
+        "max_observed_speed_mbps": 2500,
+        "non_loopback_interfaces": 1,
+        "operability": {
+          "interfaces_with_known_speed": 1,
+          "physical_non_loopback_interfaces": 1,
+          "static_operability": "operable"
+        },
+        "total_interfaces": 2
+      },
+      "storage_summary": {
+        "block_device_classes": [],
+        "filesystem_types": [],
+        "operability": {
+          "root_mount_present": false,
+          "static_operability": "not_operable",
+          "usable_block_devices": 0
+        },
+        "total_block_devices": 2,
+        "total_mounts": 2
+      },
+      "topology_summary": {
+        "cpu_packages": 1,
+        "numa_nodes": 1
+      }
+    }
+  }
+}

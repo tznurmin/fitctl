@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::contract::{ContractDerivationError, ContractDerivationErrorCode};
-use crate::survey::AcceleratorKindV1;
+use crate::survey::{AcceleratorIntegrationV1, AcceleratorKindV1};
 
 pub const POLICY_DOCUMENT_SCHEMA_ID: &str = "fitctl.policy.document.v1";
 
@@ -65,6 +65,15 @@ impl PolicyLayerKindV1 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Controls whether confirmed in-scope accelerators are enough for the claim, or whether the
+/// entire policy-scoped accelerator inventory must be complete.
+pub enum PolicyScopedAcceleratorInventoryModeV1 {
+    ConfirmedSubsetSufficient,
+    CompleteRequired,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 /// Sparse override set.
@@ -77,7 +86,10 @@ pub struct PolicyRulesOverrideV1 {
     pub allow_container_restricted: Option<bool>,
     pub require_network_visibility: Option<bool>,
     pub required_accelerator_kind: Option<AcceleratorKindV1>,
+    pub required_accelerator_vendor: Option<String>,
+    pub required_accelerator_integration: Option<AcceleratorIntegrationV1>,
     pub min_accelerator_devices: Option<u32>,
+    pub policy_scoped_accelerator_inventory_mode: Option<PolicyScopedAcceleratorInventoryModeV1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -204,7 +216,10 @@ fn validate_policy_document_json(raw: &Value) -> Result<(), ContractDerivationEr
                         "allow_container_restricted",
                         "require_network_visibility",
                         "required_accelerator_kind",
+                        "required_accelerator_vendor",
+                        "required_accelerator_integration",
                         "min_accelerator_devices",
+                        "policy_scoped_accelerator_inventory_mode",
                     ],
                     "policy layer rules contain unsupported field",
                 )?;
@@ -217,7 +232,10 @@ fn validate_policy_document_json(raw: &Value) -> Result<(), ContractDerivationEr
                         "allow_container_restricted",
                         "require_network_visibility",
                         "required_accelerator_kind",
+                        "required_accelerator_vendor",
+                        "required_accelerator_integration",
                         "min_accelerator_devices",
+                        "policy_scoped_accelerator_inventory_mode",
                     ],
                     "policy rule override",
                 )?;
@@ -298,7 +316,13 @@ pub(crate) fn validate_policy_document(
             && layer.rules.allow_container_restricted.is_none()
             && layer.rules.require_network_visibility.is_none()
             && layer.rules.required_accelerator_kind.is_none()
+            && layer.rules.required_accelerator_vendor.is_none()
+            && layer.rules.required_accelerator_integration.is_none()
             && layer.rules.min_accelerator_devices.is_none()
+            && layer
+                .rules
+                .policy_scoped_accelerator_inventory_mode
+                .is_none()
         {
             return Err(ContractDerivationError::new(
                 ContractDerivationErrorCode::PolicyDocumentInvalid,
@@ -312,6 +336,28 @@ pub(crate) fn validate_policy_document(
                 ContractDerivationErrorCode::PolicyDocumentInvalid,
                 "policy_load",
                 "policy min_accelerator_devices must stay positive when present",
+            ));
+        }
+        if layer
+            .rules
+            .required_accelerator_vendor
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(ContractDerivationError::new(
+                ContractDerivationErrorCode::PolicyDocumentInvalid,
+                "policy_scope_validate",
+                "policy required_accelerator_vendor must stay non-blank when present",
+            ));
+        }
+        if (layer.rules.required_accelerator_vendor.is_some()
+            || layer.rules.required_accelerator_integration.is_some())
+            && layer.rules.required_accelerator_kind.is_none()
+        {
+            return Err(ContractDerivationError::new(
+                ContractDerivationErrorCode::PolicyDocumentInvalid,
+                "policy_scope_validate",
+                "policy accelerator vendor or integration filters require required_accelerator_kind in this version",
             ));
         }
     }

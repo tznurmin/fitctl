@@ -8,6 +8,7 @@
 //! conservatively instead of inventing stronger claims.
 
 use std::collections::BTreeMap;
+use std::ffi::CStr;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::Path;
@@ -25,6 +26,7 @@ use self::accelerators::*;
 use self::cpu::*;
 use self::network::*;
 
+use crate::identity::{select_live_linux_identity_input_v2, LocalStableIdentityInputV2};
 use crate::survey::execution_context_v1::{
     deserialize_observation_limitation_reason_opt_v1, ExecutionContextV1,
     ObservationLimitationReasonV1, ObservationStateV1, PrivilegeLevelV1, VisibilityScopeV1,
@@ -547,6 +549,7 @@ pub struct CollectedHostSnapshotV1 {
     pub snapshot_id: String,
     pub collected_at: String,
     pub host_alias: String,
+    pub local_stable_identity_input: LocalStableIdentityInputV2,
     pub execution_context: ExecutionContextV1,
     pub collectors: Vec<String>,
     pub observations: SurveyObservationsV1,
@@ -575,12 +578,19 @@ impl LiveSystemProbeV1 for LocalLiveProbeV1 {
     fn collect_snapshot(&self) -> Result<CollectedHostSnapshotV1, SurveyError> {
         // Collect raw host evidence first and leave the typed artifact assembly to the
         // normalization layer. That keeps live probing and schema shaping decoupled.
-        let execution_context = detect_execution_context();
+        let mut execution_context = detect_execution_context();
         let hostname = read_hostname();
         let host_alias = hostname
             .value
             .clone()
             .unwrap_or_else(|| "localhost".to_string());
+        let live_identity = select_live_linux_identity_input_v2(
+            read_trimmed("/etc/machine-id").as_deref(),
+            read_trimmed("/var/lib/dbus/machine-id").as_deref(),
+            read_trimmed("/sys/class/dmi/id/product_uuid").as_deref(),
+            read_kernel_hostname_for_identity_v2().as_deref(),
+        );
+        execution_context.notes.extend(live_identity.notes);
         let network_collection = read_network();
         let mut collectors = vec![
             "procfs".to_string(),
@@ -606,6 +616,7 @@ impl LiveSystemProbeV1 for LocalLiveProbeV1 {
             snapshot_id: host_alias.clone(),
             collected_at: current_epoch_marker(),
             host_alias,
+            local_stable_identity_input: live_identity.input,
             execution_context,
             collectors,
             observations: SurveyObservationsV1 {
@@ -758,6 +769,34 @@ fn read_hostname() -> SurveyFieldV1<String> {
     }
 }
 
+// `gethostname(2)` only needs enough room for a single bounded kernel hostname plus a NUL.
+// Keep the FFI buffer length explicit here rather than scattering a raw literal.
+const KERNEL_HOSTNAME_BUFFER_LEN_V1: usize = 256;
+
+fn read_kernel_hostname_for_identity_v2() -> Option<String> {
+    let mut buffer = [0 as libc::c_char; KERNEL_HOSTNAME_BUFFER_LEN_V1];
+    // SAFETY: `buffer` is valid writable memory for the provided length and remains alive for the
+    // duration of the call.
+    let status = unsafe { libc::gethostname(buffer.as_mut_ptr(), buffer.len()) };
+    if status != 0 {
+        return None;
+    }
+
+    if let Some(last) = buffer.last_mut() {
+        *last = 0;
+    }
+
+    // SAFETY: `gethostname` wrote at most `buffer.len()` bytes and we force a trailing NUL above,
+    // so `buffer` now contains a bounded C string.
+    let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+    let hostname = c_str.to_str().ok()?.trim();
+    if hostname.is_empty() {
+        None
+    } else {
+        Some(hostname.to_string())
+    }
+}
+
 fn read_memory() -> SurveyFieldV1<MemoryDetailsV1> {
     let meminfo = match fs::read_to_string("/proc/meminfo") {
         Ok(text) => text,
@@ -777,7 +816,7 @@ fn read_memory() -> SurveyFieldV1<MemoryDetailsV1> {
 }
 
 fn read_storage() -> SurveyFieldV1<StorageDetailsV1> {
-    // Storage remains Ring-1 inventory evidence here: block-device classes, mounts, and
+    // Storage remains core inventory evidence here: block-device classes, mounts, and
     // filesystem types. Capacity, performance, and health belong to later layers.
     let mount_details = fs::read_to_string("/proc/self/mountinfo")
         .ok()

@@ -3,7 +3,7 @@
   "schema_version": 1,
   "invocation_id": "python-extension-state-advisory-v1",
   "enabled_extension_namespaces": [
-    "org.example.runtime.python"
+    "fitctl.runtime.python"
   ],
   "selected_recommendation_pack_ids": [
     "general-compute-advisory-v1"

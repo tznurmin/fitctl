@@ -10,9 +10,10 @@ use crate::artifacts::batch_classification_report_v1::{
     BatchClassificationContractRefV1, BatchClassificationReportV1, BatchClassificationRowV1,
     BatchClassificationServiceProfileRefV1,
 };
-use crate::artifacts::state_v1::FreshnessStateV1;
+use crate::artifacts::metadata_v1::{IdentitySummaryV1, LocalStableIdDegradedReasonV1};
+use crate::artifacts::state_v1::{FreshnessStateV1, StateLocalIdentityV1};
 use crate::artifacts::validation_report_v1::{ValidationBasisV1, ValidationReportPayloadV1};
-use crate::survey::{IpAddressFamilyV1, StaticOperabilityV1};
+use crate::survey::{AcceleratorDeviceV1, IpAddressFamilyV1, StaticOperabilityV1};
 
 pub(super) fn push_line(
     output: &mut String,
@@ -24,6 +25,43 @@ pub(super) fn push_line(
             InspectErrorCode::InspectRenderFailed,
             "inspect_render",
             format!("failed to render summary line: {error}"),
+        )
+    })
+}
+
+pub(super) fn push_summary_group_header(
+    output: &mut String,
+    label: &str,
+) -> Result<(), InspectError> {
+    writeln!(output, "  {label}").map_err(|error| {
+        InspectError::new(
+            InspectErrorCode::InspectRenderFailed,
+            "inspect_render",
+            format!("failed to render summary group header: {error}"),
+        )
+    })
+}
+
+pub(super) fn push_summary_group_line(
+    output: &mut String,
+    label: &str,
+    value: impl Into<String>,
+) -> Result<(), InspectError> {
+    writeln!(output, "    {label}: {}", value.into()).map_err(|error| {
+        InspectError::new(
+            InspectErrorCode::InspectRenderFailed,
+            "inspect_render",
+            format!("failed to render grouped summary line: {error}"),
+        )
+    })
+}
+
+pub(super) fn push_summary_group_separator(output: &mut String) -> Result<(), InspectError> {
+    writeln!(output).map_err(|error| {
+        InspectError::new(
+            InspectErrorCode::InspectRenderFailed,
+            "inspect_render",
+            format!("failed to render summary group separator: {error}"),
         )
     })
 }
@@ -43,6 +81,18 @@ pub(super) fn format_survey_field<T>(
     )
 }
 
+pub(super) fn format_survey_field_compact<T>(
+    field: &SurveyFieldV1<T>,
+    value_formatter: impl Fn(&T) -> String,
+) -> String {
+    format_field_compact(
+        &field.state,
+        field.limitation_reason.as_ref(),
+        field.value.as_ref(),
+        value_formatter,
+    )
+}
+
 pub(super) fn format_state_field<T>(
     field: &StateFieldV1<T>,
     value_formatter: impl Fn(&T) -> String,
@@ -58,14 +108,91 @@ pub(super) fn format_state_field<T>(
     )
 }
 
+pub(super) fn format_state_field_compact<T>(
+    field: &StateFieldV1<T>,
+    value_formatter: impl Fn(&T) -> String,
+) -> String {
+    format_field_compact(
+        &field.state,
+        field.limitation_reason.as_ref(),
+        field.value.as_ref(),
+        value_formatter,
+    )
+}
+
+pub(super) fn format_state_field_rendered_value(
+    state: &ObservationStateV1,
+    limitation_reason: Option<&ObservationLimitationReasonV1>,
+    value: impl Into<String>,
+) -> String {
+    format!(
+        "{}; {}",
+        format_observation_surface(state, limitation_reason),
+        value.into()
+    )
+}
+
+pub(super) fn format_state_field_rendered_value_compact(
+    state: &ObservationStateV1,
+    limitation_reason: Option<&ObservationLimitationReasonV1>,
+    value: impl Into<String>,
+) -> String {
+    format_rendered_value_compact(state, limitation_reason, value.into())
+}
+
+fn format_field_compact<T>(
+    state: &ObservationStateV1,
+    limitation_reason: Option<&ObservationLimitationReasonV1>,
+    value: Option<&T>,
+    value_formatter: impl Fn(&T) -> String,
+) -> String {
+    match value {
+        Some(value) => {
+            format_rendered_value_compact(state, limitation_reason, value_formatter(value))
+        }
+        None => format_compact_observation_surface(state, limitation_reason)
+            .unwrap_or_else(|| format_observation_surface(state, limitation_reason)),
+    }
+}
+
+fn format_rendered_value_compact(
+    state: &ObservationStateV1,
+    limitation_reason: Option<&ObservationLimitationReasonV1>,
+    value: String,
+) -> String {
+    match format_compact_observation_surface(state, limitation_reason) {
+        Some(surface) => format!("{value} ({surface})"),
+        None => value,
+    }
+}
+
+fn format_compact_observation_surface(
+    state: &ObservationStateV1,
+    limitation_reason: Option<&ObservationLimitationReasonV1>,
+) -> Option<String> {
+    if *state == ObservationStateV1::Observed && limitation_reason.is_none() {
+        None
+    } else {
+        Some(format_observation_surface(state, limitation_reason))
+    }
+}
+
 pub(super) fn format_cpu_details_for_inspect(
     value: &CpuDetailsV1,
     options: InspectRenderOptionsV1,
 ) -> String {
-    let mut parts = vec![
-        value.architecture.clone(),
-        format!("{} logical cores", value.logical_cores),
-    ];
+    let mut parts = if options.verbose {
+        vec![
+            value.architecture.clone(),
+            format!("{} logical cores", value.logical_cores),
+        ]
+    } else {
+        vec![
+            value.model.clone(),
+            value.architecture.clone(),
+            format!("{} logical cores", value.logical_cores),
+        ]
+    };
 
     if let Some(physical_cores) = value.physical_cores {
         parts.push(format!("{physical_cores} physical cores"));
@@ -73,8 +200,10 @@ pub(super) fn format_cpu_details_for_inspect(
     if let Some(threads_per_core) = value.threads_per_core {
         parts.push(format!("{threads_per_core} threads/core"));
     }
-    if let Some(cache_summary) = value.cache_summary.as_ref() {
-        parts.push(format_cpu_cache_summary_for_inspect(cache_summary));
+    if options.verbose {
+        if let Some(cache_summary) = value.cache_summary.as_ref() {
+            parts.push(format_cpu_cache_summary_for_inspect(cache_summary));
+        }
     }
     if options.verbose {
         if let Some(model_basis) = value.model_basis {
@@ -94,7 +223,9 @@ pub(super) fn format_cpu_details_for_inspect(
         parts.push(format!("{} flags", value.feature_flags.len()));
     }
 
-    parts.push(value.model.clone());
+    if options.verbose {
+        parts.push(value.model.clone());
+    }
     parts.join("; ")
 }
 
@@ -191,36 +322,56 @@ pub(super) fn format_accelerator_details_for_inspect(
         .iter()
         .filter_map(|device| device.memory_bytes)
         .max();
+    let compact_summary_parts = CompactAcceleratorSummaryParts {
+        kinds: &kinds,
+        vendors: &vendors,
+        families: &families,
+        models: &models,
+        drivers: &drivers,
+        integrated_devices,
+        max_memory_bytes,
+    };
 
     if value.devices.is_empty() {
         return "0 devices".to_string();
     }
 
-    let mut parts = vec![
-        format!("{} devices", value.devices.len()),
-        format!("kinds {}", join_or_placeholder(&kinds)),
-        format!("vendors {}", join_or_placeholder(&vendors)),
-    ];
-    if !families.is_empty() {
+    let mut parts = if options.verbose {
+        vec![
+            format!("{} devices", value.devices.len()),
+            format!("kinds {}", join_or_placeholder(&kinds)),
+            format!("vendors {}", join_or_placeholder(&vendors)),
+        ]
+    } else {
+        vec![format_accelerator_compact_summary_for_inspect(
+            value.devices.len(),
+            &compact_summary_parts,
+        )]
+    };
+    if options.verbose && !families.is_empty() {
         parts.push(format!("families {}", join_or_placeholder(&families)));
     }
-    if !models.is_empty() {
+    if options.verbose && !models.is_empty() {
         parts.push(format!("models {}", join_or_placeholder(&models)));
     }
-    if integrated_devices > 0 {
+    if options.verbose && integrated_devices > 0 {
         parts.push(format!("{integrated_devices} integrated"));
     }
-    if let Some(memory_bytes) = max_memory_bytes {
-        parts.push(format!("max memory {}", format_bytes_compact(memory_bytes)));
+    if options.verbose {
+        if let Some(memory_bytes) = max_memory_bytes {
+            parts.push(format!("max memory {}", format_bytes_compact(memory_bytes)));
+        }
     }
     if let Some(locality) = format_accelerator_locality_for_inspect(
         u32::try_from(value.devices.len()).ok(),
         accelerators_with_known_numa_node,
         &accelerator_numa_nodes,
     ) {
-        parts.push(locality);
+        if options.verbose || locality != "locality unknown" {
+            parts.push(locality);
+        }
     }
-    if !drivers.is_empty() {
+    if options.verbose && !drivers.is_empty() {
         parts.push(format!("drivers {}", join_or_placeholder(&drivers)));
     }
     if let Some(operability) = value.operability.as_ref() {
@@ -274,6 +425,194 @@ pub(super) fn format_accelerator_details_for_inspect(
     parts.join("; ")
 }
 
+pub(super) fn format_accelerator_compact_count_label_for_inspect(
+    value: &AcceleratorDetailsV1,
+) -> String {
+    let kinds = value
+        .devices
+        .iter()
+        .map(|device| device.kind.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    if kinds.len() == 1 {
+        match kinds.iter().next().copied().unwrap_or("device") {
+            "gpu" => "Observed GPUs".to_string(),
+            kind => format!("Observed {}s", kind),
+        }
+    } else {
+        "Observed accelerators".to_string()
+    }
+}
+
+pub(super) fn format_accelerator_device_label_for_inspect(
+    device: &AcceleratorDeviceV1,
+    total_devices: usize,
+    index: usize,
+) -> String {
+    let base = match device.kind.as_str() {
+        "gpu" => "GPU",
+        kind => kind,
+    };
+
+    if total_devices == 1 {
+        return base.to_string();
+    }
+
+    if let Some(pci_address) = device.pci_address.as_deref() {
+        return format!("{base} {pci_address}");
+    }
+
+    format!("{base} #{}", index + 1)
+}
+
+pub(super) fn format_accelerator_device_value_for_inspect(
+    device: &AcceleratorDeviceV1,
+    operability: Option<&AcceleratorOperabilityV1>,
+    total_devices: usize,
+) -> String {
+    let mut parts = vec![format_accelerator_device_identity_for_inspect(device)];
+
+    if let Some(driver) = device.driver.as_deref() {
+        parts.push(format!("driver {driver}"));
+    }
+
+    if let Some(operability) = operability {
+        if total_devices == 1
+            || !matches!(
+                operability.static_operability,
+                StaticOperabilityV1::Operable
+            )
+        {
+            parts.push(format_accelerator_operability_for_inspect(
+                operability,
+                false,
+            ));
+        } else {
+            parts.push(operability.static_operability.as_str().to_string());
+        }
+    }
+
+    parts.join("; ")
+}
+
+struct CompactAcceleratorSummaryParts<'a> {
+    kinds: &'a [String],
+    vendors: &'a [String],
+    families: &'a [String],
+    models: &'a [String],
+    drivers: &'a [String],
+    integrated_devices: usize,
+    max_memory_bytes: Option<u64>,
+}
+
+fn format_accelerator_kind_count_for_inspect(device_count: usize, kinds: &[String]) -> String {
+    if kinds.len() == 1 {
+        return match kinds[0].as_str() {
+            "gpu" => {
+                if device_count == 1 {
+                    "1 GPU".to_string()
+                } else {
+                    format!("{device_count} GPUs")
+                }
+            }
+            kind => {
+                if device_count == 1 {
+                    format!("1 {kind}")
+                } else {
+                    format!("{device_count} {kind}s")
+                }
+            }
+        };
+    }
+
+    format!("{device_count} devices")
+}
+
+fn format_accelerator_compact_summary_for_inspect(
+    device_count: usize,
+    summary_parts: &CompactAcceleratorSummaryParts<'_>,
+) -> String {
+    let mut parts = Vec::new();
+
+    if !summary_parts.models.is_empty() {
+        parts.push(join_or_placeholder(summary_parts.models));
+    } else if !summary_parts.families.is_empty() {
+        parts.push(format!(
+            "family {}",
+            join_or_placeholder(summary_parts.families)
+        ));
+    } else if !summary_parts.vendors.is_empty() {
+        parts.push(join_or_placeholder(summary_parts.vendors));
+    }
+
+    parts.push(format_accelerator_kind_count_for_inspect(
+        device_count,
+        summary_parts.kinds,
+    ));
+
+    if summary_parts.models.is_empty() && !summary_parts.vendors.is_empty() {
+        parts.push(format!(
+            "vendor {}",
+            join_or_placeholder(summary_parts.vendors)
+        ));
+    }
+    if summary_parts.models.is_empty() && !summary_parts.families.is_empty() {
+        parts.push(format!(
+            "family {}",
+            join_or_placeholder(summary_parts.families)
+        ));
+    }
+    if summary_parts.integrated_devices > 0 {
+        parts.push(format!("{} integrated", summary_parts.integrated_devices));
+    }
+    if let Some(memory_bytes) = summary_parts.max_memory_bytes {
+        parts.push(format!(
+            "max {}",
+            format_bytes_human_first_compact(memory_bytes)
+        ));
+    }
+    if !summary_parts.drivers.is_empty() {
+        parts.push(format!(
+            "driver {}",
+            join_or_placeholder(summary_parts.drivers)
+        ));
+    }
+
+    parts.join("; ")
+}
+
+fn format_accelerator_device_identity_for_inspect(device: &AcceleratorDeviceV1) -> String {
+    if let Some(model) = device
+        .model
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return model.to_string();
+    }
+
+    let mut parts = Vec::new();
+    if let Some(vendor) = device
+        .vendor
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        parts.push(vendor);
+    }
+    if let Some(family) = device
+        .family
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        parts.push(family);
+    }
+
+    if !parts.is_empty() {
+        return parts.join(" ");
+    }
+
+    device.kind.as_str().to_string()
+}
+
 pub(super) fn format_accelerator_locality_for_inspect(
     total_accelerators: Option<u32>,
     accelerators_with_known_numa_node: Option<u32>,
@@ -302,13 +641,20 @@ pub(super) fn format_accelerator_operability_for_inspect(
     operability: &AcceleratorOperabilityV1,
     verbose: bool,
 ) -> String {
-    let mut parts = vec![
-        format!(
-            "static operability: {}",
-            operability.static_operability.as_str()
-        ),
-        format!("{} driver-bound", operability.driver_bound_devices),
-    ];
+    let mut parts = if verbose {
+        vec![
+            format!(
+                "static operability: {}",
+                operability.static_operability.as_str()
+            ),
+            format!("{} driver-bound", operability.driver_bound_devices),
+        ]
+    } else {
+        vec![operability.static_operability.as_str().to_string()]
+    };
+    if !verbose && operability.driver_bound_devices > 0 {
+        parts.push(format!("{} driver-bound", operability.driver_bound_devices));
+    }
     if verbose {
         parts.push(format!(
             "nodes {}",
@@ -402,6 +748,87 @@ pub(super) fn format_identifier_value_for_inspect(
     }
 
     shorten_identifier_for_inspect(trimmed)
+}
+
+pub(super) fn format_local_stable_identity_for_inspect(
+    summary: &IdentitySummaryV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let mut value = format_identifier_value_for_inspect(&summary.local_stable_id, options);
+
+    if let Some(basis) = format_local_stable_identity_basis_for_inspect(summary, options) {
+        value.push_str(" (");
+        value.push_str(&basis);
+        value.push(')');
+    }
+
+    value
+}
+
+pub(super) fn format_local_stable_identity_basis_for_inspect(
+    summary: &IdentitySummaryV1,
+    options: InspectRenderOptionsV1,
+) -> Option<String> {
+    let anchor_family = summary.local_stable_anchor_family?;
+    let anchor_source = summary.local_stable_anchor_source?;
+    let mut value = format!("{} via {}", anchor_family.as_str(), anchor_source.as_str());
+
+    if options.verbose {
+        if let Some(stability_class) = summary.local_stable_stability_class {
+            value.push_str(&format!(" ({})", stability_class.as_str()));
+        }
+    }
+
+    if summary.local_stable_id_degraded {
+        let reason = summary
+            .local_stable_id_degraded_reason
+            .map(|reason: LocalStableIdDegradedReasonV1| reason.as_str())
+            .unwrap_or("unknown");
+        value.push_str(&format!("; degraded: {reason}"));
+    }
+
+    Some(value)
+}
+
+pub(super) fn format_state_local_identity_for_inspect(
+    identity: &StateLocalIdentityV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let mut value = format_identifier_value_for_inspect(&identity.local_stable_id, options);
+    value.push_str(" (");
+    value.push_str(&format_state_local_identity_basis_for_inspect(
+        identity, options,
+    ));
+    value.push(')');
+    value
+}
+
+pub(super) fn format_state_local_identity_basis_for_inspect(
+    identity: &StateLocalIdentityV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let mut value = format!(
+        "{} via {}",
+        identity.local_stable_anchor_family.as_str(),
+        identity.local_stable_anchor_source.as_str()
+    );
+
+    if options.verbose {
+        value.push_str(&format!(
+            " ({})",
+            identity.local_stable_stability_class.as_str()
+        ));
+    }
+
+    if identity.local_stable_id_degraded {
+        let reason = identity
+            .local_stable_id_degraded_reason
+            .map(|reason: LocalStableIdDegradedReasonV1| reason.as_str())
+            .unwrap_or("unknown");
+        value.push_str(&format!("; degraded: {reason}"));
+    }
+
+    value
 }
 
 pub(super) fn shorten_identifier_for_inspect(value: &str) -> String {
@@ -631,6 +1058,44 @@ pub(super) fn format_batch_row_summaries(
     }
 
     summaries.join(" | ")
+}
+
+pub(super) fn format_batch_state_lineage(
+    artifact: &BatchClassificationReportV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let contract_parts =
+        batch_contract_display_parts(&artifact.classification_basis.ordered_contracts, options);
+
+    let entries = artifact
+        .classification_basis
+        .ordered_contracts
+        .iter()
+        .map(|contract| {
+            let contract_label = contract_parts
+                .get(contract.artifact_id.as_str())
+                .map(|parts| parts.contract_label.as_str())
+                .unwrap_or(contract.artifact_id.as_str());
+            match contract.matched_state.as_ref() {
+                Some(state) => {
+                    let mut rendered = format!(
+                        "{contract_label} -> {} ({}, observed {}",
+                        shorten_identifier_for_inspect(&state.artifact_id),
+                        state.freshness_state.as_str(),
+                        format_timestamp_for_inspect(&state.observed_at, options)
+                    );
+                    if let Some(match_basis) = state.match_basis {
+                        rendered.push_str(&format!(", via {}", match_basis.as_str()));
+                    }
+                    rendered.push(')');
+                    rendered
+                }
+                None => format!("{contract_label} -> <none>"),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    join_or_placeholder(&entries)
 }
 
 pub(super) fn format_batch_verdict_matrix(
@@ -947,6 +1412,87 @@ pub(super) fn join_or_placeholder(values: &[String]) -> String {
 pub(super) fn format_bytes(bytes: u64) -> String {
     let gib = bytes as f64 / 1024_f64.powi(3);
     format!("{bytes} bytes ({gib:.2} GiB)")
+}
+
+pub(super) fn format_bytes_human_first(bytes: u64) -> String {
+    format!(
+        "{} ({bytes} bytes)",
+        format_bytes_human_first_compact(bytes)
+    )
+}
+
+pub(super) fn format_bytes_human_first_compact(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * 1024;
+    const GIB: u64 = 1024 * 1024 * 1024;
+
+    if bytes >= GIB {
+        format!("{:.2} GiB", bytes as f64 / GIB as f64)
+    } else if bytes >= MIB {
+        format!("{:.2} MiB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.2} KiB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+pub(super) fn format_bytes_pair_compact(left: u64, right: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * 1024;
+    const GIB: u64 = 1024 * 1024 * 1024;
+
+    let max = left.max(right);
+    if max >= GIB {
+        format!(
+            "{:.2}/{:.2} GiB",
+            left as f64 / GIB as f64,
+            right as f64 / GIB as f64
+        )
+    } else if max >= MIB {
+        format!(
+            "{:.2}/{:.2} MiB",
+            left as f64 / MIB as f64,
+            right as f64 / MIB as f64
+        )
+    } else if max >= KIB {
+        format!(
+            "{:.2}/{:.2} KiB",
+            left as f64 / KIB as f64,
+            right as f64 / KIB as f64
+        )
+    } else {
+        format!("{left}/{right} B")
+    }
+}
+
+pub(super) fn format_state_memory_usage_compact(used: u64, total: u64, allocatable: u64) -> String {
+    format!(
+        "{} used excl. cache; {} allocatable",
+        format_bytes_pair_compact(used, total),
+        format_bytes_human_first_compact(allocatable)
+    )
+}
+
+pub(super) fn format_cuda_allocatable_memory_compact(allocatable: u64, total: u64) -> String {
+    format!(
+        "{} allocatable ({} total)",
+        format_bytes_human_first_compact(allocatable),
+        format_bytes_human_first_compact(total)
+    )
+}
+
+pub(super) fn format_cuda_memory_triplet_compact(
+    used: u64,
+    allocatable: u64,
+    total: u64,
+) -> String {
+    format!(
+        "{} used; {} allocatable ({} total)",
+        format_bytes_human_first_compact(used),
+        format_bytes_human_first_compact(allocatable),
+        format_bytes_human_first_compact(total)
+    )
 }
 
 pub(super) fn format_storage_details_for_inspect(
@@ -1780,6 +2326,46 @@ mod tests {
     }
 
     #[test]
+    fn format_bytes_pair_compact_uses_shared_gib_suffix_without_spaces() {
+        assert_eq!(
+            format_bytes_pair_compact(6_339_211_264, 101_140_635_648),
+            "5.90/94.19 GiB"
+        );
+    }
+
+    #[test]
+    fn format_bytes_pair_compact_normalizes_sub_gib_pairs_to_one_suffix() {
+        assert_eq!(
+            format_bytes_pair_compact(786_432, 1_048_576),
+            "0.75/1.00 MiB"
+        );
+    }
+
+    #[test]
+    fn format_state_memory_usage_compact_keeps_used_pair_and_allocatable_suffixes_distinct() {
+        assert_eq!(
+            format_state_memory_usage_compact(6_339_211_264, 101_140_635_648, 93_790_433_280),
+            "5.90/94.19 GiB used excl. cache; 87.35 GiB allocatable"
+        );
+    }
+
+    #[test]
+    fn format_cuda_allocatable_memory_compact_keeps_allocatable_and_total_explicit() {
+        assert_eq!(
+            format_cuda_allocatable_memory_compact(25_262_292_992, 25_769_803_776),
+            "23.53 GiB allocatable (24.00 GiB total)"
+        );
+    }
+
+    #[test]
+    fn format_cuda_memory_triplet_compact_prefers_explicit_used_and_allocatable() {
+        assert_eq!(
+            format_cuda_memory_triplet_compact(34_603_008, 25_262_292_992, 25_769_803_776),
+            "33.00 MiB used; 23.53 GiB allocatable (24.00 GiB total)"
+        );
+    }
+
+    #[test]
     fn batch_reason_tally_and_row_summaries_stay_deterministic() {
         let rows = vec![
             BatchClassificationRowV1 {
@@ -1842,7 +2428,10 @@ mod tests {
                 provenance: crate::artifacts::envelope_v1::ArtifactProvenanceV1 {
                     source: "classify:contract_only".to_string(),
                     collected_at: "2025-04-21T14:37:19Z".to_string(),
-                    fitctl_version: Some("0.2.0".to_string()),
+                    fitctl_version: Some("0.3.0".to_string()),
+                    fitctl_vcs_revision: None,
+                    fitctl_vcs_describe: None,
+                    fitctl_build_dirty: None,
                     command_name: Some("classify".to_string()),
                     correlation_id: Some("batch-demo".to_string()),
                 },
@@ -1855,6 +2444,7 @@ mod tests {
                     validated_at: "2025-04-21T14:37:19Z".to_string(),
                     validation_engine_id: "fitctl.validate.v1".to_string(),
                     validation_engine_version: "1".to_string(),
+                    max_state_age_seconds: None,
                     ordered_contracts: vec![
                         crate::artifacts::batch_classification_report_v1::BatchClassificationContractRefV1 {
                             artifact_id: "contract-b".to_string(),
@@ -1862,6 +2452,7 @@ mod tests {
                             host_alias: None,
                             display_name: None,
                             short_display_name: None,
+                            matched_state: None,
                         },
                         crate::artifacts::batch_classification_report_v1::BatchClassificationContractRefV1 {
                             artifact_id: "contract-a".to_string(),
@@ -1869,6 +2460,7 @@ mod tests {
                             host_alias: None,
                             display_name: None,
                             short_display_name: None,
+                            matched_state: None,
                         },
                     ],
                     ordered_service_profiles: vec![
@@ -2001,6 +2593,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
             BatchClassificationContractRefV1 {
                 artifact_id: "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
@@ -2009,6 +2602,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
         ];
         let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
@@ -2049,6 +2643,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
             BatchClassificationContractRefV1 {
                 artifact_id: "contract-linux-gpu-workstation-like-v1-general-compute-default-v1"
@@ -2057,6 +2652,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
         ];
         let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
@@ -2097,6 +2693,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
             BatchClassificationContractRefV1 {
                 artifact_id: "contract-linux-network-mixed-like-v1-general-compute-default-v1"
@@ -2105,6 +2702,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
             BatchClassificationContractRefV1 {
                 artifact_id: "contract-linux-gpu-dual-numa-like-v1-gpu-compute-default-v1"
@@ -2113,6 +2711,7 @@ mod tests {
                 host_alias: None,
                 display_name: None,
                 short_display_name: None,
+                matched_state: None,
             },
         ];
         let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
@@ -2145,6 +2744,7 @@ mod tests {
             host_alias: Some("bare-01".to_string()),
             display_name: Some("bare-01/General compute default policy".to_string()),
             short_display_name: Some("General compute default".to_string()),
+            matched_state: None,
         }];
         let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());
 
@@ -2168,6 +2768,7 @@ mod tests {
                     "demo-baremetal-01 / General compute default policy".to_string(),
                 ),
                 short_display_name: Some("General compute default".to_string()),
+                matched_state: None,
             },
             BatchClassificationContractRefV1 {
                 artifact_id: "contract-linux-gpu-workstation-like-v1-gpu-compute-default-v1"
@@ -2176,6 +2777,7 @@ mod tests {
                 host_alias: Some("demo-gpu-01".to_string()),
                 display_name: Some("demo-gpu-01 / GPU compute default policy".to_string()),
                 short_display_name: Some("GPU compute default".to_string()),
+                matched_state: None,
             },
         ];
         let labels = batch_contract_display_parts(&contracts, InspectRenderOptionsV1::default());

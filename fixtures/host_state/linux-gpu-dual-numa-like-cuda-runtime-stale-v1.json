@@ -1,0 +1,68 @@
+{
+  "schema_id": "fitctl.fixture.host_state.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-dual-numa-like-cuda-runtime-stale-v1",
+  "collected_at": "2025-04-21T13:37:19Z",
+  "host_alias": "demo-gpu-numa-01",
+  "collectors": [
+    "procfs_meminfo",
+    "runtime_cpu_capacity",
+    "cgroupfs_cpuset",
+    "cgroupfs_cpu_quota",
+    "cgroupfs_memory_boundary",
+    "sysfs_topology"
+  ],
+  "freshness": {
+    "observed_at": "2025-04-21T13:37:19Z",
+    "freshness_state": "stale"
+  },
+  "resources": {
+    "allocatable_cpu_logical_cores": {
+      "state": "observed",
+      "value": 32
+    },
+    "memory_total_bytes": {
+      "state": "observed",
+      "value": 137438953472
+    },
+    "allocatable_memory_bytes": {
+      "state": "observed",
+      "value": 103079215104
+    },
+    "memory_used_excluding_cache_bytes": {
+      "state": "observed",
+      "value": 34359738368
+    }
+  },
+  "boundaries": {
+    "cgroup_version": {
+      "state": "observed",
+      "value": "v2"
+    },
+    "cpuset_cpu_logical_cores": {
+      "state": "observed",
+      "value": 32
+    },
+    "cpu_quota_logical_cores": {
+      "state": "unknown",
+      "value": null
+    },
+    "memory_limit_bytes": {
+      "state": "unknown",
+      "value": null
+    },
+    "memory_current_bytes": {
+      "state": "unknown",
+      "value": null
+    }
+  },
+  "topology": {
+    "visible_numa_nodes": {
+      "state": "observed",
+      "value": 2
+    }
+  },
+  "operability": {
+    "degraded_capability_classes": []
+  }
+}

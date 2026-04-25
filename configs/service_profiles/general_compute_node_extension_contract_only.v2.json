@@ -22,8 +22,8 @@
       ]
     },
     "extension_requirements": {
-      "org.example.runtime.node": {
-        "schema_id": "fitctl.extension.org.example.runtime.node.requirement.v1",
+      "fitctl.runtime.node": {
+        "schema_id": "fitctl.extension.runtime.node.requirement.v1",
         "schema_version": 1,
         "required_runtime": "node",
         "require_presence": true,

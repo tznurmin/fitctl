@@ -1,0 +1,100 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-workstation-like-v1-general-compute-default-v1-service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+    "provenance": {
+      "source": "validate:state_required",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-workstation-like-v1-general-compute-default-v1-service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "state_required",
+    "contract_artifact_id": "contract-linux-gpu-workstation-like-v1-general-compute-default-v1",
+    "service_profile_artifact_id": "service-profile-general-compute-cuda-runtime-allocatable-memory-required-v1",
+    "contract_semantic_hash": "5f0c7ac985e70d4d9b88d7a84aa3e14983c99d6741b950f7ab5ddf8e54608086",
+    "service_profile_semantic_hash": "ea84c3ea092c4e9ac011ec2427d4465420a7f27335b5f2fa07fc0debe5dfd5a2",
+    "state_artifact_id": "state-linux-gpu-workstation-like-cuda-runtime-missing-v1",
+    "state_semantic_hash": "cdae9fed1eca5188a71769f13ff05b4011003c93be9eeb88bac30099f8ad4a73",
+    "state_observed_at": "2025-04-21T14:37:19Z",
+    "state_freshness_state": "fresh",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "indeterminate",
+    "primary_reason_code": "state_missing",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.primary_capability_class",
+      "extension_requirements.fitctl.runtime.cuda"
+    ],
+    "failed_requirements": [
+      "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+    ],
+    "evidence_refs": [
+      "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes"
+    ],
+    "policy_refs": [
+      "defaults/general_compute",
+      "site/general_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [
+      "CUDA allocatable memory is missing or unknown in host-state"
+    ],
+    "extension_diagnostics": {
+      "fitctl.runtime.cuda": {
+        "checkpoint": "runtime_extension_state",
+        "detail_code": "runtime_state_missing",
+        "diagnostic_model_id": "fitctl.cuda_runtime_validation_diagnostic.v1",
+        "diagnostic_model_version": 1,
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes"
+        ],
+        "related_requirements": [
+          "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+        ],
+        "required_allocatable_memory_bytes": 17179869184
+      }
+    },
+    "explanations": [
+      {
+        "explanation_id": "explain-cuda-runtime-runtime_state_missing",
+        "reason_code": "state_missing",
+        "summary": "CUDA runtime state is missing for a required allocatable-memory threshold of 16.00 GiB.",
+        "related_requirements": [
+          "extension_requirements.fitctl.runtime.cuda.minimum_allocatable_memory_bytes"
+        ],
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.allocatable_memory_bytes"
+        ],
+        "policy_refs": []
+      }
+    ],
+    "remediation_hints": [
+      {
+        "hint_id": "collect-cuda-runtime-state",
+        "reason_code": "state_missing",
+        "summary": "Collect host-state with the CUDA runtime namespace before rerunning validation.",
+        "actions": [
+          {
+            "action_id": "collect-fresh-host-state",
+            "summary": "Emit a fresh host-state.v2 artifact that includes CUDA runtime extension state."
+          },
+          {
+            "action_id": "inspect-cuda-runtime-state",
+            "summary": "Inspect the CUDA runtime extension state rather than relying on the top-level reason code alone."
+          }
+        ]
+      }
+    ],
+    "summary": "CUDA allocatable memory is missing or unknown in host-state"
+  }
+}

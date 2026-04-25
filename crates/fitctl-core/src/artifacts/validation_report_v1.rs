@@ -3,7 +3,10 @@
 
 //! Schema for validation reports emitted when a service profile is checked against a contract.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::artifacts::envelope_v1::ArtifactEnvelopeV1;
 use crate::artifacts::state_v1::FreshnessStateV1;
@@ -71,6 +74,8 @@ pub struct ValidationReportPayloadV1 {
     pub selected_degradation_tier: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extension_diagnostics: BTreeMap<String, Value>,
     #[serde(default)]
     pub explanations: Vec<ValidationExplanationV1>,
     #[serde(default)]
@@ -124,6 +129,7 @@ impl Default for ValidationReportPayloadV1 {
             assurance_mismatches: vec![],
             selected_degradation_tier: None,
             warnings: vec![],
+            extension_diagnostics: BTreeMap::new(),
             explanations: vec![],
             remediation_hints: vec![],
             summary: String::new(),

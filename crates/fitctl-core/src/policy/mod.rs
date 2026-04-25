@@ -14,5 +14,5 @@ pub mod schema_v1;
 pub use layering_v1::{merge_policy_document_v1, EffectivePolicyV1};
 pub use schema_v1::{
     load_policy_document_from_path, PolicyDocumentV1, PolicyExtensionPolicyV1, PolicyLayerKindV1,
-    PolicyLayerV1, PolicyRulesOverrideV1,
+    PolicyLayerV1, PolicyRulesOverrideV1, PolicyScopedAcceleratorInventoryModeV1,
 };

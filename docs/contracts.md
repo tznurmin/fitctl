@@ -1,27 +1,42 @@
 # Contracts
 
-A contract is a typed host claim derived from survey evidence under a selected policy.
+A contract is the policy-shaped claim a host may make from a `survey`.
 
-A survey records what was observed on the machine. A contract records what the machine may claim
-from that evidence.
+A `survey` records observed local facts. A `contract` records what the selected `policy` permits
+the host to claim from those facts. `validation` checks that claim against a service profile.
 
-## Contract derivation
+A contract is the handoff artifact between collection and validation. The same JSON that
+`fitctl inspect` renders is the JSON that `fitctl validate` reads.
+Live runtime detail remains separate in `state`.
+
+## Derive a contract
 
 ```bash
 fitctl contract --survey <survey.json> --policy <policy.json> > contract.json
+fitctl inspect --input contract.json
 ```
 
-Survey examples are in [fixtures/host_survey](../fixtures/host_survey). Policy examples are in
+Survey examples are under [fixtures/host_survey](../fixtures/host_survey). Policy examples are under
 [configs/policy](../configs/policy).
 
-## Context dependence
+[Configuration](./configuration.md) covers policies and service profiles.
+[Validation](./validation.md) covers fit decisions.
 
-The same survey can produce different contracts under different policies.
+## What a contract contains
 
-The policy determines the allowed claim. For the same observed machine, a general-compute policy
-yields a general-compute contract and a GPU policy yields a GPU-capable contract.
+A contract records:
 
-## Create a contract
+- the admitted capability claim
+- any policy-derived execution constraints
+- host summaries used during validation
+- the derivation basis: source survey and source policy
+
+## One survey, different contracts
+
+The same survey can yield different contracts under different policies.
+
+A general-compute policy may admit a general-compute contract. A GPU policy may admit a GPU-capable
+contract from the same host. A stricter policy may narrow or reject the claim entirely.
 
 ```bash
 fitctl survey --fixture linux-gpu-workstation-like-v1 > survey.json
@@ -37,11 +52,37 @@ fitctl contract \
   > gpu-contract.json
 ```
 
-The example above shows how one survey can yield different contracts under different policies.
+This example shows why policy matters: survey evidence alone does not say what the host is allowed
+to claim.
 
-## Contract contents
+## Scoped accelerator claims
 
-- capability claims and admissibility
-- execution constraints
-- host summaries for identity, network, storage, accelerators, and topology
-- derivation basis: source survey and policy
+When a policy narrows accelerator inventory, the contract separates:
+
+- the full accelerator inventory observed on the host
+- the policy-scoped accelerator inventory used for the claim
+
+Count-sensitive validation uses the confirmed policy-scoped accelerator count from the contract
+summary, not the full accelerator inventory.
+
+That is why `fitctl inspect` may legitimately show both `full accelerator inventory incomplete` and
+`policy-scoped accelerator inventory complete` on the same host. These statements describe
+different sets.
+
+A stricter policy may also require the policy-scoped accelerator inventory to be complete before the
+claim is admitted. That requirement still applies only to the policy scope, not to unrelated
+accelerators elsewhere on the host.
+
+## What a contract does not contain
+
+A contract does not carry live runtime state.
+
+Current accelerator visibility, allocatable memory, and other runtime-only facts belong in `state`.
+Supply `state` during validation only when the decision depends on those live conditions.
+
+## Where it fits
+
+- `fitctl survey` records observed local facts
+- `fitctl contract` turns those facts into a policy-shaped claim
+- `fitctl validate` checks that claim against a service profile
+- `fitctl inspect` renders any of those artifacts without changing the underlying JSON

@@ -17,13 +17,17 @@ use crate::artifacts::decision_bundle_v1::DecisionBundleV1;
 use crate::artifacts::envelope_v1::{
     ArtifactEnvelopeV1, ArtifactProvenanceV1, SignatureEnvelopeV1,
 };
-use crate::artifacts::metadata_v1::{ClaimMetadataV1, CollectorMetadataV1, IdentitySummaryV1};
+use crate::artifacts::metadata_v1::{
+    ClaimMetadataV1, CollectorMetadataV1, IdentitySummaryV1, LocalStableAnchorFamilyV1,
+    LocalStableAnchorSourceV1, LocalStableIdDegradedReasonV1, LocalStableStabilityClassV1,
+};
 use crate::artifacts::recommendation_report_v1::RecommendationReportV1;
 use crate::artifacts::schema_ids_v1::{
-    is_supported_core_schema_id, BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, CONFIG_BUNDLE_SCHEMA_ID,
-    DECISION_BUNDLE_SCHEMA_ID, HOST_CONTRACT_SCHEMA_ID, HOST_STATE_SCHEMA_ID,
-    HOST_SURVEY_SCHEMA_ID, RECOMMENDATION_REPORT_SCHEMA_ID, SERVICE_PROFILE_SCHEMA_ID,
-    TOP_LEVEL_ARTIFACT_SCHEMA_VERSION, VALIDATION_REPORT_SCHEMA_ID,
+    is_supported_batch_classification_report_schema_id, is_supported_core_schema_id,
+    BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, CONFIG_BUNDLE_SCHEMA_ID, DECISION_BUNDLE_SCHEMA_ID,
+    HOST_CONTRACT_SCHEMA_ID, HOST_STATE_SCHEMA_ID, HOST_SURVEY_SCHEMA_ID,
+    LEGACY_BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, RECOMMENDATION_REPORT_SCHEMA_ID,
+    SERVICE_PROFILE_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION, VALIDATION_REPORT_SCHEMA_ID,
 };
 use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_config_bundle, semantic_hash_hex_for_contract,
@@ -31,7 +35,7 @@ use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_state, semantic_hash_hex_for_validation_report,
 };
 use crate::artifacts::service_profile_v1::ServiceProfileV1;
-use crate::artifacts::state_v1::{HostStateV1, StateFieldV1};
+use crate::artifacts::state_v1::{HostStateV1, StateFieldV1, StateLocalIdentityV1};
 use crate::artifacts::survey_v1::{decode_host_survey_payload, HostSurveyV1};
 use crate::artifacts::validation_report_v1::ValidationReportV1;
 use crate::artifacts::validation_report_v1::{
@@ -46,7 +50,8 @@ use crate::contract::payload_v1::{
 };
 use crate::extensions::{
     decode_cuda_runtime_contract_from_value, decode_cuda_runtime_evidence_from_value,
-    decode_cuda_runtime_requirement_from_value, decode_node_runtime_contract_from_value,
+    decode_cuda_runtime_requirement_from_value, decode_cuda_runtime_state_from_value,
+    decode_cuda_runtime_validation_diagnostic_from_value, decode_node_runtime_contract_from_value,
     decode_node_runtime_evidence_from_value, decode_node_runtime_requirement_from_value,
     decode_python_runtime_contract_from_value, decode_python_runtime_evidence_from_value,
     decode_python_runtime_requirement_from_value, CUDA_RUNTIME_NAMESPACE, NODE_RUNTIME_NAMESPACE,
@@ -894,6 +899,10 @@ fn validate_contract_accelerator_summary(
 ) -> Result<(), ArtifactValidationError> {
     if summary.total_accelerators.is_none()
         && summary.gpu_accelerators.is_none()
+        && summary.full_inventory_complete.is_none()
+        && summary.policy_scoped_confirmed_accelerators.is_none()
+        && summary.policy_scoped_unresolved_accelerators.is_none()
+        && summary.policy_scoped_inventory_complete.is_none()
         && summary.integrated_accelerators.is_none()
         && summary.accelerators_with_known_memory.is_none()
         && summary.accelerators_with_known_numa_node.is_none()
@@ -976,6 +985,50 @@ fn validate_contract_accelerator_summary(
             "host contract accelerator summary max memory must stay positive when populated",
         ));
     }
+    if summary
+        .policy_scoped_confirmed_accelerators
+        .is_some_and(|value| value > total_accelerators)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary confirmed policy-scoped count must not exceed total accelerator count",
+        ));
+    }
+    if summary
+        .policy_scoped_unresolved_accelerators
+        .is_some_and(|value| value > total_accelerators)
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary unresolved policy-scoped count must not exceed total accelerator count",
+        ));
+    }
+    if let (Some(confirmed), Some(unresolved)) = (
+        summary.policy_scoped_confirmed_accelerators,
+        summary.policy_scoped_unresolved_accelerators,
+    ) {
+        if confirmed + unresolved > total_accelerators {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host contract accelerator summary policy-scoped confirmed and unresolved counts must not exceed total accelerator count",
+            ));
+        }
+    }
+    if let Some(policy_scoped_inventory_complete) = summary.policy_scoped_inventory_complete {
+        match (
+            policy_scoped_inventory_complete,
+            summary.policy_scoped_unresolved_accelerators,
+        ) {
+            (true, Some(0)) => {}
+            (false, Some(value)) if value > 0 => {}
+            _ => {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "host contract accelerator summary policy-scoped completeness must agree with the unresolved scoped count",
+                ));
+            }
+        }
+    }
 
     let mut accelerator_kinds = summary
         .accelerator_kinds
@@ -1043,6 +1096,10 @@ fn validate_contract_accelerator_summary(
             || !summary.families.is_empty()
             || !summary.models.is_empty()
             || summary.integrated_accelerators.is_some()
+            || summary.full_inventory_complete.is_some()
+            || summary.policy_scoped_confirmed_accelerators.is_some()
+            || summary.policy_scoped_unresolved_accelerators.is_some()
+            || summary.policy_scoped_inventory_complete.is_some()
             || summary.accelerators_with_known_memory.is_some()
             || summary.accelerators_with_known_numa_node.is_some()
             || summary.max_memory_bytes.is_some())
@@ -1080,6 +1137,36 @@ fn validate_contract_accelerator_summary(
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "host contract accelerator summary max memory requires a known-memory device count",
+        ));
+    }
+    if summary.policy_scoped_inventory_complete.is_some()
+        && summary.policy_scoped_confirmed_accelerators.is_none()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary policy-scoped completeness requires a confirmed scoped count",
+        ));
+    }
+    if summary.policy_scoped_confirmed_accelerators.is_some()
+        && summary.policy_scoped_unresolved_accelerators.is_none()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary confirmed scoped count requires an unresolved scoped count",
+        ));
+    }
+    if summary.policy_scoped_unresolved_accelerators.is_some()
+        && summary.policy_scoped_inventory_complete.is_none()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary unresolved scoped count requires policy-scoped completeness",
+        ));
+    }
+    if summary.full_inventory_complete.is_none() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host contract accelerator summary must include full_inventory_complete when populated",
         ));
     }
     if !summary.accelerator_numa_nodes.is_empty()
@@ -1230,6 +1317,9 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
             "host-state must include typed identity, freshness, and collector metadata",
         ));
     }
+    if let Some(local_identity) = state.state.local_identity.as_ref() {
+        validate_state_local_identity(local_identity)?;
+    }
     validate_collector_metadata(
         &state.state.core_state.collectors,
         &[
@@ -1277,6 +1367,7 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
     validate_claim_metadata(&state.state.core_state.section_metadata.boundaries)?;
     validate_claim_metadata(&state.state.core_state.section_metadata.topology)?;
     validate_claim_metadata(&state.state.core_state.section_metadata.operability)?;
+    validate_known_extension_state(&state.state.extension_state)?;
     validate_state_field(
         &state.state.core_state.boundaries.cgroup_version,
         "cgroup_version",
@@ -1404,6 +1495,11 @@ pub fn validate_validation_report(
 
     validate_validation_basis_semantics(report)?;
     validate_validation_report_semantics(&report.report)?;
+    validate_namespaced_json_map(
+        &report.report.extension_diagnostics,
+        "validation-report extension diagnostics",
+    )?;
+    validate_known_validation_extension_diagnostics(&report.report.extension_diagnostics)?;
     validate_validation_explanations(&report.report)?;
     validate_validation_remediation_hints(&report.report)?;
 
@@ -1490,10 +1586,12 @@ pub fn validate_recommendation_report(
 pub fn validate_batch_classification_report(
     report: &BatchClassificationReportV1,
 ) -> Result<(), ArtifactValidationError> {
-    validate_auxiliary_envelope(&report.envelope, BATCH_CLASSIFICATION_REPORT_SCHEMA_ID)?;
+    validate_batch_classification_report_envelope(&report.envelope)?;
 
-    if report.classification_basis.validation_mode != ValidationModeV1::ContractOnly
-        || is_blank(&report.classification_basis.validated_at)
+    let is_legacy_v2 = report.envelope.schema_id == LEGACY_BATCH_CLASSIFICATION_REPORT_SCHEMA_ID;
+    let is_current_v3 = report.envelope.schema_id == BATCH_CLASSIFICATION_REPORT_SCHEMA_ID;
+
+    if is_blank(&report.classification_basis.validated_at)
         || is_blank(&report.classification_basis.validation_engine_id)
         || is_blank(&report.classification_basis.validation_engine_version)
         || report.classification_basis.ordered_contracts.is_empty()
@@ -1505,8 +1603,46 @@ pub fn validate_batch_classification_report(
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "batch classification report must retain contract_only basis, engine lineage, and non-empty inputs",
+            "batch classification report must retain engine lineage and non-empty inputs",
         ));
+    }
+
+    if !is_legacy_v2 && !is_current_v3 {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactSchemaIdInvalid,
+            "batch classification report schema id is not supported",
+        ));
+    }
+
+    match report.classification_basis.validation_mode {
+        ValidationModeV1::ContractOnly => {
+            if report.classification_basis.max_state_age_seconds.is_some()
+                || report
+                    .classification_basis
+                    .ordered_contracts
+                    .iter()
+                    .any(|value| value.matched_state.is_some())
+            {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "contract-only batch classification reports must not record state lineage or max_state_age_seconds",
+                ));
+            }
+        }
+        ValidationModeV1::StateAdvisory | ValidationModeV1::StateRequired => {
+            if is_legacy_v2 {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactSchemaIdInvalid,
+                    "legacy batch-classification-report.v2 supports only contract_only validation mode",
+                ));
+            }
+        }
+        ValidationModeV1::StateAware => {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "batch classification reports must not use state_aware validation mode",
+            ));
+        }
     }
 
     validate_sorted_unique_refs(
@@ -1562,11 +1698,27 @@ pub fn validate_batch_classification_report(
                     .short_display_name
                     .as_ref()
                     .is_some_and(|label| is_blank(label))
+                || value.matched_state.as_ref().is_some_and(|state| {
+                    is_blank(&state.artifact_id)
+                        || is_blank(&state.semantic_hash)
+                        || is_blank(&state.observed_at)
+                })
         })
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "batch classification ordered_contracts must not contain blank host or display labels",
+            "batch classification ordered_contracts must not contain blank host, display, or matched-state labels",
+        ));
+    }
+    if report
+        .classification_basis
+        .ordered_contracts
+        .iter()
+        .any(|value| value.matched_state.is_some() && value.host_alias.is_none())
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "batch classification ordered_contracts must retain host_alias when matched_state is present",
         ));
     }
 
@@ -1675,6 +1827,22 @@ pub fn validate_batch_classification_report(
     )?;
 
     Ok(())
+}
+
+fn validate_batch_classification_report_envelope(
+    envelope: &ArtifactEnvelopeV1,
+) -> Result<(), ArtifactValidationError> {
+    if !is_supported_batch_classification_report_schema_id(&envelope.schema_id) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactSchemaIdInvalid,
+            format!(
+                "expected supported schema id {}, got {}",
+                BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, envelope.schema_id
+            ),
+        ));
+    }
+
+    validate_auxiliary_envelope(envelope, &envelope.schema_id)
 }
 
 /// Validate a decision-bundle artifact and fail closed on embedded lineage mismatches.
@@ -2295,6 +2463,27 @@ fn validate_envelope(
         ));
     }
 
+    validate_optional_provenance_string(
+        envelope.provenance.fitctl_version.as_deref(),
+        "fitctl_version",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.fitctl_vcs_revision.as_deref(),
+        "fitctl_vcs_revision",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.fitctl_vcs_describe.as_deref(),
+        "fitctl_vcs_describe",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.command_name.as_deref(),
+        "command_name",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.correlation_id.as_deref(),
+        "correlation_id",
+    )?;
+
     if let Some(redaction) = envelope.redaction.as_ref() {
         if is_blank(&redaction.profile_id) || is_blank(&redaction.redacted_at) {
             return Err(ArtifactValidationError::new(
@@ -2363,30 +2552,26 @@ fn validate_auxiliary_envelope(
         ));
     }
 
-    if option_is_blank(envelope.provenance.fitctl_version.as_deref())
-        && envelope.provenance.fitctl_version.is_some()
-    {
-        return Err(ArtifactValidationError::new(
-            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "artifact fitctl_version must be non-blank when present",
-        ));
-    }
-    if option_is_blank(envelope.provenance.command_name.as_deref())
-        && envelope.provenance.command_name.is_some()
-    {
-        return Err(ArtifactValidationError::new(
-            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "artifact command_name must be non-blank when present",
-        ));
-    }
-    if option_is_blank(envelope.provenance.correlation_id.as_deref())
-        && envelope.provenance.correlation_id.is_some()
-    {
-        return Err(ArtifactValidationError::new(
-            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "artifact correlation_id must be non-blank when present",
-        ));
-    }
+    validate_optional_provenance_string(
+        envelope.provenance.fitctl_version.as_deref(),
+        "fitctl_version",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.fitctl_vcs_revision.as_deref(),
+        "fitctl_vcs_revision",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.fitctl_vcs_describe.as_deref(),
+        "fitctl_vcs_describe",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.command_name.as_deref(),
+        "command_name",
+    )?;
+    validate_optional_provenance_string(
+        envelope.provenance.correlation_id.as_deref(),
+        "correlation_id",
+    )?;
 
     if let Some(redaction) = envelope.redaction.as_ref() {
         if is_blank(&redaction.profile_id) || is_blank(&redaction.redacted_at) {
@@ -2447,6 +2632,20 @@ fn validate_local_execution_provenance(
     Ok(())
 }
 
+fn validate_optional_provenance_string(
+    value: Option<&str>,
+    field_name: &str,
+) -> Result<(), ArtifactValidationError> {
+    if option_is_blank(value) && value.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            format!("artifact {field_name} must be non-blank when present"),
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_claim_metadata(metadata: &ClaimMetadataV1) -> Result<(), ArtifactValidationError> {
     if metadata.source_collectors.is_empty()
         || metadata
@@ -2500,6 +2699,173 @@ fn validate_identity_summary(summary: &IdentitySummaryV1) -> Result<(), Artifact
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "identity summary must include stable identity and digest fields",
+        ));
+    }
+
+    let has_identity_v2_metadata = summary.local_stable_id_version != 0
+        || summary.local_stable_anchor_family.is_some()
+        || summary.local_stable_anchor_source.is_some()
+        || summary.local_stable_stability_class.is_some()
+        || summary.local_stable_id_degraded_reason.is_some();
+
+    if !has_identity_v2_metadata {
+        return Ok(());
+    }
+
+    if summary.local_stable_id_version != 2 {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "identity summary contains an unsupported local_stable_id_version",
+        ));
+    }
+
+    let Some(anchor_family) = summary.local_stable_anchor_family else {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "identity summary v2 requires local_stable_anchor_family",
+        ));
+    };
+    let Some(anchor_source) = summary.local_stable_anchor_source else {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "identity summary v2 requires local_stable_anchor_source",
+        ));
+    };
+    let Some(stability_class) = summary.local_stable_stability_class else {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "identity summary v2 requires local_stable_stability_class",
+        ));
+    };
+
+    match (anchor_family, anchor_source, stability_class) {
+        (
+            LocalStableAnchorFamilyV1::MachineId,
+            LocalStableAnchorSourceV1::EtcMachineId | LocalStableAnchorSourceV1::DbusMachineId,
+            LocalStableStabilityClassV1::OsInstanceLike,
+        )
+        | (
+            LocalStableAnchorFamilyV1::DmiProductUuid,
+            LocalStableAnchorSourceV1::SysfsDmiProductUuid,
+            LocalStableStabilityClassV1::FirmwareOrVmLike,
+        )
+        | (
+            LocalStableAnchorFamilyV1::Hostname,
+            LocalStableAnchorSourceV1::KernelHostname,
+            LocalStableStabilityClassV1::AliasOnly,
+        )
+        | (
+            LocalStableAnchorFamilyV1::Fixture,
+            LocalStableAnchorSourceV1::FixtureAlias,
+            LocalStableStabilityClassV1::Fixture,
+        ) => {}
+        _ => {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "identity summary v2 contains an invalid family/source/stability combination",
+            ));
+        }
+    }
+
+    if summary.local_stable_id_degraded {
+        if summary.local_stable_id_degraded_reason
+            != Some(LocalStableIdDegradedReasonV1::HostnameFallback)
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "identity summary degraded identities require a supported degraded reason",
+            ));
+        }
+        if anchor_family != LocalStableAnchorFamilyV1::Hostname
+            || anchor_source != LocalStableAnchorSourceV1::KernelHostname
+            || stability_class != LocalStableStabilityClassV1::AliasOnly
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "identity summary degraded hostname fallback must remain alias-only",
+            ));
+        }
+    } else if summary.local_stable_id_degraded_reason.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "identity summary non-degraded identities must not carry a degraded reason",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_state_local_identity(
+    identity: &StateLocalIdentityV1,
+) -> Result<(), ArtifactValidationError> {
+    if is_blank(&identity.local_stable_id) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "state local identity must include a non-blank local_stable_id",
+        ));
+    }
+    if identity.local_stable_id_version != 2 {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "state local identity contains an unsupported local_stable_id_version",
+        ));
+    }
+
+    match (
+        identity.local_stable_anchor_family,
+        identity.local_stable_anchor_source,
+        identity.local_stable_stability_class,
+    ) {
+        (
+            LocalStableAnchorFamilyV1::MachineId,
+            LocalStableAnchorSourceV1::EtcMachineId | LocalStableAnchorSourceV1::DbusMachineId,
+            LocalStableStabilityClassV1::OsInstanceLike,
+        )
+        | (
+            LocalStableAnchorFamilyV1::DmiProductUuid,
+            LocalStableAnchorSourceV1::SysfsDmiProductUuid,
+            LocalStableStabilityClassV1::FirmwareOrVmLike,
+        )
+        | (
+            LocalStableAnchorFamilyV1::Hostname,
+            LocalStableAnchorSourceV1::KernelHostname,
+            LocalStableStabilityClassV1::AliasOnly,
+        )
+        | (
+            LocalStableAnchorFamilyV1::Fixture,
+            LocalStableAnchorSourceV1::FixtureAlias,
+            LocalStableStabilityClassV1::Fixture,
+        ) => {}
+        _ => {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "state local identity contains an invalid family/source/stability combination",
+            ));
+        }
+    }
+
+    if identity.local_stable_id_degraded {
+        if identity.local_stable_id_degraded_reason
+            != Some(LocalStableIdDegradedReasonV1::HostnameFallback)
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "state local identity degraded values require a supported degraded reason",
+            ));
+        }
+        if identity.local_stable_anchor_family != LocalStableAnchorFamilyV1::Hostname
+            || identity.local_stable_anchor_source != LocalStableAnchorSourceV1::KernelHostname
+            || identity.local_stable_stability_class != LocalStableStabilityClassV1::AliasOnly
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "state local identity degraded hostname fallback must remain alias-only",
+            ));
+        }
+    } else if identity.local_stable_id_degraded_reason.is_some() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "state local identity non-degraded values must not carry a degraded reason",
         ));
     }
 
@@ -2931,6 +3297,40 @@ fn validate_known_extension_requirements(
                 ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
                 format!(
                     "service profile Python runtime extension requirement is invalid: {}",
+                    error.message
+                ),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn validate_known_extension_state(
+    values: &BTreeMap<String, serde_json::Value>,
+) -> Result<(), ArtifactValidationError> {
+    if let Some(value) = values.get(CUDA_RUNTIME_NAMESPACE) {
+        decode_cuda_runtime_state_from_value(value).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "host state CUDA runtime extension state is invalid: {}",
+                    error.message
+                ),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn validate_known_validation_extension_diagnostics(
+    values: &BTreeMap<String, serde_json::Value>,
+) -> Result<(), ArtifactValidationError> {
+    if let Some(value) = values.get(CUDA_RUNTIME_NAMESPACE) {
+        decode_cuda_runtime_validation_diagnostic_from_value(value).map_err(|error| {
+            ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "validation report CUDA runtime extension diagnostic is invalid: {}",
                     error.message
                 ),
             )

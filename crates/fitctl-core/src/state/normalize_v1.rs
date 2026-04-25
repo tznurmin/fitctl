@@ -63,6 +63,10 @@ pub(crate) fn build_host_state_from_snapshot(
         snapshot_id: snapshot.snapshot_id.clone(),
         host_alias: snapshot.host_alias.clone(),
         source_ref: snapshot.provenance_source.clone(),
+        local_identity: snapshot
+            .local_stable_identity_input
+            .as_ref()
+            .map(|identity| identity.derive_state_local_identity()),
         core_state: HostStateCoreV1 {
             collectors: typed_collectors_from_snapshot(&snapshot.collectors),
             section_metadata: StateSectionMetadataV1 {

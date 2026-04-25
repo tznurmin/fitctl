@@ -1,0 +1,51 @@
+{
+  "schema_id": "fitctl.fixture.extension.runtime.cuda.state.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-workstation-like-cuda-runtime-stale-v1",
+  "namespace": "fitctl.runtime.cuda",
+  "state": {
+    "schema_id": "fitctl.extension.runtime.cuda.state.v1",
+    "schema_version": 1,
+    "collector": {
+      "collector_id": "fitctl.runtime.cuda.state_collector.v1",
+      "collector_version": "1",
+      "source_family": "fixture_replay"
+    },
+    "claim_metadata": {
+      "assurance_source": "self_observed",
+      "derivation_stage": "normalized",
+      "source_collectors": [
+        "fitctl.runtime.cuda.state_collector.v1"
+      ],
+      "evidence_paths": [
+        "$.state.extension_state.fitctl.runtime.cuda"
+      ],
+      "policy_rule_id": null,
+      "trust_evidence_refs": []
+    },
+    "runtime_id": "cuda",
+    "runtime_state": "observed",
+    "devices": [
+      {
+        "device_ordinal": 0,
+        "device_uuid": "GPU-7f64c1a9-1f5a-4b07-9ed8-f3f177a9a8b0",
+        "total_memory_bytes": {
+          "state": "observed",
+          "value": 25769803776
+        },
+        "allocatable_memory_bytes": {
+          "state": "observed",
+          "value": 21474836480
+        }
+      }
+    ],
+    "total_memory_bytes": {
+      "state": "observed",
+      "value": 25769803776
+    },
+    "allocatable_memory_bytes": {
+      "state": "observed",
+      "value": 21474836480
+    }
+  }
+}

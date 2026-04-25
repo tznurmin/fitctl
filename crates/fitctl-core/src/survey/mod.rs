@@ -28,9 +28,11 @@ pub use live_v1::{
     LocalLiveProbeV1, MemoryDetailsV1, NetworkAddressV1, NetworkAddressabilitySummaryV1,
     NetworkCarrierStateV1, NetworkDetailsV1, NetworkDuplexV1, NetworkInterfaceKindV1,
     NetworkInterfaceV1, NetworkInterfaceVirtualityV1, NetworkLinkStateV1, NoopLiveProbeV1,
-    StaticOperabilityV1, StorageBlockDeviceClassV1, StorageBlockDeviceV1, StorageDetailsV1,
-    StorageMountRoleV1, StorageMountV1, SurveyFieldV1, SurveyObservationsV1, TopologyDetailsV1,
+    SnapshotSourceKindV1, StaticOperabilityV1, StorageBlockDeviceClassV1, StorageBlockDeviceV1,
+    StorageDetailsV1, StorageMountRoleV1, StorageMountV1, SurveyFieldV1, SurveyObservationsV1,
+    TopologyDetailsV1,
 };
+pub use normalize_v1::build_host_survey_from_snapshot_v1;
 pub use replay_v1::{
     load_fixture_corpus_manifest, FixtureCorpusEntryV1, FixtureCorpusManifestV1,
     SurveyFixtureSnapshotV1,
@@ -143,6 +145,6 @@ where
             } => replay_v1::load_snapshot_from_corpus(&fixtures_root, &fixture_id)?,
         };
 
-        normalize_v1::build_host_survey_from_snapshot(snapshot)
+        normalize_v1::build_host_survey_from_snapshot_v1(snapshot)
     }
 }

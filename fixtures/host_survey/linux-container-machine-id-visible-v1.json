@@ -1,0 +1,79 @@
+{
+  "schema_id": "fitctl.fixture.host_survey.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-container-machine-id-visible-v1",
+  "collected_at": "2025-04-21T14:37:19Z",
+  "host_alias": "demo-container-machine-id",
+  "execution_context": {
+    "visibility_scope": "container_restricted",
+    "privilege_level": "limited",
+    "container_runtime": "docker",
+    "notes": [
+      "network namespace restricted",
+      "host memory summary unavailable",
+      "container-local machine-id visible"
+    ]
+  },
+  "collectors": [
+    "procfs",
+    "cpuinfo_flags",
+    "cgroupfs",
+    "mountinfo"
+  ],
+  "local_stable_identity_inputs_v2": {
+    "etc_machine_id": "7de277067b3544d4b65c267d0edab928",
+    "kernel_hostname": "demo-container-machine-id"
+  },
+  "observations": {
+    "hostname": {
+      "state": "observed",
+      "value": "demo-container-machine-id"
+    },
+    "cpu": {
+      "state": "partially_observed",
+      "limitation_reason": "collector_limitation",
+      "value": {
+        "architecture": "x86_64",
+        "logical_cores": 2,
+        "model": "Intel(R) Xeon(R) Platinum 8171M CPU @ 2.60GHz",
+        "model_basis": "direct_cpu_model",
+        "physical_cores": 1,
+        "threads_per_core": 2,
+        "feature_flags": [
+          "aes",
+          "avx",
+          "avx2",
+          "sse4_2"
+        ]
+      }
+    },
+    "memory": {
+      "state": "unknown",
+      "limitation_reason": "source_unavailable",
+      "value": null
+    },
+    "storage": {
+      "state": "partially_observed",
+      "limitation_reason": "collector_limitation",
+      "value": {
+        "block_devices": [],
+        "mounts": [
+          "/workspace"
+        ]
+      }
+    },
+    "network": {
+      "state": "hidden_by_privilege_or_visibility",
+      "limitation_reason": "privilege_or_visibility_limit",
+      "value": null
+    },
+    "topology": {
+      "state": "partially_observed",
+      "limitation_reason": "collector_limitation",
+      "value": {
+        "numa_nodes": 1,
+        "cpu_packages": 1
+      }
+    }
+  }
+}

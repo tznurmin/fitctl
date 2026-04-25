@@ -1,0 +1,98 @@
+{
+  "envelope": {
+    "schema_id": "validation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "validation-contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1-service-profile-gpu-two-required-cuda-runtime-qualifying-device-aggregate-memory-required-v1",
+    "provenance": {
+      "source": "validate:state_required",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "validate",
+      "correlation_id": "validation-contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1-service-profile-gpu-two-required-cuda-runtime-qualifying-device-aggregate-memory-required-v1"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "validation_basis": {
+    "validation_mode": "state_required",
+    "contract_artifact_id": "contract-linux-gpu-dual-numa-like-v1-nvidia-gpu-default-v1",
+    "service_profile_artifact_id": "service-profile-gpu-two-required-cuda-runtime-qualifying-device-aggregate-memory-required-v1",
+    "contract_semantic_hash": "42d0317be37b4f1a60c5043d9e8b7f3eb8436a3c85bca6086967a903201b4260",
+    "service_profile_semantic_hash": "1db72dc81f44ede0b28ef3043140056d6b90aeb571e49828b47efcefccf2ae5c",
+    "state_artifact_id": "state-linux-gpu-dual-numa-like-cuda-runtime-fit-v1",
+    "state_semantic_hash": "59b324209ff6627d903b12c1ed1b7ecdc35d2896c3631181e9fc1a82ec9b6608",
+    "state_observed_at": "2025-04-21T14:37:19Z",
+    "state_freshness_state": "fresh",
+    "validation_engine_id": "fitctl.validate.v1",
+    "validation_engine_version": "1"
+  },
+  "report": {
+    "verdict": "fit",
+    "primary_reason_code": "requirements_satisfied",
+    "matched_requirements": [
+      "core_requirements.allowed_visibility_scopes",
+      "core_requirements.min_policy_scoped_accelerators",
+      "core_requirements.primary_capability_class",
+      "extension_requirements.fitctl.runtime.cuda",
+      "extension_requirements.fitctl.runtime.cuda.minimum_device_allocatable_memory_bytes",
+      "extension_requirements.fitctl.runtime.cuda.minimum_qualifying_device_aggregate_allocatable_memory_bytes"
+    ],
+    "failed_requirements": [],
+    "evidence_refs": [
+      "$.state.extension_state.fitctl.runtime.cuda.devices",
+      "$.state.extension_state.fitctl.runtime.cuda.devices[].allocatable_memory_bytes",
+      "$.survey.core_evidence.execution_context",
+      "$.survey.core_evidence.observations.accelerators",
+      "$.survey.core_evidence.observations.cpu",
+      "$.survey.core_evidence.observations.memory",
+      "$.survey.core_evidence.observations.network"
+    ],
+    "policy_refs": [
+      "defaults/nvidia_gpu_compute"
+    ],
+    "assurance_mismatches": [],
+    "selected_degradation_tier": null,
+    "warnings": [],
+    "extension_diagnostics": {
+      "fitctl.runtime.cuda": {
+        "checkpoint": "runtime_extension_summary",
+        "detail_code": "qualifying_device_aggregate_allocatable_memory_threshold_satisfied",
+        "diagnostic_model_id": "fitctl.cuda_runtime_validation_diagnostic.v1",
+        "diagnostic_model_version": 1,
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.devices",
+          "$.state.extension_state.fitctl.runtime.cuda.devices[].allocatable_memory_bytes"
+        ],
+        "observed_qualifying_device_aggregate_allocatable_memory_bytes": 40802189312,
+        "observed_qualifying_device_count": 2,
+        "related_requirements": [
+          "core_requirements.min_policy_scoped_accelerators",
+          "extension_requirements.fitctl.runtime.cuda.minimum_device_allocatable_memory_bytes",
+          "extension_requirements.fitctl.runtime.cuda.minimum_qualifying_device_aggregate_allocatable_memory_bytes"
+        ],
+        "required_device_allocatable_memory_bytes": 17179869184,
+        "required_qualifying_device_aggregate_allocatable_memory_bytes": 38654705664,
+        "required_qualifying_device_count": 2
+      }
+    },
+    "explanations": [
+      {
+        "explanation_id": "explain-cuda-runtime-qualifying_device_aggregate_allocatable_memory_threshold_satisfied",
+        "reason_code": "requirements_satisfied",
+        "summary": "CUDA qualifying-device aggregate allocatable memory 38.00 GiB satisfies the required threshold 36.00 GiB at per-device floor 16.00 GiB.",
+        "related_requirements": [
+          "core_requirements.min_policy_scoped_accelerators",
+          "extension_requirements.fitctl.runtime.cuda.minimum_device_allocatable_memory_bytes",
+          "extension_requirements.fitctl.runtime.cuda.minimum_qualifying_device_aggregate_allocatable_memory_bytes"
+        ],
+        "evidence_refs": [
+          "$.state.extension_state.fitctl.runtime.cuda.devices",
+          "$.state.extension_state.fitctl.runtime.cuda.devices[].allocatable_memory_bytes"
+        ],
+        "policy_refs": []
+      }
+    ],
+    "remediation_hints": [],
+    "summary": "service profile fits the gpu_accelerated capability baseline"
+  }
+}

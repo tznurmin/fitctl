@@ -1,0 +1,535 @@
+{
+  "envelope": {
+    "schema_id": "host-survey.v2",
+    "schema_version": 2,
+    "artifact_id": "survey-cuda-driver-supported-cuda-advisory-fallback",
+    "provenance": {
+      "source": "fixture_corpus:host_survey_core_linux_v1",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.2.1",
+      "command_name": "survey",
+      "correlation_id": "survey-cuda-driver-supported-cuda-advisory-fallback"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "survey": {
+    "collection_mode": "replay",
+    "core_evidence": {
+      "collectors": [
+        {
+          "collector_id": "block_and_filesystem",
+          "collector_version": "1",
+          "source_family": "block_and_filesystem"
+        },
+        {
+          "collector_id": "cgroupfs",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cpuinfo_flags",
+          "collector_version": "1",
+          "source_family": "procfs"
+        },
+        {
+          "collector_id": "devfs_accelerator_nodes",
+          "collector_version": "1",
+          "source_family": "devfs"
+        },
+        {
+          "collector_id": "iproute2_addr",
+          "collector_version": "1",
+          "source_family": "netdev"
+        },
+        {
+          "collector_id": "mountinfo",
+          "collector_version": "1",
+          "source_family": "mountinfo"
+        },
+        {
+          "collector_id": "netdev",
+          "collector_version": "1",
+          "source_family": "netdev"
+        },
+        {
+          "collector_id": "pci_accelerators",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        },
+        {
+          "collector_id": "pci_driver_binding",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        },
+        {
+          "collector_id": "procfs",
+          "collector_version": "1",
+          "source_family": "procfs"
+        },
+        {
+          "collector_id": "sysfs",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        },
+        {
+          "collector_id": "sysfs_cpu_cache",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        },
+        {
+          "collector_id": "sysfs_cpu_topology",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        }
+      ],
+      "execution_context": {
+        "container_runtime": null,
+        "notes": [],
+        "privilege_level": "full",
+        "visibility_scope": "bare_metal_like"
+      },
+      "identity_summary": {
+        "composition_digest": "b1e049da1b7d466351642603f7515dec8ed8e7e2427bbba6f87517c0224e35ca",
+        "identity_class": "local_stable",
+        "local_stable_anchor_family": "fixture",
+        "local_stable_anchor_source": "fixture_alias",
+        "local_stable_id": "0cc6d9fb8690d1b2e9673018014d8b7ddb63c09a9b322152892f9e871f16fb4c",
+        "local_stable_id_degraded": false,
+        "local_stable_id_version": 2,
+        "local_stable_stability_class": "fixture",
+        "provenance_fingerprint": "9fac516b9054244469ddd566541b3f36553ca8abd47a83b67b7890e49afddcea"
+      },
+      "observations": {
+        "accelerators": {
+          "state": "observed",
+          "value": {
+            "devices": [
+              {
+                "device_id": "2206",
+                "driver": "nvidia",
+                "family": "nvidia_pci",
+                "kind": "gpu",
+                "memory_bytes": 25769803776,
+                "model": "nvidia-gpu-2206",
+                "numa_node": 0,
+                "pci_address": "0000:65:00.0",
+                "vendor": "nvidia",
+                "vendor_id": "10de"
+              },
+              {
+                "device_id": "2230",
+                "driver": "nvidia",
+                "family": "nvidia_pci",
+                "kind": "gpu",
+                "memory_bytes": 51539607552,
+                "model": "nvidia-gpu-2230",
+                "numa_node": 0,
+                "pci_address": "0000:b3:00.0",
+                "vendor": "nvidia",
+                "vendor_id": "10de"
+              }
+            ],
+            "operability": {
+              "driver_bound_devices": 2,
+              "static_operability": "operable",
+              "visible_device_nodes": [
+                "/dev/nvidia-uvm",
+                "/dev/nvidia0",
+                "/dev/nvidia1",
+                "/dev/nvidiactl"
+              ]
+            }
+          }
+        },
+        "cpu": {
+          "state": "observed",
+          "value": {
+            "architecture": "x86_64",
+            "cache_summary": {
+              "l1_data_bytes": 32768,
+              "l1_instruction_bytes": 32768,
+              "l2_bytes": 524288,
+              "l3_bytes": 67108864,
+              "summary_basis": "representative_instance_sizes"
+            },
+            "feature_flags": [
+              "aes",
+              "avx",
+              "avx2",
+              "sha_ni",
+              "sse4_2",
+              "svm"
+            ],
+            "logical_cores": 16,
+            "model": "AMD Ryzen 9 5950X 16-Core Processor",
+            "model_basis": "direct_cpu_model",
+            "physical_cores": 16,
+            "threads_per_core": 1
+          }
+        },
+        "hostname": {
+          "state": "observed",
+          "value": "gpu-host-01"
+        },
+        "memory": {
+          "state": "observed",
+          "value": {
+            "total_bytes": 68719476736
+          }
+        },
+        "network": {
+          "state": "observed",
+          "value": {
+            "interface_details": [
+              {
+                "addresses": [
+                  {
+                    "address": "198.51.100.40",
+                    "family": "ipv4",
+                    "prefix_len": 24
+                  }
+                ],
+                "carrier_state": "unknown",
+                "duplex": "unknown",
+                "interface_kind": "ethernet",
+                "interface_virtuality": "physical",
+                "link_state": "up",
+                "mac_address": "52:54:00:65:43:21",
+                "mtu": 1500,
+                "name": "enp5s0",
+                "speed_mbps": 2500
+              },
+              {
+                "addresses": [
+                  {
+                    "address": "127.0.0.1",
+                    "family": "ipv4",
+                    "prefix_len": 8
+                  },
+                  {
+                    "address": "::1",
+                    "family": "ipv6",
+                    "prefix_len": 128
+                  }
+                ],
+                "carrier_state": "unknown",
+                "duplex": "unknown",
+                "interface_kind": "loopback",
+                "interface_virtuality": "virtual",
+                "link_state": "unknown",
+                "mac_address": "00:00:00:00:00:00",
+                "mtu": 65536,
+                "name": "lo",
+                "speed_mbps": null
+              }
+            ],
+            "interfaces": [
+              "enp5s0",
+              "lo"
+            ]
+          }
+        },
+        "storage": {
+          "state": "partially_observed",
+          "value": {
+            "block_devices": [
+              "nvme0n1",
+              "nvme1n1"
+            ],
+            "mounts": [
+              "/",
+              "/srv"
+            ]
+          }
+        },
+        "topology": {
+          "state": "observed",
+          "value": {
+            "cpu_packages": 1,
+            "numa_nodes": 1
+          }
+        }
+      },
+      "section_metadata": {
+        "accelerators": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.accelerators"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "cpu": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.cpu"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "execution_context": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.execution_context"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "hostname": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.hostname"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "memory": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.memory"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "network": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.network"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "storage": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.storage"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "topology": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.core_evidence.observations.topology"
+          ],
+          "source_collectors": [
+            "block_and_filesystem",
+            "cgroupfs",
+            "cpuinfo_flags",
+            "devfs_accelerator_nodes",
+            "iproute2_addr",
+            "mountinfo",
+            "netdev",
+            "pci_accelerators",
+            "pci_driver_binding",
+            "procfs",
+            "sysfs",
+            "sysfs_cpu_cache",
+            "sysfs_cpu_topology"
+          ],
+          "trust_evidence_refs": []
+        }
+      }
+    },
+    "extension_evidence": {
+      "fitctl.runtime.cuda": {
+        "claim_metadata": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "evidence_paths": [
+            "$.survey.extension_evidence.fitctl.runtime.cuda"
+          ],
+          "source_collectors": [
+            "fitctl.runtime.cuda.collector.v1"
+          ],
+          "trust_evidence_refs": []
+        },
+        "collector": {
+          "collector_id": "fitctl.runtime.cuda.collector.v1",
+          "collector_version": "1",
+          "source_family": "fixture_replay"
+        },
+        "executable_path": "/usr/local/cuda/bin/nvcc",
+        "runtime_id": "cuda",
+        "runtime_state": "observed",
+        "schema_id": "fitctl.extension.runtime.cuda.evidence.v1",
+        "schema_version": 1,
+        "version": {
+          "major": 12,
+          "minor": 4,
+          "patch": 131
+        },
+        "driver_version": {
+          "major": 550,
+          "minor": 54,
+          "patch": 15
+        },
+        "driver_supported_cuda_version": {
+          "major": 13,
+          "minor": 0,
+          "patch": 0
+        },
+        "default_runtime_version": {
+          "major": 12,
+          "minor": 4,
+          "patch": 0
+        },
+        "default_view_probe_diagnostics": {
+          "default_toolkit_version": {
+            "source_tier": "primary",
+            "source_kind": "command_probe",
+            "source_ref": "/usr/local/cuda/bin/nvcc",
+            "status": "observed"
+          },
+          "driver_version": {
+            "source_tier": "primary",
+            "source_kind": "file_probe",
+            "source_ref": "/proc/driver/nvidia/version",
+            "status": "observed"
+          },
+          "driver_supported_cuda_version": {
+            "source_tier": "advisory_fallback",
+            "source_kind": "advisory_command_probe",
+            "source_ref": "/run/current-system/sw/bin/nvidia-smi",
+            "status": "observed"
+          },
+          "default_runtime_version": {
+            "source_tier": "primary",
+            "source_kind": "dynamic_library_probe",
+            "source_ref": "libcudart.so",
+            "status": "observed"
+          }
+        },
+        "installed_toolkits": [
+          {
+            "install_root": "/usr/local/cuda-11.8",
+            "version": {
+              "major": 11,
+              "minor": 8,
+              "patch": 89
+            }
+          },
+          {
+            "install_root": "/usr/local/cuda-12.4",
+            "version": {
+              "major": 12,
+              "minor": 4,
+              "patch": 131
+            },
+            "selected_by_default_toolkit_view": true
+          }
+        ]
+      }
+    },
+    "host_alias": "gpu-host-01",
+    "snapshot_id": "linux-gpu-workstation-like-v1",
+    "source_ref": "fixture_corpus:host_survey_core_linux_v1"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schema_id": "fitctl.fixture.host_state.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-container-hostname-fallback-runtime-missing-v1",
+  "collected_at": "2025-04-21T14:37:19Z",
+  "host_alias": "demo-container-fallback",
+  "local_stable_identity_inputs_v2": {
+    "kernel_hostname": "demo-container-fallback"
+  },
+  "collectors": [
+    "procfs_meminfo",
+    "runtime_cpu_capacity",
+    "cgroupfs_cpuset",
+    "cgroupfs_cpu_quota",
+    "cgroupfs_memory_boundary",
+    "sysfs_topology"
+  ],
+  "freshness": {
+    "observed_at": "2025-04-21T14:37:19Z",
+    "freshness_state": "fresh"
+  },
+  "resources": {
+    "allocatable_cpu_logical_cores": {
+      "state": "observed",
+      "value": 2
+    },
+    "memory_total_bytes": {
+      "state": "observed",
+      "value": 8589934592
+    },
+    "allocatable_memory_bytes": {
+      "state": "unknown",
+      "limitation_reason": "source_unavailable",
+      "value": null
+    },
+    "memory_used_excluding_cache_bytes": {
+      "state": "observed",
+      "value": 3221225472
+    }
+  },
+  "boundaries": {
+    "cgroup_version": {
+      "state": "observed",
+      "value": "v2"
+    },
+    "cpuset_cpu_logical_cores": {
+      "state": "observed",
+      "value": 2
+    },
+    "cpu_quota_logical_cores": {
+      "state": "observed",
+      "value": 2
+    },
+    "memory_limit_bytes": {
+      "state": "observed",
+      "value": 4294967296
+    },
+    "memory_current_bytes": {
+      "state": "observed",
+      "value": 3221225472
+    }
+  },
+  "topology": {
+    "visible_numa_nodes": {
+      "state": "unknown",
+      "limitation_reason": "privilege_or_visibility_limit",
+      "value": null
+    }
+  },
+  "operability": {
+    "degraded_capability_classes": [
+      "general_compute"
+    ]
+  }
+}

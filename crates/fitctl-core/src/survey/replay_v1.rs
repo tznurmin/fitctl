@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::fixtures::FixtureCoverageTagV1;
+use crate::identity::{fixture_identity_input_v2, select_live_linux_identity_input_v2};
 use crate::survey::execution_context_v1::VisibilityScopeV1;
 use crate::survey::live_v1::{CollectedHostSnapshotV1, SnapshotSourceKindV1, SurveyObservationsV1};
 use crate::survey::{ExecutionContextV1, SurveyError, SurveyErrorCode};
@@ -47,8 +48,23 @@ pub struct SurveyFixtureSnapshotV1 {
     pub execution_context: ExecutionContextV1,
     pub collectors: Vec<String>,
     #[serde(default)]
+    pub local_stable_identity_inputs_v2: Option<ReplayLocalStableIdentityInputsV1>,
+    #[serde(default)]
     pub identity_summary: Option<serde_json::Value>,
     pub observations: SurveyObservationsV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayLocalStableIdentityInputsV1 {
+    #[serde(default)]
+    pub etc_machine_id: Option<String>,
+    #[serde(default)]
+    pub dbus_machine_id: Option<String>,
+    #[serde(default)]
+    pub dmi_product_uuid: Option<String>,
+    #[serde(default)]
+    pub kernel_hostname: Option<String>,
 }
 
 /// Load the host-survey replay corpus manifest rooted at the given fixtures directory.
@@ -120,6 +136,21 @@ pub(crate) fn load_snapshot_from_corpus(
 
     validate_snapshot(&snapshot, entry)?;
 
+    let mut execution_context = snapshot.execution_context.clone();
+    let local_stable_identity_input =
+        if let Some(identity_inputs) = snapshot.local_stable_identity_inputs_v2.as_ref() {
+            let selection = select_live_linux_identity_input_v2(
+                identity_inputs.etc_machine_id.as_deref(),
+                identity_inputs.dbus_machine_id.as_deref(),
+                identity_inputs.dmi_product_uuid.as_deref(),
+                identity_inputs.kernel_hostname.as_deref(),
+            );
+            execution_context.notes.extend(selection.notes);
+            selection.input
+        } else {
+            fixture_identity_input_v2(&manifest.corpus_id, &snapshot.host_alias)
+        };
+
     Ok(CollectedHostSnapshotV1 {
         source_kind: SnapshotSourceKindV1::Replay {
             corpus_id: manifest.corpus_id.clone(),
@@ -128,7 +159,8 @@ pub(crate) fn load_snapshot_from_corpus(
         snapshot_id: snapshot.fixture_id.clone(),
         collected_at: snapshot.collected_at.clone(),
         host_alias: snapshot.host_alias.clone(),
-        execution_context: snapshot.execution_context.clone(),
+        local_stable_identity_input,
+        execution_context,
         collectors: snapshot.collectors.clone(),
         observations: snapshot.observations.clone(),
     })

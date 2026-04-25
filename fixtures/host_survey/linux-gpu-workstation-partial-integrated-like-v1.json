@@ -1,0 +1,182 @@
+{
+  "schema_id": "fitctl.fixture.host_survey.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-workstation-partial-integrated-like-v1",
+  "collected_at": "2025-04-21T14:37:19Z",
+  "host_alias": "gpu-host-01",
+  "execution_context": {
+    "visibility_scope": "bare_metal_like",
+    "privilege_level": "full",
+    "container_runtime": null,
+    "notes": []
+  },
+  "collectors": [
+    "procfs",
+    "cpuinfo_flags",
+    "sysfs",
+    "sysfs_cpu_topology",
+    "sysfs_cpu_cache",
+    "cgroupfs",
+    "mountinfo",
+    "netdev",
+    "iproute2_addr",
+    "block_and_filesystem",
+    "pci_accelerators",
+    "pci_driver_binding",
+    "devfs_accelerator_nodes"
+  ],
+  "observations": {
+    "hostname": {
+      "state": "observed",
+      "value": "gpu-host-01"
+    },
+    "cpu": {
+      "state": "observed",
+      "value": {
+        "architecture": "x86_64",
+        "logical_cores": 16,
+        "model": "AMD Ryzen 9 5950X 16-Core Processor",
+        "model_basis": "direct_cpu_model",
+        "physical_cores": 16,
+        "threads_per_core": 1,
+        "feature_flags": [
+          "aes",
+          "avx",
+          "avx2",
+          "sha_ni",
+          "sse4_2",
+          "svm"
+        ],
+        "cache_summary": {
+          "summary_basis": "representative_instance_sizes",
+          "l1_data_bytes": 32768,
+          "l1_instruction_bytes": 32768,
+          "l2_bytes": 524288,
+          "l3_bytes": 67108864
+        }
+      }
+    },
+    "memory": {
+      "state": "observed",
+      "value": {
+        "total_bytes": 68719476736
+      }
+    },
+    "storage": {
+      "state": "partially_observed",
+      "value": {
+        "block_devices": [
+          "nvme0n1",
+          "nvme1n1"
+        ],
+        "mounts": [
+          "/",
+          "/srv"
+        ]
+      }
+    },
+    "network": {
+      "state": "observed",
+      "value": {
+        "interfaces": [
+          "enp5s0",
+          "lo"
+        ],
+        "interface_details": [
+          {
+            "name": "enp5s0",
+            "interface_kind": "ethernet",
+            "interface_virtuality": "physical",
+            "link_state": "up",
+            "mtu": 1500,
+            "speed_mbps": 2500,
+            "mac_address": "52:54:00:65:43:21",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "198.51.100.40",
+                "prefix_len": 24
+              }
+            ]
+          },
+          {
+            "name": "lo",
+            "interface_kind": "loopback",
+            "interface_virtuality": "virtual",
+            "link_state": "unknown",
+            "mtu": 65536,
+            "speed_mbps": null,
+            "mac_address": "00:00:00:00:00:00",
+            "addresses": [
+              {
+                "family": "ipv4",
+                "address": "127.0.0.1",
+                "prefix_len": 8
+              },
+              {
+                "family": "ipv6",
+                "address": "::1",
+                "prefix_len": 128
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "accelerators": {
+      "state": "partially_observed",
+      "limitation_reason": "collector_limitation",
+      "value": {
+        "operability": {
+          "static_operability": "indeterminate",
+          "driver_bound_devices": 2,
+          "visible_device_nodes": [
+            "/dev/nvidia-uvm",
+            "/dev/nvidia0",
+            "/dev/nvidia1",
+            "/dev/nvidiactl"
+          ]
+        },
+        "devices": [
+          {
+            "kind": "gpu",
+            "vendor": "nvidia",
+            "family": "nvidia_pci",
+            "model": "nvidia-gpu-2206",
+            "vendor_id": "10de",
+            "device_id": "2206",
+            "memory_bytes": 25769803776,
+            "pci_address": "0000:65:00.0",
+            "driver": "nvidia",
+            "numa_node": 0
+          },
+          {
+            "kind": "gpu",
+            "vendor": "nvidia",
+            "family": "nvidia_pci",
+            "model": "nvidia-gpu-2230",
+            "vendor_id": "10de",
+            "device_id": "2230",
+            "memory_bytes": 51539607552,
+            "pci_address": "0000:b3:00.0",
+            "driver": "nvidia",
+            "numa_node": 0
+          },
+          {
+            "kind": "gpu",
+            "discovery_source": "drm_platform",
+            "vendor": "intel",
+            "integration": "integrated"
+          }
+        ]
+      }
+    },
+    "topology": {
+      "state": "observed",
+      "value": {
+        "numa_nodes": 1,
+        "cpu_packages": 1
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
-  "schema_id": "fitctl.fixture.extension.org.example.runtime.node.corpus.v1",
+  "schema_id": "fitctl.fixture.extension.runtime.node.corpus.v1",
   "schema_version": 1,
-  "namespace": "org.example.runtime.node",
+  "namespace": "fitctl.runtime.node",
   "fixtures": [
     {
       "fixture_id": "linux-bare-metal-like-v1",
