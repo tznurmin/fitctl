@@ -13,7 +13,8 @@ Common artifacts in the local decision flow:
 | `validation-report.v2` | `fitctl validate` | verdict, posture, reason codes, evidence |
 | `fitctl.batch-classification-report.v3` | `fitctl classify` | multi-contract, multi-profile comparison |
 
-The same JSON that `fitctl inspect` renders is the JSON that automation reads unchanged.
+Artifacts are JSON. `fitctl inspect` can print text views, and automation can read the JSON
+directly.
 
 Read any supported artifact with `inspect`:
 
@@ -177,7 +178,7 @@ signals from that summary, not the full observed inventory. Inspect may therefor
 accelerator inventory incomplete` and `policy-scoped accelerator inventory complete` on the same
 host without contradiction.
 
-Inspect renders policy-scoped inventory detail with `confirmed in-scope` and `unresolved in-scope`
+Inspect prints policy-scoped inventory detail with `confirmed in-scope` and `unresolved in-scope`
 counts so resolved out-of-scope devices do not inflate workload GPU floors.
 
 `capability_classes` is the map of policy-bound claims, such as `general_compute` or
@@ -314,6 +315,6 @@ Use:
 fitctl inspect --input batch.json --view matrix
 ```
 
-to render that report as a shortlist table.
+to print that report as a shortlist table.
 
-[Validation](./validation.md) covers batch comparison and matrix rendering.
+[Validation](./validation.md) covers batch comparison and matrix views.

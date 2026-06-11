@@ -23,8 +23,8 @@ It determines:
 - the thresholds and admissibility rules for that claim
 - any extension namespace allowlist used during derivation
 
-Policies may also carry human-facing `display_name` and `short_display_name` fields for `inspect`
-and matrix views. These are presentation labels, not selection identity.
+Policies may also carry `display_name` and `short_display_name` fields for `inspect` and matrix
+views. These are presentation labels, not selection identity.
 
 A policy-scoped accelerator inventory is the subset of observed accelerators that the selected
 policy allows the host to claim.
@@ -56,8 +56,8 @@ It determines what the workload:
 A service profile may also declare a minimum policy-scoped accelerator count in principle.
 Runtime availability remains separate and belongs to `state`.
 
-Service profiles may also carry human-facing `display_name` and `short_display_name` fields for
-`inspect` and matrix views. These are presentation labels, not selection identity.
+Service profiles may also carry `display_name` and `short_display_name` fields for `inspect` and
+matrix views. These are presentation labels, not selection identity.
 
 Examples:
 
@@ -73,7 +73,7 @@ A `survey` records observed local facts.
 
 A `policy` decides what contract may be derived from those facts.
 
-A `service profile` checks whether that contract is good enough for a workload.
+A `service profile` checks whether that contract satisfies a workload.
 
 When the decision also depends on live runtime conditions, validation adds `state`, but the
 configuration split stays the same: policy shapes the claim, and the service profile tests it.

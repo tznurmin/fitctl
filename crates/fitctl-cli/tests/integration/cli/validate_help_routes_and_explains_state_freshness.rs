@@ -50,6 +50,10 @@ fn validate_help_routes_and_explains_state_freshness() {
         "state_required",
         "--validated-at <timestamp>",
         "--max-state-age <value>",
+        "--fail-on-unfit",
+        "--require-fit",
+        "Gate flags:",
+        "preserve the validation report on stdout",
         "accepts UTC RFC3339 or unix:<seconds>",
         "contract_only does not accept host-state input",
     ] {

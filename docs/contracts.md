@@ -5,9 +5,9 @@ A contract is the policy-shaped claim a host may make from a `survey`.
 A `survey` records observed local facts. A `contract` records what the selected `policy` permits
 the host to claim from those facts. `validation` checks that claim against a service profile.
 
-A contract is the handoff artifact between collection and validation. The same JSON that
-`fitctl inspect` renders is the JSON that `fitctl validate` reads.
-Live runtime detail remains separate in `state`.
+A contract is the handoff artifact between collection and validation. `fitctl inspect` can print a
+text view of the contract; `fitctl validate` reads the contract JSON directly. Live runtime detail
+remains separate in `state`.
 
 ## Derive a contract
 
@@ -85,4 +85,4 @@ Supply `state` during validation only when the decision depends on those live co
 - `fitctl survey` records observed local facts
 - `fitctl contract` turns those facts into a policy-shaped claim
 - `fitctl validate` checks that claim against a service profile
-- `fitctl inspect` renders any of those artifacts without changing the underlying JSON
+- `fitctl inspect` prints text views without changing the underlying JSON

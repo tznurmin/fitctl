@@ -1,6 +1,16 @@
 # fitctl
 
-fitctl turns host inspection into explicit, machine-readable fit decisions.
+fitctl is a command-line tool for producing host-fit artifacts and returning failure exit codes when
+validation rejects a host.
+
+It records observed host facts, derives policy-shaped host contracts, captures runtime state when
+required, and validates contracts against workload profiles.
+
+Commands emit typed JSON. `fitctl inspect` prints structured text views for supported artifacts.
+Automation reads the JSON directly.
+
+Use `--fail-on-unfit` or `--require-fit` when validation should control the process exit status.
+The validation report is written to stdout, and the exit status reflects the gate result.
 
 ## Inspect a live host
 
@@ -30,19 +40,17 @@ Summary
     GPU 0000:b3:00.0: NVIDIA RTX A6000; driver nvidia; operable
 ```
 
-In the example above, `fitctl survey` emits a survey artifact. `fitctl inspect` renders supported
-`fitctl` artifacts as structured reports.
+In the example above, `fitctl survey` emits a survey artifact and pipes it to `fitctl inspect`.
+`fitctl inspect` prints a structured text view of supported `fitctl` artifacts.
 
 ## Make a fit decision
 
-Use `fitctl` to decide whether a host fits a workload under a given policy.
-
 Run `fitctl survey` to collect local facts, `fitctl contract` to derive the host claim that policy
-allows, and `fitctl validate` to produce the fit decision. Each step emits a typed JSON artifact
-that `fitctl inspect` can render and automation can consume unchanged.
+allows, and `fitctl validate` to produce the fit decision. Each step emits a typed JSON artifact.
+`fitctl inspect` can print a text view, and automation can read the same JSON directly.
 
 The example below uses bundled fixture, policy, and service profile files from a checkout of the
-[fitctl repository](https://github.com/tznurmin/fitctl) so the rendered decision is stable.
+[fitctl repository](https://github.com/tznurmin/fitctl) so the example output is stable.
 
 ```bash
 fitctl survey --fixture linux-bare-metal-like-v1 > host.survey.json
@@ -103,9 +111,23 @@ signing, verification, export, completion, and advanced configuration commands.
 
 ## Compare hosts in batch
 
-Create a batch report with `fitctl classify`, then render it as a matrix:
+Create explicit CPU and GPU contracts, then print a batch report as a matrix:
 
 ```bash
+fitctl survey --fixture linux-bare-metal-like-v1 > cpu.survey.json
+
+fitctl contract \
+  --survey cpu.survey.json \
+  --policy configs/policy/general_compute_default.v1.json \
+  > cpu.contract.json
+
+fitctl survey --fixture linux-gpu-workstation-like-v1 > gpu.survey.json
+
+fitctl contract \
+  --survey gpu.survey.json \
+  --policy configs/policy/gpu_compute_default.v1.json \
+  > gpu.contract.json
+
 fitctl classify \
   --contract cpu.contract.json \
   --contract gpu.contract.json \
@@ -146,14 +168,14 @@ cargo install --path crates/fitctl-cli --locked
 
 ## Documentation
 
-- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.3.0/docs/configuration.md) - policies and service profiles
-- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.3.0/docs/contracts.md) - contract derivation from survey evidence and policy
-- [Validation](https://github.com/tznurmin/fitctl/blob/v0.3.0/docs/validation.md) - validation, batch comparison, and fit decisions
-- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.3.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
-- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.3.0/docs/artifacts.md) - survey, contract, state, and validation-report artifacts
+- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.4.0/docs/configuration.md) - policies and service profiles
+- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.4.0/docs/contracts.md) - contract derivation from survey evidence and policy
+- [Validation](https://github.com/tznurmin/fitctl/blob/v0.4.0/docs/validation.md) - validation, batch comparison, and fit decisions
+- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.4.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
+- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.4.0/docs/artifacts.md) - survey, contract, state, and validation-report artifacts
 
 Version history and release notes: [GitHub Releases](https://github.com/tznurmin/fitctl/releases)
 
 ## License
 
-[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.3.0/LICENSE)
+[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.4.0/LICENSE)

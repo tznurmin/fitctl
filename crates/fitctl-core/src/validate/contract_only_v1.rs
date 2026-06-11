@@ -135,6 +135,7 @@ pub fn validate_request_v1(
             )
         })?;
     if let Some(host_state) = request.host_state.as_ref() {
+        let mut identity_comparison_was_possible = false;
         if let Some(local_identity) = host_state.state.local_identity.as_ref() {
             let contract_local_stable_id = contract_payload
                 .core_contract
@@ -152,6 +153,25 @@ pub fn validate_request_v1(
                     format!(
                         "host-state local identity {} does not match contract local identity {}",
                         host_state.envelope.artifact_id, request.contract.envelope.artifact_id
+                    ),
+                ));
+            }
+            identity_comparison_was_possible =
+                !contract_local_stable_id.is_empty() && !state_local_stable_id.is_empty();
+        }
+
+        if !identity_comparison_was_possible {
+            let contract_host_alias = request.contract.host_alias.as_deref().unwrap_or("").trim();
+            let state_host_alias = host_state.state.host_alias.trim();
+            if !contract_host_alias.is_empty()
+                && !state_host_alias.is_empty()
+                && contract_host_alias != state_host_alias
+            {
+                return Err(ValidationError::new(
+                    ValidationErrorCode::ValidationInputInvalid,
+                    "validation_state_identity",
+                    format!(
+                        "host-state host alias {state_host_alias} does not match contract host alias {contract_host_alias}"
                     ),
                 ));
             }

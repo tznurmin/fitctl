@@ -6,7 +6,10 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use fitctl_core::config::{load_extension_pack_from_path, load_invocation_context_from_path};
+use fitctl_core::config::{
+    add_missing_built_in_extension_packs_v1, load_extension_pack_from_path,
+    load_invocation_context_from_path,
+};
 use fitctl_core::extensions::{
     apply_cuda_runtime_extension_to_survey_with_selection_v1,
     apply_node_runtime_extension_to_survey_v1, apply_python_runtime_extension_to_survey_v1,
@@ -150,16 +153,13 @@ pub fn run(args: &[String]) -> ExitCode {
     requested_extension_namespaces.extend(enabled_extension_namespaces);
     requested_extension_namespaces.sort();
     requested_extension_namespaces.dedup();
+    add_missing_built_in_extension_packs_v1(&mut extension_packs, &requested_extension_namespaces);
 
     if requested_extension_namespaces
         .iter()
         .any(|namespace| namespace.trim().is_empty())
     {
         eprintln!("fitctl survey: enabled extension namespaces must be non-empty");
-        return ExitCode::from(2);
-    }
-    if !requested_extension_namespaces.is_empty() && extension_packs.is_empty() {
-        eprintln!("fitctl survey: --enable-extension requires at least one --extension-pack");
         return ExitCode::from(2);
     }
     for namespace in &requested_extension_namespaces {
@@ -278,5 +278,5 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl survey [--live] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl survey --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - live local survey is the default when --fixture is not provided\n  - fixture mode is explicit and intended for tests, examples, and deterministic replay\n"
+    "Usage:\n  fitctl survey [--live] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl survey --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - live local survey is the default when --fixture is not provided\n  - fixture mode is explicit and intended for tests, examples, and deterministic replay\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n"
 }

@@ -30,8 +30,8 @@ Additional hardware observations may include:
 - local device-node or render-node presence
 - coarse NUMA attachment for locality-sensitive fit checks
 
-If more than one GPU is visible, `inspect` renders them separately. The bundled GPU workstation
-fixture renders:
+If more than one GPU is visible, `inspect` prints them separately. The bundled GPU workstation
+fixture output is:
 
 ```bash
 fitctl survey \
@@ -64,17 +64,16 @@ This detail affects the fit decision only when `state` is supplied during valida
 
 To collect CUDA runtime detail in the examples below:
 
-- `--extension-pack configs/extensions/fitctl_runtime_cuda.v1.json` loads the extension definition
-- `--enable-extension fitctl.runtime.cuda` enables that namespace during collection
+- `--enable-extension fitctl.runtime.cuda` enables the built-in CUDA runtime extension pack
 
-The bundled CUDA examples use the extension namespace `fitctl.runtime.cuda`.
+The repository also ships the equivalent JSON extension-pack manifest under
+[configs/extensions](../configs/extensions) for explicit configuration-bundle workflows.
 
 This example uses the bundled CUDA runtime extension and a two-device state fixture:
 
 ```bash
 fitctl state \
   --fixture linux-gpu-dual-numa-like-cuda-runtime-fit-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.state.json
 
@@ -108,20 +107,17 @@ collection. That keeps the contract, the runtime observation, and the validation
 ```bash
 fitctl survey \
   --fixture linux-gpu-workstation-like-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.survey.json
 
 fitctl contract \
   --survey gpu.survey.json \
   --policy configs/policy/general_compute_default.v1.json \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.contract.json
 
 fitctl state \
   --fixture linux-gpu-workstation-like-cuda-runtime-fit-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.state.json
 

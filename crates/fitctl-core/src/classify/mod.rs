@@ -403,7 +403,7 @@ pub fn render_batch_classification_export_view(
     view: BatchClassificationExportViewV1,
 ) -> String {
     match view {
-        BatchClassificationExportViewV1::RowsCsv => render_rows_csv(&report.report.rows),
+        BatchClassificationExportViewV1::RowsCsv => render_rows_csv(report),
         BatchClassificationExportViewV1::ContractSummaryCsv => {
             render_contract_summaries_csv(&report.report.contract_summaries)
         }
@@ -413,17 +413,48 @@ pub fn render_batch_classification_export_view(
     }
 }
 
-fn render_rows_csv(rows: &[BatchClassificationRowV1]) -> String {
+fn render_rows_csv(report: &BatchClassificationReportV1) -> String {
+    let contracts: BTreeMap<&str, &BatchClassificationContractRefV1> = report
+        .classification_basis
+        .ordered_contracts
+        .iter()
+        .map(|contract| (contract.artifact_id.as_str(), contract))
+        .collect();
+    let service_profiles: BTreeMap<&str, &BatchClassificationServiceProfileRefV1> = report
+        .classification_basis
+        .ordered_service_profiles
+        .iter()
+        .map(|profile| (profile.artifact_id.as_str(), profile))
+        .collect();
     let mut output = String::from(
-        "row_id,contract_artifact_id,service_profile_artifact_id,verdict,primary_reason_code,selected_degradation_tier,summary\n",
+        "row_id,host_alias,contract_artifact_id,contract_display_name,contract_short_display_name,service_profile_artifact_id,service_profile_display_name,service_profile_short_display_name,verdict,primary_reason_code,selected_degradation_tier,summary\n",
     );
-    for row in rows {
+    for row in &report.report.rows {
+        let contract = contracts.get(row.contract_artifact_id.as_str()).copied();
+        let service_profile = service_profiles
+            .get(row.service_profile_artifact_id.as_str())
+            .copied();
         push_csv_row(
             &mut output,
             &[
                 row.row_id.as_str(),
+                contract
+                    .and_then(|contract| contract.host_alias.as_deref())
+                    .unwrap_or(""),
                 row.contract_artifact_id.as_str(),
+                contract
+                    .and_then(|contract| contract.display_name.as_deref())
+                    .unwrap_or(""),
+                contract
+                    .and_then(|contract| contract.short_display_name.as_deref())
+                    .unwrap_or(""),
                 row.service_profile_artifact_id.as_str(),
+                service_profile
+                    .and_then(|profile| profile.display_name.as_deref())
+                    .unwrap_or(""),
+                service_profile
+                    .and_then(|profile| profile.short_display_name.as_deref())
+                    .unwrap_or(""),
                 row.verdict.as_str(),
                 row.primary_reason_code.as_str(),
                 row.selected_degradation_tier.as_deref().unwrap_or(""),
@@ -1236,19 +1267,65 @@ mod tests {
 
     #[test]
     fn rows_csv_export_quotes_commas_and_quotes() {
-        let csv = render_rows_csv(&[BatchClassificationRowV1 {
-            row_id: "row-1".to_string(),
-            contract_artifact_id: "contract-1".to_string(),
-            contract_semantic_hash: "hash-left".to_string(),
-            service_profile_artifact_id: "profile-1".to_string(),
-            service_profile_semantic_hash: "hash-right".to_string(),
-            verdict: ValidationVerdictV1::FitWithDegradation,
-            primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
-            selected_degradation_tier: Some("general_compute".to_string()),
-            summary: "prefers \"gpu\", falls back".to_string(),
-        }]);
+        let report = BatchClassificationReportV1 {
+            envelope: ArtifactEnvelopeV1 {
+                schema_id: BATCH_CLASSIFICATION_REPORT_SCHEMA_ID.to_string(),
+                schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
+                artifact_id: "batch-1".to_string(),
+                provenance: local_artifact_provenance_v1(
+                    "test",
+                    "unix:0",
+                    "classify",
+                    "test-correlation",
+                ),
+                redaction: None,
+                signatures: Vec::new(),
+            },
+            classification_basis: BatchClassificationBasisV1 {
+                validation_mode: ValidationModeV1::ContractOnly,
+                max_state_age_seconds: None,
+                validated_at: "unix:0".to_string(),
+                validation_engine_id: "fitctl.validate.v1".to_string(),
+                validation_engine_version: "1".to_string(),
+                ordered_contracts: vec![BatchClassificationContractRefV1 {
+                    artifact_id: "contract-1".to_string(),
+                    semantic_hash: "hash-left".to_string(),
+                    host_alias: Some("host-1".to_string()),
+                    display_name: Some("host-1 / Contract, quoted".to_string()),
+                    short_display_name: Some("Contract, quoted".to_string()),
+                    matched_state: None,
+                }],
+                ordered_service_profiles: vec![BatchClassificationServiceProfileRefV1 {
+                    artifact_id: "profile-1".to_string(),
+                    semantic_hash: "hash-right".to_string(),
+                    display_name: Some("prefers \"gpu\"".to_string()),
+                    short_display_name: Some("GPU preferred".to_string()),
+                }],
+            },
+            report: BatchClassificationReportPayloadV1 {
+                rows: vec![BatchClassificationRowV1 {
+                    row_id: "row-1".to_string(),
+                    contract_artifact_id: "contract-1".to_string(),
+                    contract_semantic_hash: "hash-left".to_string(),
+                    service_profile_artifact_id: "profile-1".to_string(),
+                    service_profile_semantic_hash: "hash-right".to_string(),
+                    verdict: ValidationVerdictV1::FitWithDegradation,
+                    primary_reason_code: ValidationReasonCodeV1::DegradationPathRequired,
+                    selected_degradation_tier: Some("general_compute".to_string()),
+                    summary: "prefers \"gpu\", falls back".to_string(),
+                }],
+                contract_summaries: Vec::new(),
+                service_profile_summaries: Vec::new(),
+            },
+        };
 
-        assert!(csv.contains("row_id,contract_artifact_id,service_profile_artifact_id"));
+        let csv = render_rows_csv(&report);
+
+        assert!(csv.contains(
+            "row_id,host_alias,contract_artifact_id,contract_display_name,contract_short_display_name,service_profile_artifact_id"
+        ));
+        assert!(csv.contains("host-1,contract-1,\"host-1 / Contract, quoted\""));
+        assert!(csv.contains("\"prefers \"\"gpu\"\"\""));
         assert!(csv.contains("\"prefers \"\"gpu\"\", falls back\""));
     }
 }

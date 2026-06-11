@@ -261,6 +261,40 @@ pub fn load_extension_pack_from_path(path: &Path) -> Result<ExtensionPackV1, Con
     Ok(pack)
 }
 
+pub fn built_in_extension_pack_for_namespace_v1(namespace: &str) -> Option<ExtensionPackV1> {
+    let raw = match namespace {
+        "fitctl.runtime.cuda" => include_str!("builtin/fitctl_runtime_cuda.v1.json"),
+        "fitctl.runtime.python" => include_str!("builtin/fitctl_runtime_python.v1.json"),
+        "fitctl.runtime.node" => include_str!("builtin/fitctl_runtime_node.v1.json"),
+        _ => return None,
+    };
+    Some(decode_built_in_extension_pack_v1(raw))
+}
+
+fn decode_built_in_extension_pack_v1(raw: &str) -> ExtensionPackV1 {
+    let pack: ExtensionPackV1 =
+        serde_json::from_str(raw).expect("built-in extension pack manifest must decode");
+    validate_extension_pack(&pack).expect("built-in extension pack manifest must validate");
+    pack
+}
+
+pub fn add_missing_built_in_extension_packs_v1(
+    extension_packs: &mut Vec<ExtensionPackV1>,
+    requested_extension_namespaces: &[String],
+) {
+    for namespace in requested_extension_namespaces {
+        if extension_packs
+            .iter()
+            .any(|pack| pack.namespace == *namespace)
+        {
+            continue;
+        }
+        if let Some(pack) = built_in_extension_pack_for_namespace_v1(namespace) {
+            extension_packs.push(pack);
+        }
+    }
+}
+
 pub fn load_recommendation_pack_from_path(
     path: &Path,
 ) -> Result<RecommendationPackV1, ConfigError> {

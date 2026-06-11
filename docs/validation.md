@@ -7,7 +7,8 @@ A `contract` is the policy-shaped claim derived from a `survey`. A `service prof
 workload requires, prefers, or forbids. When the decision also depends on live runtime conditions,
 validation uses `state`.
 
-The same validation artifact that `fitctl inspect` renders is the one automation reads unchanged.
+The validation report is JSON. `fitctl inspect` can print a text view, and automation can read the
+JSON directly.
 
 | Mode | Use when |
 |---|---|
@@ -33,6 +34,20 @@ Read the decision directly in automation:
 jq -r '.report.verdict' validation.json
 jq -r '.report.primary_reason_code' validation.json
 ```
+
+For a process gate, use `--fail-on-unfit` or `--require-fit`:
+
+```bash
+fitctl validate \
+  --contract <contract.json> \
+  --profile <profile.json> \
+  --require-fit \
+  > validation.json
+```
+
+`--fail-on-unfit` accepts `fit` and `fit_with_degradation`. `--require-fit` accepts only `fit`.
+Both flags reject `unfit` and `indeterminate`, keep the validation report on stdout, and report the
+gate rejection on stderr.
 
 [Contracts](./contracts.md) covers contract derivation. [Configuration](./configuration.md) covers
 policies and service profiles.
@@ -137,7 +152,9 @@ Profiles can narrow which CUDA devices qualify at runtime:
 The qualifying-device aggregate threshold does not replace the older total CUDA aggregate
 threshold. They measure different sets.
 
-The bundled CUDA examples use the extension namespace `fitctl.runtime.cuda`.
+The CUDA examples use the built-in extension namespace `fitctl.runtime.cuda`. The repository also
+ships the equivalent JSON extension-pack manifest under [configs/extensions](../configs/extensions)
+for explicit configuration-bundle workflows.
 
 ## State-aware CUDA validation
 
@@ -147,20 +164,17 @@ collection so the contract, runtime observation, and validation path stay aligne
 ```bash
 fitctl survey \
   --fixture linux-gpu-workstation-like-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.survey.json
 
 fitctl contract \
   --survey gpu.survey.json \
   --policy configs/policy/general_compute_default.v1.json \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.contract.json
 
 fitctl state \
   --fixture linux-gpu-workstation-like-cuda-runtime-fit-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.state.json
 
@@ -182,20 +196,17 @@ per-device CUDA threshold:
 ```bash
 fitctl survey \
   --fixture linux-gpu-dual-numa-like-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.survey.json
 
 fitctl contract \
   --survey gpu.survey.json \
   --policy configs/policy/nvidia_gpu_default.v1.json \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.contract.json
 
 fitctl state \
   --fixture linux-gpu-dual-numa-like-cuda-runtime-fit-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.state.json
 
@@ -257,7 +268,7 @@ GPU required                | gpu-host-01 | GPU compute default     | fit
 ```
 
 `fitctl classify` emits a typed `fitctl.batch-classification-report.v3` artifact.
-`fitctl inspect --view matrix` renders that report as a shortlist table.
+`fitctl inspect --view matrix` prints that report as a shortlist table.
 
 For state-aware shortlist decisions, derive a matching CUDA contract and state artifact, then add
 state input and freshness bounds explicitly:
@@ -265,20 +276,17 @@ state input and freshness bounds explicitly:
 ```bash
 fitctl survey \
   --fixture linux-gpu-workstation-like-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > cuda.survey.json
 
 fitctl contract \
   --survey cuda.survey.json \
   --policy configs/policy/general_compute_default.v1.json \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > cuda.contract.json
 
 fitctl state \
   --fixture linux-gpu-workstation-like-cuda-runtime-fit-v1 \
-  --extension-pack configs/extensions/fitctl_runtime_cuda.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > cuda.state.json
 

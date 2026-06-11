@@ -18,7 +18,7 @@ Add the library crate to your project:
 
 ```toml
 [dependencies]
-fitctl-core = "0.3.0"
+fitctl-core = "0.4.0"
 ```
 
 ## Related crate

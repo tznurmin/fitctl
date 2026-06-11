@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use fitctl_core::artifacts::state_v1::HostStateV1;
 use fitctl_core::config::{
-    load_extension_pack_from_path, resolve_cuda_environment_from_catalogue_path,
-    ExtensionSectionKindV1,
+    add_missing_built_in_extension_packs_v1, load_extension_pack_from_path,
+    resolve_cuda_environment_from_catalogue_path, ExtensionSectionKindV1,
 };
 use fitctl_core::extensions::{
     apply_cuda_runtime_extension_to_state_with_selection_v1,
@@ -52,15 +52,13 @@ pub fn prepare_state_extension_selection_v1(
     requested_extension_namespaces.extend(enabled_extension_namespaces.iter().cloned());
     requested_extension_namespaces.sort();
     requested_extension_namespaces.dedup();
+    add_missing_built_in_extension_packs_v1(&mut extension_packs, &requested_extension_namespaces);
 
     if requested_extension_namespaces
         .iter()
         .any(|namespace| namespace.trim().is_empty())
     {
         return Err("enabled extension namespaces must be non-empty".to_string());
-    }
-    if !requested_extension_namespaces.is_empty() && extension_packs.is_empty() {
-        return Err("--enable-extension requires at least one --extension-pack".to_string());
     }
     for namespace in &requested_extension_namespaces {
         let Some(pack) = extension_packs

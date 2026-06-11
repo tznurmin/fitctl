@@ -9,10 +9,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use fitctl_core::artifacts::validation_v1::validate_host_contract;
 use fitctl_core::config::{
-    build_extension_basis_v1, load_extension_pack_from_path, load_invocation_context_from_path,
-    resolve_configuration_v1, resolve_invocation_selected_policy_id_v1,
-    resolve_policy_from_pack_path, resolve_policy_from_pack_with_lock_path, InvocationContextV1,
-    ResolveConfigurationRequestV1,
+    add_missing_built_in_extension_packs_v1, build_extension_basis_v1,
+    load_extension_pack_from_path, load_invocation_context_from_path, resolve_configuration_v1,
+    resolve_invocation_selected_policy_id_v1, resolve_policy_from_pack_path,
+    resolve_policy_from_pack_with_lock_path, InvocationContextV1, ResolveConfigurationRequestV1,
 };
 use fitctl_core::config_bundle::load_config_bundle_from_path_v1;
 use fitctl_core::contract::{
@@ -327,6 +327,12 @@ pub fn run(args: &[String]) -> ExitCode {
                     .map(|context| context.enabled_extension_namespaces.clone())
                     .unwrap_or_default();
                 requested_extension_namespaces.extend(enabled_extension_namespaces);
+                requested_extension_namespaces.sort();
+                requested_extension_namespaces.dedup();
+                add_missing_built_in_extension_packs_v1(
+                    &mut extension_packs,
+                    &requested_extension_namespaces,
+                );
                 if requested_extension_namespaces
                     .iter()
                     .any(|namespace| namespace.trim().is_empty())
@@ -334,8 +340,6 @@ pub fn run(args: &[String]) -> ExitCode {
                     eprintln!("fitctl contract: enabled extension namespaces must be non-empty");
                     return ExitCode::from(2);
                 }
-                requested_extension_namespaces.sort();
-                requested_extension_namespaces.dedup();
 
                 let resolved = match resolve_configuration_v1(ResolveConfigurationRequestV1 {
                     policy,
@@ -407,7 +411,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl contract --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--derived-at <timestamp>] [--note <text>]\n"
+    "Usage:\n  fitctl contract --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--derived-at <timestamp>] [--note <text>]\n\nNotes:\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n"
 }
 
 fn current_epoch_marker() -> String {

@@ -25,6 +25,9 @@ const SURVEY_OPTIONS: &[&str] = &[
     "--extension-pack",
     "--invocation-context",
     "--enable-extension",
+    "--cuda-environment-catalogue",
+    "--cuda-environment-id",
+    "--cuda-selected-environment-input",
     "--help",
     "-h",
 ];
@@ -34,6 +37,7 @@ const CONTRACT_OPTIONS: &[&str] = &[
     "--policy-pack",
     "--policy-id",
     "--policy-pack-lock",
+    "--config-bundle",
     "--extension-pack",
     "--invocation-context",
     "--enable-extension",
@@ -44,28 +48,84 @@ const CONTRACT_OPTIONS: &[&str] = &[
 ];
 const CLASSIFY_OPTIONS: &[&str] = &[
     "--contract",
+    "--state",
     "--profile",
     "--service-profile-catalogue",
     "--profile-id",
+    "--invocation-context",
+    "--validation-mode",
+    "--max-state-age",
     "--validated-at",
     "--export-view",
     "--help",
     "-h",
 ];
-const STATE_OPTIONS: &[&str] = &["--live", "--fixture", "--fixtures-root", "--help", "-h"];
+const BUNDLE_OPTIONS: &[&str] = &[
+    "--validation-report",
+    "--contract",
+    "--state",
+    "--resolved-config",
+    "--config-bundle",
+    "--verification-bundle",
+    "--recommendation-report",
+    "--bundled-at",
+    "--note",
+    "--help",
+    "-h",
+];
+const BUNDLE_CONFIG_OPTIONS: &[&str] = &[
+    "--policy",
+    "--policy-pack",
+    "--policy-id",
+    "--policy-pack-lock",
+    "--profile",
+    "--profile-id",
+    "--service-profile-catalogue",
+    "--trust-policy",
+    "--extension-pack",
+    "--recommendation-pack",
+    "--invocation-context",
+    "--bundled-at",
+    "--note",
+    "--help",
+    "-h",
+];
+const STATE_OPTIONS: &[&str] = &[
+    "--live",
+    "--fixture",
+    "--fixtures-root",
+    "--extension-pack",
+    "--invocation-context",
+    "--enable-extension",
+    "--cuda-environment-catalogue",
+    "--cuda-environment-id",
+    "--cuda-selected-environment-input",
+    "--help",
+    "-h",
+];
 const VALIDATE_OPTIONS: &[&str] = &[
     "--contract",
     "--survey",
     "--policy",
+    "--policy-pack",
+    "--policy-id",
+    "--policy-pack-lock",
+    "--config-bundle",
     "--profile",
     "--service-profile-catalogue",
     "--profile-id",
+    "--invocation-context",
     "--validation-mode",
     "--mode",
     "--state",
+    "--live-state",
+    "--extension-pack",
+    "--enable-extension",
     "--max-state-age",
     "--validated-at",
     "--note",
+    "--fail-on-unfit",
+    "--require-fit",
     "--help",
     "-h",
 ];
@@ -124,6 +184,8 @@ const LOCK_POLICY_PACK_OPTIONS: &[&str] = &[
 const RECOMMEND_OPTIONS: &[&str] = &[
     "--validation-report",
     "--recommendation-pack",
+    "--recommendation-pack-id",
+    "--invocation-context",
     "--recommended-at",
     "--help",
     "-h",
@@ -141,6 +203,14 @@ const COMMAND_OPTIONS: &[CompletionOptionsV1] = &[
     CompletionOptionsV1 {
         command: "classify",
         options: CLASSIFY_OPTIONS,
+    },
+    CompletionOptionsV1 {
+        command: "bundle",
+        options: BUNDLE_OPTIONS,
+    },
+    CompletionOptionsV1 {
+        command: "bundle-config",
+        options: BUNDLE_CONFIG_OPTIONS,
     },
     CompletionOptionsV1 {
         command: "state",
@@ -194,7 +264,7 @@ const COMMAND_OPTIONS: &[CompletionOptionsV1] = &[
 
 const COMPLETION_SHELL_VALUES: &[&str] = &["bash", "zsh", "fish"];
 const COLOR_VALUES: &[&str] = &["auto", "always", "never"];
-const INSPECT_VIEW_VALUES: &[&str] = &["summary", "matrix"];
+const INSPECT_VIEW_VALUES: &[&str] = &["summary", "coverage", "matrix"];
 const VALIDATION_MODE_VALUES: &[&str] = &["contract_only", "state_advisory", "state_required"];
 const LEGACY_MODE_VALUES: &[&str] = &["contract_only", "state_aware"];
 const DRIFT_VIEW_VALUES: &[&str] = &["compact_json"];
@@ -209,6 +279,7 @@ const CLASSIFY_EXPORT_VIEW_VALUES: &[&str] = &[
     "contract_summary_csv",
     "service_profile_summary_csv",
 ];
+const REDACT_PROFILE_VALUES: &[&str] = &["local", "fleet", "auditor", "external"];
 
 const VALUE_COMPLETIONS: &[CompletionValuesV1] = &[
     CompletionValuesV1 {
@@ -232,6 +303,11 @@ const VALUE_COMPLETIONS: &[CompletionValuesV1] = &[
         values: VALIDATION_MODE_VALUES,
     },
     CompletionValuesV1 {
+        command: "classify",
+        previous: "--validation-mode",
+        values: VALIDATION_MODE_VALUES,
+    },
+    CompletionValuesV1 {
         command: "validate",
         previous: "--mode",
         values: LEGACY_MODE_VALUES,
@@ -250,6 +326,11 @@ const VALUE_COMPLETIONS: &[CompletionValuesV1] = &[
         command: "classify",
         previous: "--export-view",
         values: CLASSIFY_EXPORT_VIEW_VALUES,
+    },
+    CompletionValuesV1 {
+        command: "redact",
+        previous: "--profile",
+        values: REDACT_PROFILE_VALUES,
     },
 ];
 
@@ -399,7 +480,7 @@ fn render_fish_completion() -> String {
 
     for entry in COMMAND_OPTIONS {
         for option in entry.options {
-            let condition = format!("__fish_seen_subcommand_from {}", entry.command);
+            let condition = fish_seen_subcommand_condition(entry.command);
             if let Some(long) = option.strip_prefix("--") {
                 lines.push(format!("complete -c fitctl -n '{condition}' -l {long}"));
             } else if let Some(short) = option.strip_prefix('-') {
@@ -409,7 +490,7 @@ fn render_fish_completion() -> String {
     }
 
     for value in VALUE_COMPLETIONS {
-        let condition = format!("__fish_seen_subcommand_from {}", value.command);
+        let condition = fish_seen_subcommand_condition(value.command);
         lines.push(format!(
             "complete -c fitctl -n '{condition}' -a '{}'",
             value.values.join(" ")
@@ -417,6 +498,17 @@ fn render_fish_completion() -> String {
     }
 
     lines.join("\n") + "\n"
+}
+
+fn fish_seen_subcommand_condition(command: &str) -> String {
+    let mut names = vec![command];
+    names.extend(
+        COMMAND_ALIASES
+            .iter()
+            .filter(|alias| alias.target == command)
+            .map(|alias| alias.alias),
+    );
+    format!("__fish_seen_subcommand_from {}", names.join(" "))
 }
 
 #[cfg(test)]
@@ -448,7 +540,19 @@ mod tests {
         );
         assert_eq!(
             completion_values_for("inspect", "--view"),
-            ["summary", "matrix"]
+            ["summary", "coverage", "matrix"]
+        );
+        assert_eq!(
+            completion_values_for("redact", "--profile"),
+            ["local", "fleet", "auditor", "external"]
+        );
+    }
+
+    #[test]
+    fn fish_completion_conditions_include_aliases() {
+        assert_eq!(
+            fish_seen_subcommand_condition("inspect-config"),
+            "__fish_seen_subcommand_from inspect-config resolve-config"
         );
     }
 }

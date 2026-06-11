@@ -36,6 +36,7 @@ pub use resolve_v1::{
     resolve_invocation_selected_service_profile_id_v1, ResolveConfigurationRequestV1,
 };
 pub use schema_v1::{
+    add_missing_built_in_extension_packs_v1, built_in_extension_pack_for_namespace_v1,
     load_extension_pack_from_path, load_invocation_context_from_path,
     load_recommendation_pack_from_path, load_resolved_config_from_path,
     semantic_hash_hex_for_extension_pack, semantic_hash_hex_for_resolved_config,

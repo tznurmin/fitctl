@@ -46,6 +46,8 @@ mod decision_bundle_includes_state_and_resolved_config;
 mod decision_bundle_rejects_conflicting_config_bundle_and_resolved_config_inputs;
 #[path = "integration/bundle/decision_bundle_rejects_contract_lineage_mismatch.rs"]
 mod decision_bundle_rejects_contract_lineage_mismatch;
+#[path = "integration/e2e/workload_preflight_examples/examples_and_feedback_paths_match_runtime.rs"]
+mod examples_and_feedback_paths_match_runtime;
 #[path = "integration/config/inspect_config_reports_selection_provenance.rs"]
 mod inspect_config_reports_selection_provenance;
 #[path = "integration/config/invocation_context_selects_pack_and_catalogue_entries.rs"]
@@ -68,6 +70,8 @@ mod same_survey_multi_policy_contracts_classify_cleanly;
 mod state_required_gate_respects_freshness_and_drives_machine_decision;
 #[path = "integration/config/validate_config_bundle_rejects_missing_profile_section.rs"]
 mod validate_config_bundle_rejects_missing_profile_section;
+#[path = "integration/e2e/deployment_gating/validate_gate_flags_drive_process_exit.rs"]
+mod validate_gate_flags_drive_process_exit;
 #[path = "integration/cli/validate_help_routes_and_explains_state_freshness.rs"]
 mod validate_help_routes_and_explains_state_freshness;
 #[path = "integration/config/validate_uses_embedded_profile_and_controls_from_config_bundle.rs"]

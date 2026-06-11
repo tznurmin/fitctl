@@ -23,16 +23,13 @@ use fitctl_core::state::{LocalLiveStateProbeV1, StateEngineV1, StateModeV1};
 use fitctl_core::validate::{
     load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
     load_service_profile_artifact_for_validation, validate_request_v1, ValidationModeV1,
-    ValidationRequestV1,
+    ValidationRequestV1, ValidationVerdictV1,
 };
 
 use crate::commands::state_support::{
     apply_state_extension_selection_v1, default_state_replay_extensions_root_v1,
     prepare_state_extension_selection_v1, CudaSelectedEnvironmentCliInputV1,
 };
-
-const TEST_LIVE_STATE_FIXTURE_ID_ENV: &str = "FITCTL_VALIDATE_TEST_LIVE_STATE_FIXTURE_ID";
-const TEST_LIVE_STATE_FIXTURES_ROOT_ENV: &str = "FITCTL_VALIDATE_TEST_LIVE_STATE_FIXTURES_ROOT";
 
 pub fn run(args: &[String]) -> ExitCode {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -60,6 +57,7 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut validated_at: Option<String> = None;
     let mut note: Option<String> = None;
     let mut mode_source = ValidationModeSourceV1::Default;
+    let mut gate_policy = ValidationGatePolicyV1::ReportOnly;
 
     let mut index = 0;
     while index < args.len() {
@@ -247,6 +245,22 @@ pub fn run(args: &[String]) -> ExitCode {
                 };
                 note = Some(value.clone());
                 index += 2;
+            }
+            "--fail-on-unfit" => {
+                if !matches!(gate_policy, ValidationGatePolicyV1::ReportOnly) {
+                    eprintln!("fitctl validate: choose either --fail-on-unfit or --require-fit");
+                    return ExitCode::from(fitctl_core::EXIT_CODE_USAGE_ERROR);
+                }
+                gate_policy = ValidationGatePolicyV1::FailOnUnfit;
+                index += 1;
+            }
+            "--require-fit" => {
+                if !matches!(gate_policy, ValidationGatePolicyV1::ReportOnly) {
+                    eprintln!("fitctl validate: choose either --fail-on-unfit or --require-fit");
+                    return ExitCode::from(fitctl_core::EXIT_CODE_USAGE_ERROR);
+                }
+                gate_policy = ValidationGatePolicyV1::RequireFit;
+                index += 1;
             }
             unknown => {
                 eprintln!("fitctl validate: unknown option '{unknown}'");
@@ -759,8 +773,9 @@ pub fn run(args: &[String]) -> ExitCode {
     }) {
         Ok(report) => match serde_json::to_string_pretty(&report) {
             Ok(text) => {
+                let verdict = report.report.verdict;
                 println!("{text}");
-                ExitCode::SUCCESS
+                gate_policy.exit_code(verdict)
             }
             Err(error) => {
                 eprintln!("fitctl validate: failed to encode validation report: {error}");
@@ -775,7 +790,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n\nModes:\n  - contract_only decides from the contract and service profile only\n  - state_advisory uses host-state when provided and keeps missing or stale runtime evidence explicit\n  - state_required uses host-state for runtime-sensitive checks and treats missing or stale state as blocking evidence\n\nFreshness:\n  - --validated-at <timestamp> sets the decision timestamp used for state freshness checks\n    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n  - --max-state-age <value> requires explicit --state input and rejects state older than that age\n    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n\nNotes:\n  - contract_only does not accept host-state input\n  - --max-state-age is not allowed with --live-state\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>]\n"
+    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n\nModes:\n  - contract_only decides from the contract and service profile only\n  - state_advisory uses host-state when provided and keeps missing or stale runtime evidence explicit\n  - state_required uses host-state for runtime-sensitive checks and treats missing or stale state as blocking evidence\n\nGate flags:\n  - --fail-on-unfit exits with policy rejection for unfit or indeterminate verdicts\n  - --require-fit exits with policy rejection unless the verdict is fit\n  - both flags preserve the validation report on stdout\n\nFreshness:\n  - --validated-at <timestamp> sets the decision timestamp used for state freshness checks\n    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n  - --max-state-age <value> requires explicit --state input and rejects state older than that age\n    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n\nNotes:\n  - contract_only does not accept host-state input\n  - --max-state-age is not allowed with --live-state\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n"
 }
 
 fn current_epoch_marker() -> String {
@@ -849,14 +864,74 @@ enum ValidationModeSourceV1 {
     Legacy,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ValidationGatePolicyV1 {
+    ReportOnly,
+    FailOnUnfit,
+    RequireFit,
+}
+
+impl ValidationGatePolicyV1 {
+    fn accepts(self, verdict: ValidationVerdictV1) -> bool {
+        match self {
+            Self::ReportOnly => true,
+            Self::FailOnUnfit => matches!(
+                verdict,
+                ValidationVerdictV1::Fit | ValidationVerdictV1::FitWithDegradation
+            ),
+            Self::RequireFit => matches!(verdict, ValidationVerdictV1::Fit),
+        }
+    }
+
+    fn flag_name(self) -> Option<&'static str> {
+        match self {
+            Self::ReportOnly => None,
+            Self::FailOnUnfit => Some("--fail-on-unfit"),
+            Self::RequireFit => Some("--require-fit"),
+        }
+    }
+
+    fn exit_code(self, verdict: ValidationVerdictV1) -> ExitCode {
+        if self.accepts(verdict) {
+            return ExitCode::SUCCESS;
+        }
+
+        let flag = self
+            .flag_name()
+            .expect("only explicit gate policies can reject a verdict");
+        eprintln!(
+            "fitctl validate: verdict '{}' rejected by {flag}",
+            verdict.as_str()
+        );
+        ExitCode::from(fitctl_core::EXIT_CODE_POLICY_REJECTION)
+    }
+}
+
 fn resolve_inline_live_state_mode_v1() -> StateModeV1 {
-    match std::env::var(TEST_LIVE_STATE_FIXTURE_ID_ENV) {
-        Ok(fixture_id) if !fixture_id.trim().is_empty() => StateModeV1::Replay {
-            fixtures_root: std::env::var_os(TEST_LIVE_STATE_FIXTURES_ROOT_ENV)
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("fixtures/host_state")),
-            fixture_id,
-        },
-        _ => StateModeV1::Live,
+    StateModeV1::Live
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fail_on_unfit_accepts_fit_and_degraded_only() {
+        let policy = ValidationGatePolicyV1::FailOnUnfit;
+
+        assert!(policy.accepts(ValidationVerdictV1::Fit));
+        assert!(policy.accepts(ValidationVerdictV1::FitWithDegradation));
+        assert!(!policy.accepts(ValidationVerdictV1::Unfit));
+        assert!(!policy.accepts(ValidationVerdictV1::Indeterminate));
+    }
+
+    #[test]
+    fn require_fit_accepts_only_fit() {
+        let policy = ValidationGatePolicyV1::RequireFit;
+
+        assert!(policy.accepts(ValidationVerdictV1::Fit));
+        assert!(!policy.accepts(ValidationVerdictV1::FitWithDegradation));
+        assert!(!policy.accepts(ValidationVerdictV1::Unfit));
+        assert!(!policy.accepts(ValidationVerdictV1::Indeterminate));
     }
 }

@@ -46,6 +46,49 @@ fn completion_outputs_supported_shell_scripts() {
             stdout.contains(validation_mode_flag),
             "missing validation mode flag for {shell}"
         );
+        assert!(
+            stdout.contains("coverage"),
+            "missing coverage view for {shell}"
+        );
+        for redaction_profile in ["local", "fleet", "auditor", "external"] {
+            assert!(
+                stdout.contains(redaction_profile),
+                "missing redaction profile {redaction_profile} for {shell}"
+            );
+        }
+        assert!(
+            stdout.contains("--require-fit")
+                || stdout.contains("-l require-fit")
+                || stdout.contains("require-fit"),
+            "missing require-fit flag for {shell}"
+        );
+        assert!(
+            stdout.contains("--fail-on-unfit")
+                || stdout.contains("-l fail-on-unfit")
+                || stdout.contains("fail-on-unfit"),
+            "missing fail-on-unfit flag for {shell}"
+        );
+        for option in [
+            "cuda-environment-catalogue",
+            "cuda-environment-id",
+            "cuda-selected-environment-input",
+            "config-bundle",
+            "invocation-context",
+            "live-state",
+            "policy-pack-lock",
+            "recommendation-pack-id",
+        ] {
+            assert!(
+                stdout.contains(option),
+                "missing completion option {option} for {shell}"
+            );
+        }
+        if shell == "fish" {
+            assert!(
+                stdout.contains("__fish_seen_subcommand_from inspect-config resolve-config"),
+                "fish completion should resolve inspect-config aliases for option completion"
+            );
+        }
     }
 }
 

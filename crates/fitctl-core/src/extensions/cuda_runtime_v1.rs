@@ -62,22 +62,6 @@ const CUDA_EVIDENCE_PATH: &str = "$.survey.extension_evidence.fitctl.runtime.cud
 const CUDA_CONTRACT_PATH: &str = "$.contract.extension_contract.fitctl.runtime.cuda";
 const CUDA_STATE_PATH: &str = "$.state.extension_state.fitctl.runtime.cuda";
 
-const TEST_CUDA_STUB_LIVE_PROBES_ENV: &str = "FITCTL_TEST_CUDA_STUB_LIVE_PROBES";
-const TEST_CUDA_NVCC_PATH_ENV: &str = "FITCTL_TEST_CUDA_NVCC_PATH";
-const TEST_CUDA_NVCC_VERSION_OUTPUT_ENV: &str = "FITCTL_TEST_CUDA_NVCC_VERSION_OUTPUT";
-const TEST_CUDA_DRIVER_VERSION_TEXT_ENV: &str = "FITCTL_TEST_CUDA_DRIVER_VERSION_TEXT";
-const TEST_CUDA_DRIVER_SUPPORTED_VERSION_ENV: &str = "FITCTL_TEST_CUDA_DRIVER_SUPPORTED_VERSION";
-const TEST_CUDA_DEFAULT_RUNTIME_VERSION_ENV: &str = "FITCTL_TEST_CUDA_DEFAULT_RUNTIME_VERSION";
-const TEST_CUDA_NVIDIA_SMI_PATH_ENV: &str = "FITCTL_TEST_CUDA_NVIDIA_SMI_PATH";
-const TEST_CUDA_NVIDIA_SMI_OUTPUT_ENV: &str = "FITCTL_TEST_CUDA_NVIDIA_SMI_OUTPUT";
-const TEST_CUDA_NVIDIA_SMI_BANNER_PATH_ENV: &str = "FITCTL_TEST_CUDA_NVIDIA_SMI_BANNER_PATH";
-const TEST_CUDA_NVIDIA_SMI_BANNER_OUTPUT_ENV: &str = "FITCTL_TEST_CUDA_NVIDIA_SMI_BANNER_OUTPUT";
-const TEST_CUDA_INSTALLED_TOOLKITS_JSON_ENV: &str = "FITCTL_TEST_CUDA_INSTALLED_TOOLKITS_JSON";
-const TEST_CUDA_SELECTED_ENVIRONMENT_NVCC_VERSION_OUTPUT_ENV: &str =
-    "FITCTL_TEST_CUDA_SELECTED_ENVIRONMENT_NVCC_VERSION_OUTPUT";
-const TEST_CUDA_SELECTED_ENVIRONMENT_RUNTIME_VERSION_ENV: &str =
-    "FITCTL_TEST_CUDA_SELECTED_ENVIRONMENT_RUNTIME_VERSION";
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CudaRuntimeExtensionError {
     pub checkpoint_id: &'static str,
@@ -609,13 +593,6 @@ struct CudaLibraryProbeOutputV1 {
 struct CudaDiscoveredToolkitCandidateV1 {
     install_root: PathBuf,
     version: CudaRuntimeVersionV1,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CudaStubInstalledToolkitProbeEntryV1 {
-    install_root: String,
-    nvcc_version_output: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2992,20 +2969,7 @@ fn collect_live_selected_environment_probe_outputs(
 ) -> Result<CudaLiveSelectedEnvironmentProbeOutputsV1, CudaRuntimeExtensionError> {
     let install_root = install_root.display().to_string();
     let nvcc_path = Path::new(&install_root).join("bin").join("nvcc");
-    let nvcc = if env::var_os(TEST_CUDA_STUB_LIVE_PROBES_ENV).is_some() {
-        let output = env::var(TEST_CUDA_SELECTED_ENVIRONMENT_NVCC_VERSION_OUTPUT_ENV)
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        CudaCommandProbeOutputV1 {
-            source_ref: nvcc_path.display().to_string(),
-            status: if output.is_some() {
-                CudaDefaultViewProbeStatusV1::Observed
-            } else {
-                CudaDefaultViewProbeStatusV1::SourceUnavailable
-            },
-            output,
-        }
-    } else if !nvcc_path.is_file() {
+    let nvcc = if !nvcc_path.is_file() {
         CudaCommandProbeOutputV1 {
             source_ref: nvcc_path.display().to_string(),
             status: CudaDefaultViewProbeStatusV1::SourceUnavailable,
@@ -3024,18 +2988,11 @@ fn collect_live_selected_environment_probe_outputs(
         }
     };
 
-    let runtime_version = if env::var_os(TEST_CUDA_STUB_LIVE_PROBES_ENV).is_some() {
-        collect_stubbed_library_probe_output(
-            TEST_CUDA_SELECTED_ENVIRONMENT_RUNTIME_VERSION_ENV,
-            &[&format!("{install_root}/lib64/libcudart.so")],
-        )?
-    } else {
-        let candidates = selected_environment_runtime_library_candidates(Path::new(&install_root));
-        probe_cuda_api_version_from_owned_library_refs_with_status(
-            &candidates,
-            b"cudaRuntimeGetVersion\0",
-        )
-    };
+    let candidates = selected_environment_runtime_library_candidates(Path::new(&install_root));
+    let runtime_version = probe_cuda_api_version_from_owned_library_refs_with_status(
+        &candidates,
+        b"cudaRuntimeGetVersion\0",
+    );
 
     Ok(CudaLiveSelectedEnvironmentProbeOutputsV1 {
         nvcc,
@@ -3142,10 +3099,6 @@ fn collect_live_cuda_default_view_fields(
 
 fn collect_live_cuda_default_view_probe_outputs(
 ) -> Result<CudaLiveDefaultViewProbeOutputsV1, CudaRuntimeExtensionError> {
-    if env::var_os(TEST_CUDA_STUB_LIVE_PROBES_ENV).is_some() {
-        return collect_stubbed_cuda_live_default_view_probe_outputs();
-    }
-
     Ok(CudaLiveDefaultViewProbeOutputsV1 {
         nvcc: collect_command_probe_output_with_status("nvcc", &["--version"]),
         driver_version: collect_file_probe_output_with_status("/proc/driver/nvidia/version"),
@@ -3164,34 +3117,6 @@ fn collect_live_cuda_default_view_probe_outputs(
     })
 }
 
-fn collect_stubbed_cuda_live_default_view_probe_outputs(
-) -> Result<CudaLiveDefaultViewProbeOutputsV1, CudaRuntimeExtensionError> {
-    Ok(CudaLiveDefaultViewProbeOutputsV1 {
-        nvcc: collect_stubbed_command_probe_output(
-            TEST_CUDA_NVCC_PATH_ENV,
-            TEST_CUDA_NVCC_VERSION_OUTPUT_ENV,
-            "nvcc",
-        ),
-        driver_version: collect_stubbed_file_probe_output(
-            TEST_CUDA_DRIVER_VERSION_TEXT_ENV,
-            "/proc/driver/nvidia/version",
-        ),
-        driver_supported_cuda_version: collect_stubbed_library_probe_output(
-            TEST_CUDA_DRIVER_SUPPORTED_VERSION_ENV,
-            &["libcuda.so.1", "libcuda.so"],
-        )?,
-        advisory_driver_supported_cuda_version: collect_stubbed_command_probe_output(
-            TEST_CUDA_NVIDIA_SMI_BANNER_PATH_ENV,
-            TEST_CUDA_NVIDIA_SMI_BANNER_OUTPUT_ENV,
-            "nvidia-smi",
-        ),
-        default_runtime_version: collect_stubbed_library_probe_output(
-            TEST_CUDA_DEFAULT_RUNTIME_VERSION_ENV,
-            &["libcudart.so", "libcudart.so.12", "libcudart.so.11.0"],
-        )?,
-    })
-}
-
 fn collect_live_cuda_installed_toolkits(
     default_toolkit_root: Option<&Path>,
     default_toolkit_version: Option<&CudaRuntimeVersionV1>,
@@ -3207,10 +3132,6 @@ fn collect_live_cuda_installed_toolkit_candidates(
     default_toolkit_root: Option<&Path>,
     default_toolkit_version: Option<&CudaRuntimeVersionV1>,
 ) -> Result<Vec<CudaDiscoveredToolkitCandidateV1>, CudaRuntimeExtensionError> {
-    if env::var_os(TEST_CUDA_STUB_LIVE_PROBES_ENV).is_some() {
-        return collect_stubbed_cuda_installed_toolkit_candidates();
-    }
-
     let default_toolkit_root = default_toolkit_root.map(Path::to_path_buf);
     let default_toolkit_canonical_root = default_toolkit_root
         .as_deref()
@@ -3242,53 +3163,6 @@ fn collect_live_cuda_installed_toolkit_candidates(
         });
     }
 
-    Ok(discovered)
-}
-
-fn collect_stubbed_cuda_installed_toolkit_candidates(
-) -> Result<Vec<CudaDiscoveredToolkitCandidateV1>, CudaRuntimeExtensionError> {
-    let Some(raw_json) = env::var(TEST_CUDA_INSTALLED_TOOLKITS_JSON_ENV)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-    else {
-        return Ok(Vec::new());
-    };
-
-    let entries: Vec<CudaStubInstalledToolkitProbeEntryV1> =
-        serde_json::from_str(&raw_json).map_err(|error| {
-            CudaRuntimeExtensionError::new(
-                "cuda_installed_toolkit_inventory_collect",
-                format!(
-                    "failed to decode {TEST_CUDA_INSTALLED_TOOLKITS_JSON_ENV} as installed toolkit inventory JSON: {error}"
-                ),
-            )
-        })?;
-
-    let mut discovered = Vec::new();
-    for entry in entries {
-        let install_root = entry.install_root.trim();
-        if install_root.is_empty() {
-            return Err(CudaRuntimeExtensionError::new(
-                "cuda_installed_toolkit_inventory_collect",
-                format!(
-                    "{TEST_CUDA_INSTALLED_TOOLKITS_JSON_ENV} must not contain blank install_root entries"
-                ),
-            ));
-        }
-        let version = parse_cuda_version_output(&entry.nvcc_version_output).map_err(|error| {
-            CudaRuntimeExtensionError::new(
-                "cuda_installed_toolkit_inventory_collect",
-                format!(
-                    "failed to parse installed CUDA toolkit version for {install_root}: {}",
-                    error.message
-                ),
-            )
-        })?;
-        discovered.push(CudaDiscoveredToolkitCandidateV1 {
-            install_root: PathBuf::from(install_root),
-            version,
-        });
-    }
     Ok(discovered)
 }
 
@@ -3464,23 +3338,6 @@ fn collect_live_cuda_state_probe_output() -> (
     Option<String>,
     Option<ObservationLimitationReasonV1>,
 ) {
-    if env::var_os(TEST_CUDA_STUB_LIVE_PROBES_ENV).is_some() {
-        let probe_path = env::var(TEST_CUDA_NVIDIA_SMI_PATH_ENV)
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let output = env::var(TEST_CUDA_NVIDIA_SMI_OUTPUT_ENV)
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let missing_reason = if output.is_some() {
-            None
-        } else if probe_path.is_some() {
-            Some(ObservationLimitationReasonV1::SourceError)
-        } else {
-            Some(ObservationLimitationReasonV1::SourceUnavailable)
-        };
-        return (probe_path, output, missing_reason);
-    }
-
     let Some(executable_path) = find_executable_in_path("nvidia-smi") else {
         return (
             None,
@@ -3615,31 +3472,6 @@ fn collect_command_probe_output_with_status(
     }
 }
 
-fn collect_stubbed_command_probe_output(
-    path_env: &str,
-    output_env: &str,
-    fallback_source_ref: &str,
-) -> CudaCommandProbeOutputV1 {
-    let path = env::var(path_env)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    let output = env::var(output_env)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    let status = if output.is_some() {
-        CudaDefaultViewProbeStatusV1::Observed
-    } else if path.is_some() {
-        CudaDefaultViewProbeStatusV1::ProbeFailed
-    } else {
-        CudaDefaultViewProbeStatusV1::SourceUnavailable
-    };
-    CudaCommandProbeOutputV1 {
-        source_ref: path.unwrap_or_else(|| fallback_source_ref.to_string()),
-        status,
-        output,
-    }
-}
-
 fn collect_file_probe_output_with_status(path: &str) -> CudaFileProbeOutputV1 {
     match fs::read_to_string(path) {
         Ok(output) if !output.trim().is_empty() => CudaFileProbeOutputV1 {
@@ -3663,22 +3495,6 @@ fn collect_file_probe_output_with_status(path: &str) -> CudaFileProbeOutputV1 {
             },
             output: None,
         },
-    }
-}
-
-fn collect_stubbed_file_probe_output(path_env: &str, source_ref: &str) -> CudaFileProbeOutputV1 {
-    let output = env::var(path_env)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    let status = if output.is_some() {
-        CudaDefaultViewProbeStatusV1::Observed
-    } else {
-        CudaDefaultViewProbeStatusV1::SourceUnavailable
-    };
-    CudaFileProbeOutputV1 {
-        source_ref: source_ref.to_string(),
-        status,
-        output,
     }
 }
 
@@ -3774,34 +3590,6 @@ fn probe_cuda_api_version_from_owned_library_refs_with_status(
         status: CudaDefaultViewProbeStatusV1::LibraryUnavailable,
         raw_version: None,
     }
-}
-
-fn collect_stubbed_library_probe_output(
-    value_env: &str,
-    library_names: &[&str],
-) -> Result<CudaLibraryProbeOutputV1, CudaRuntimeExtensionError> {
-    let raw_version = env::var(value_env)
-        .ok()
-        .map(|value| parse_cuda_probe_integer(&value, value_env))
-        .transpose()?;
-    let status = if raw_version.is_some() {
-        CudaDefaultViewProbeStatusV1::Observed
-    } else {
-        CudaDefaultViewProbeStatusV1::LibraryUnavailable
-    };
-    Ok(CudaLibraryProbeOutputV1 {
-        source_ref: if raw_version.is_some() {
-            library_names
-                .first()
-                .copied()
-                .unwrap_or("unknown_cuda_library")
-                .to_string()
-        } else {
-            library_names.join(", ")
-        },
-        status,
-        raw_version,
-    })
 }
 
 enum CudaLibrarySingleProbeOutcomeV1 {
@@ -4039,18 +3827,6 @@ fn find_executable_in_path(executable: &str) -> Option<PathBuf> {
     env::split_paths(&paths)
         .map(|path| path.join(executable))
         .find(|candidate| candidate.is_file())
-}
-
-fn parse_cuda_probe_integer(
-    value: &str,
-    field_name: &str,
-) -> Result<i32, CudaRuntimeExtensionError> {
-    value.trim().parse::<i32>().map_err(|error| {
-        CudaRuntimeExtensionError::new(
-            "cuda_extension_collect",
-            format!("failed to parse {field_name} probe integer {value}: {error}"),
-        )
-    })
 }
 
 fn parse_cuda_version_output(
