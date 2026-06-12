@@ -1,0 +1,31 @@
+{
+  "schema_id": "fitctl.policy.document.v1",
+  "schema_version": 1,
+  "policy_id": "nvidia_gpu_complete_required_v1",
+  "display_name": "NVIDIA GPU complete-required policy",
+  "short_display_name": "NVIDIA GPU complete-required",
+  "extension_policy": {
+    "allowed_extension_namespaces": [
+      "fitctl.runtime.cuda",
+      "fitctl.runtime.node",
+      "fitctl.runtime.python"
+    ]
+  },
+  "layers": [
+    {
+      "layer_id": "defaults/nvidia_gpu_complete_required",
+      "kind": "built_in_defaults",
+      "rules": {
+        "capability_class": "gpu_accelerated",
+        "min_cpu_logical_cores": 8,
+        "min_memory_bytes": 17179869184,
+        "allow_container_restricted": false,
+        "require_network_visibility": true,
+        "required_accelerator_kind": "gpu",
+        "required_accelerator_vendor": "nvidia",
+        "min_accelerator_devices": 1,
+        "policy_scoped_accelerator_inventory_mode": "complete_required"
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-local-model-high-memory-state-required-v1",
+    "provenance": {
+      "source": "config:service_profiles/local_model_high_memory_state_required.v2.json",
+      "collected_at": "2026-06-12T12:00:00Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "local_model_high_memory_state_required_v1",
+    "display_name": "Local model high memory",
+    "short_display_name": "High memory",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "min_allocatable_cpu_logical_cores": 8,
+      "min_allocatable_memory_bytes": 34359738368
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

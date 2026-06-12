@@ -1415,33 +1415,8 @@ fn evaluate_contract_only(
         Ok(matched_requirements) => matched_requirements,
         Err(report) => return *report,
     };
-    let profile = &service_profile.profile;
-
-    if profile
-        .core_requirements
-        .min_allocatable_cpu_logical_cores
-        .is_some()
-        || profile
-            .core_requirements
-            .min_allocatable_memory_bytes
-            .is_some()
-    {
-        let mut failed_requirements = Vec::new();
-        if profile
-            .core_requirements
-            .min_allocatable_cpu_logical_cores
-            .is_some()
-        {
-            failed_requirements
-                .push("core_requirements.min_allocatable_cpu_logical_cores".to_string());
-        }
-        if profile
-            .core_requirements
-            .min_allocatable_memory_bytes
-            .is_some()
-        {
-            failed_requirements.push("core_requirements.min_allocatable_memory_bytes".to_string());
-        }
+    if runtime_thresholds_declared(service_profile) {
+        let failed_requirements = runtime_requirement_keys(service_profile);
         return ValidationReportPayloadV1 {
             verdict: ValidationVerdictV1::Indeterminate,
             primary_reason_code: ValidationReasonCodeV1::StateMissing,
@@ -1452,9 +1427,10 @@ fn evaluate_contract_only(
             assurance_mismatches: vec![],
             selected_degradation_tier: None,
             warnings: vec![
-                "contract_only validation cannot satisfy allocatable runtime thresholds without host-state.v2".to_string(),
+                "contract_only validation cannot satisfy runtime thresholds without host-state.v2"
+                    .to_string(),
             ],
-            summary: "contract-only validation requires host-state.v2 for allocatable thresholds"
+            summary: "contract-only validation requires host-state.v2 for runtime thresholds"
                 .to_string(),
             ..ValidationReportPayloadV1::default()
         };
@@ -1617,6 +1593,74 @@ fn evaluate_with_optional_state(
             }
             Err(report_payload) => return runtime_missing_report(report, *report_payload),
         }
+    }
+
+    for path_requirement in &profile.core_requirements.required_paths {
+        let requirement_key = path_requirement_key(&path_requirement.path_id);
+        let Some(path_state) = host_state
+            .state
+            .core_state
+            .path_resources
+            .paths
+            .iter()
+            .find(|path| path.path_id == path_requirement.path_id)
+        else {
+            return runtime_missing_report(
+                report,
+                ValidationReportPayloadV1 {
+                    verdict: ValidationVerdictV1::Indeterminate,
+                    primary_reason_code: ValidationReasonCodeV1::StateMissing,
+                    matched_requirements: vec![],
+                    failed_requirements: vec![requirement_key],
+                    evidence_refs: runtime_evidence_refs(),
+                    policy_refs: vec![],
+                    assurance_mismatches: vec![],
+                    selected_degradation_tier: None,
+                    warnings: vec![
+                        "state-aware validation requires matching path state for required paths"
+                            .to_string(),
+                    ],
+                    summary: "required path state is missing".to_string(),
+                    ..ValidationReportPayloadV1::default()
+                },
+            );
+        };
+
+        match scalar_state_value(&path_state.exists, &requirement_key) {
+            Ok(true) => {}
+            Ok(false) => {
+                return runtime_threshold_unsatisfied_report(
+                    report,
+                    vec![requirement_key],
+                    format!("required path {} does not exist", path_requirement.path_id),
+                );
+            }
+            Err(report_payload) => return runtime_missing_report(report, *report_payload),
+        }
+
+        if let Some(min_available_bytes) = path_requirement.min_available_bytes {
+            match scalar_state_value(
+                &path_state.filesystem_available_bytes,
+                &path_requirement_key(&path_requirement.path_id),
+            ) {
+                Ok(value) => {
+                    if value < min_available_bytes {
+                        return runtime_threshold_unsatisfied_report(
+                            report,
+                            vec![path_requirement_key(&path_requirement.path_id)],
+                            format!(
+                                "path {} available space {} is below the required floor {}",
+                                path_requirement.path_id,
+                                format_bytes(value),
+                                format_bytes(min_available_bytes)
+                            ),
+                        );
+                    }
+                }
+                Err(report_payload) => return runtime_missing_report(report, *report_payload),
+            }
+        }
+        matched_requirements.push(path_requirement_key(&path_requirement.path_id));
     }
 
     report.matched_requirements = matched_requirements;
@@ -2055,6 +2099,7 @@ fn runtime_thresholds_declared(service_profile: &ServiceProfileV1) -> bool {
     let requirements = &service_profile.profile.core_requirements;
     requirements.min_allocatable_cpu_logical_cores.is_some()
         || requirements.min_allocatable_memory_bytes.is_some()
+        || !requirements.required_paths.is_empty()
 }
 
 fn runtime_requirement_keys(service_profile: &ServiceProfileV1) -> Vec<String> {
@@ -2075,6 +2120,9 @@ fn runtime_requirement_keys(service_profile: &ServiceProfileV1) -> Vec<String> {
     {
         keys.push("core_requirements.min_allocatable_memory_bytes".to_string());
     }
+    for path in &service_profile.profile.core_requirements.required_paths {
+        keys.push(path_requirement_key(&path.path_id));
+    }
     keys
 }
 
@@ -2082,7 +2130,12 @@ fn runtime_evidence_refs() -> Vec<String> {
     vec![
         "$.state.core_state.resources.allocatable_cpu_logical_cores".to_string(),
         "$.state.core_state.resources.allocatable_memory_bytes".to_string(),
+        "$.state.core_state.path_resources.paths[]".to_string(),
     ]
+}
+
+fn path_requirement_key(path_id: &str) -> String {
+    format!("core_requirements.required_paths[{path_id}]")
 }
 
 fn format_bytes(bytes: u64) -> String {

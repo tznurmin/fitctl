@@ -6,11 +6,13 @@
 //! This module owns policy packs, service-profile catalogues, extension packs, invocation context,
 //! and the logic that resolves them into one effective configuration view.
 
+mod builtin_assets_v1;
 pub mod catalogue_v1;
 pub mod cuda_environment_catalogue_v1;
 pub mod resolve_v1;
 pub mod schema_v1;
 
+pub use builtin_assets_v1::{built_in_config_assets_v1, BuiltInConfigAssetV1};
 pub use catalogue_v1::{
     create_policy_pack_lock_from_path, load_policy_pack_from_path, load_policy_pack_lock_from_path,
     load_service_profile_catalogue_from_path, resolve_policy_from_pack_path,

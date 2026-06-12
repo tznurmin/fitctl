@@ -8,7 +8,9 @@ use std::process::ExitCode;
 
 use fitctl_core::artifacts::validation_v1::validate_host_state;
 use fitctl_core::config::load_invocation_context_from_path;
-use fitctl_core::state::{LocalLiveStateProbeV1, StateEngineV1, StateModeV1};
+use fitctl_core::state::{
+    LocalLiveStateProbeV1, StateEngineV1, StateModeV1, StatePathCheckRequestV1,
+};
 
 use crate::commands::state_support::{
     apply_state_extension_selection_v1, default_state_replay_extensions_root_v1,
@@ -32,6 +34,7 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut cuda_environment_catalogue_path: Option<PathBuf> = None;
     let mut cuda_environment_id: Option<String> = None;
     let mut cuda_selected_environment_input_path: Option<PathBuf> = None;
+    let mut path_checks = Vec::new();
 
     let mut index = 0;
     while index < args.len() {
@@ -107,6 +110,20 @@ pub fn run(args: &[String]) -> ExitCode {
                 cuda_selected_environment_input_path = Some(PathBuf::from(value));
                 index += 2;
             }
+            "--path-check" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl state: --path-check requires <id>=<path>");
+                    return ExitCode::from(2);
+                };
+                match parse_path_check(value) {
+                    Ok(path_check) => path_checks.push(path_check),
+                    Err(error) => {
+                        eprintln!("fitctl state: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+                index += 2;
+            }
             unknown => {
                 eprintln!("fitctl state: unknown option '{unknown}'");
                 return ExitCode::from(2);
@@ -120,6 +137,10 @@ pub fn run(args: &[String]) -> ExitCode {
     }
     if fixtures_root_flag_seen && fixture_id.is_none() {
         eprintln!("fitctl state: --fixtures-root requires --fixture");
+        return ExitCode::from(2);
+    }
+    if !path_checks.is_empty() && !use_live_mode {
+        eprintln!("fitctl state: --path-check is only supported for live state collection");
         return ExitCode::from(2);
     }
     let invocation_context = match invocation_context_path {
@@ -162,7 +183,7 @@ pub fn run(args: &[String]) -> ExitCode {
         _ => StateModeV1::Live,
     };
 
-    let engine = StateEngineV1::new(LocalLiveStateProbeV1);
+    let engine = StateEngineV1::new(LocalLiveStateProbeV1::new(path_checks));
     match engine.collect_host_state(mode) {
         Ok(state) => {
             let state = if extension_selection.is_empty() {
@@ -207,5 +228,22 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl state [--live] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl state --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n"
+    "Usage:\n  fitctl state [--live] [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl state --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n"
+}
+
+fn parse_path_check(value: &str) -> Result<StatePathCheckRequestV1, &'static str> {
+    let Some((path_id, path)) = value.split_once('=') else {
+        return Err("--path-check must use <id>=<path>");
+    };
+    let path_id = path_id.trim();
+    if path_id.is_empty() || path_id.contains(char::is_whitespace) {
+        return Err("--path-check id must be non-empty and contain no whitespace");
+    }
+    if path.trim().is_empty() {
+        return Err("--path-check path must be non-empty");
+    }
+    Ok(StatePathCheckRequestV1 {
+        path_id: path_id.to_string(),
+        path: PathBuf::from(path),
+    })
 }

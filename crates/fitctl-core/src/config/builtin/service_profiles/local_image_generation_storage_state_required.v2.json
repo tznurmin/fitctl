@@ -1,0 +1,45 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-local-image-generation-storage-state-required-v1",
+    "provenance": {
+      "source": "config:service_profiles/local_image_generation_storage_state_required.v2.json",
+      "collected_at": "2026-06-12T12:00:00Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "local_image_generation_storage_state_required_v1",
+    "display_name": "Local image generation storage",
+    "short_display_name": "Image storage",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "min_allocatable_cpu_logical_cores": 4,
+      "min_allocatable_memory_bytes": 17179869184,
+      "required_paths": [
+        {
+          "path_id": "model-cache",
+          "min_available_bytes": 10737418240
+        },
+        {
+          "path_id": "output",
+          "min_available_bytes": 21474836480
+        }
+      ]
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

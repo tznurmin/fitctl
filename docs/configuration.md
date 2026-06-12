@@ -3,6 +3,12 @@
 Configuration is expressed as typed JSON files. Bundled examples in this repository are under
 [configs](../configs).
 
+Installed binaries can export the same bundled configuration set:
+
+```bash
+fitctl config export --out-dir fitctl-config
+```
+
 The two core configuration inputs are:
 
 - `policy` - defines what a host may claim from survey evidence (shapes the contract)
@@ -56,6 +62,11 @@ It determines what the workload:
 A service profile may also declare a minimum policy-scoped accelerator count in principle.
 Runtime availability remains separate and belongs to `state`.
 
+A state-aware service profile may declare `required_paths`. Each entry names a path id, such as
+`model-cache` or `output`, and may require a minimum available byte count. Validation checks those
+requirements against `state` path resources collected with matching `--path-check <id>=<path>`
+inputs.
+
 Service profiles may also carry `display_name` and `short_display_name` fields for `inspect` and
 matrix views. These are presentation labels, not selection identity.
 
@@ -64,6 +75,8 @@ Examples:
 - [general_compute_contract_only.v2.json](../configs/service_profiles/general_compute_contract_only.v2.json) - requires general compute
 - [gpu_preferred_with_general_compute_fallback_contract_only.v2.json](../configs/service_profiles/gpu_preferred_with_general_compute_fallback_contract_only.v2.json) - prefers GPU, allows general-compute fallback
 - [gpu_two_required_contract_only.v2.json](../configs/service_profiles/gpu_two_required_contract_only.v2.json) - requires two policy-scoped GPUs
+- [local_image_generation_storage_state_required.v2.json](../configs/service_profiles/local_image_generation_storage_state_required.v2.json) - requires state-backed CPU, memory, and named storage path capacity
+- [local_image_generation_cuda_state_required.v2.json](../configs/service_profiles/local_image_generation_cuda_state_required.v2.json) - requires GPU inventory, CUDA runtime state, and named storage path capacity
 
 [Validation](./validation.md) covers the fit decision flow.
 

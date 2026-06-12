@@ -1201,6 +1201,11 @@ fn render_state_coverage(
     )?;
     push_summary_group_line(
         output,
+        "Path resources",
+        format_presence_coverage(!artifact.state.core_state.path_resources.paths.is_empty()),
+    )?;
+    push_summary_group_line(
+        output,
         "Cgroup version",
         format_state_field_coverage(&artifact.state.core_state.boundaries.cgroup_version),
     )?;
@@ -2111,6 +2116,27 @@ fn render_service_profile_summary(
     )?;
     push_line(
         output,
+        "Required paths",
+        if artifact.profile.core_requirements.required_paths.is_empty() {
+            "<none>".to_string()
+        } else {
+            artifact
+                .profile
+                .core_requirements
+                .required_paths
+                .iter()
+                .map(|path| match path.min_available_bytes {
+                    Some(bytes) => {
+                        format!("{} >= {}", path.path_id, format_bytes(bytes))
+                    }
+                    None => path.path_id.clone(),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+    )?;
+    push_line(
+        output,
         "Extension requirement namespaces",
         if artifact.profile.extension_requirements.is_empty() {
             "<none>".to_string()
@@ -2410,6 +2436,18 @@ fn render_state_summary(
             },
         )?;
     }
+    if !artifact.state.core_state.path_resources.paths.is_empty() {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "Paths")?;
+        for path in &artifact.state.core_state.path_resources.paths {
+            let label = format!("Path {}", path.path_id);
+            push_summary_group_line(
+                output,
+                &label,
+                format_state_path_resource_for_inspect(path, options),
+            )?;
+        }
+    }
     if artifact
         .state
         .extension_state
@@ -2560,6 +2598,38 @@ fn push_state_summary_field_line<T>(
     };
 
     push_summary_group_line(output, label, rendered)
+}
+
+fn format_state_path_resource_for_inspect(
+    path: &crate::state::HostStatePathResourceV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let available = if options.verbose {
+        format_state_field(&path.filesystem_available_bytes, |value| {
+            format_bytes(*value)
+        })
+    } else {
+        format_state_field_compact(&path.filesystem_available_bytes, |value| {
+            format_bytes_human_first(*value)
+        })
+    };
+    let total = if options.verbose {
+        format_state_field(&path.filesystem_total_bytes, |value| format_bytes(*value))
+    } else {
+        format_state_field_compact(&path.filesystem_total_bytes, |value| {
+            format_bytes_human_first(*value)
+        })
+    };
+    let exists = if options.verbose {
+        format_state_field(&path.exists, |value| value.to_string())
+    } else {
+        format_state_field_compact(&path.exists, |value| value.to_string())
+    };
+
+    format!(
+        "{}; exists {}; available {}; total {}",
+        path.path, exists, available, total
+    )
 }
 
 fn should_render_state_summary_field_line<T>(

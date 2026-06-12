@@ -14,11 +14,13 @@ higher-memory host fits.
 ## Run the example
 
 ```bash
+fitctl config export --out-dir fitctl-config
+
 fitctl survey --fixture linux-bare-metal-like-v1 > cpu.survey.json
 
 fitctl contract \
   --survey cpu.survey.json \
-  --policy configs/policy/general_compute_default.v1.json \
+  --policy fitctl-config/configs/policy/general_compute_default.v1.json \
   > cpu.contract.json
 
 fitctl state --fixture linux-bare-metal-like-fresh-v1 > cpu.state.json
@@ -27,7 +29,7 @@ fitctl survey --fixture linux-gpu-workstation-like-v1 > gpu.survey.json
 
 fitctl contract \
   --survey gpu.survey.json \
-  --policy configs/policy/general_compute_default.v1.json \
+  --policy fitctl-config/configs/policy/general_compute_default.v1.json \
   > gpu.contract.json
 
 fitctl state --fixture linux-gpu-workstation-like-fresh-v1 > gpu.state.json

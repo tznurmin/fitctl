@@ -1,0 +1,261 @@
+// Copyright 2026 fitctl contributors
+// SPDX-License-Identifier: Apache-2.0
+
+//! Compile-time bundled configuration assets shipped with the crates.io install.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuiltInConfigAssetV1 {
+    pub category: &'static str,
+    pub id: &'static str,
+    pub relative_path: &'static str,
+    pub contents: &'static str,
+}
+
+pub const BUILT_IN_CONFIG_ASSETS_V1: &[BuiltInConfigAssetV1] = &[
+    asset(
+        "cuda_environment_catalogues",
+        "default_and_toolkits.v1.json",
+        "configs/cuda_environment_catalogues/default_and_toolkits.v1.json",
+        include_str!("builtin/cuda_environment_catalogues/default_and_toolkits.v1.json"),
+    ),
+    asset(
+        "cuda_selected_environment_inputs",
+        "toolkit_root_cuda_12_8.v1.json",
+        "configs/cuda_selected_environment_inputs/toolkit_root_cuda_12_8.v1.json",
+        include_str!("builtin/cuda_selected_environment_inputs/toolkit_root_cuda_12_8.v1.json"),
+    ),
+    asset(
+        "extensions",
+        "fitctl_runtime_cuda.v1.json",
+        "configs/extensions/fitctl_runtime_cuda.v1.json",
+        include_str!("builtin/extensions/fitctl_runtime_cuda.v1.json"),
+    ),
+    asset(
+        "extensions",
+        "fitctl_runtime_node.v1.json",
+        "configs/extensions/fitctl_runtime_node.v1.json",
+        include_str!("builtin/extensions/fitctl_runtime_node.v1.json"),
+    ),
+    asset(
+        "extensions",
+        "fitctl_runtime_python.v1.json",
+        "configs/extensions/fitctl_runtime_python.v1.json",
+        include_str!("builtin/extensions/fitctl_runtime_python.v1.json"),
+    ),
+    asset(
+        "invocation_contexts",
+        "core_default.v1.json",
+        "configs/invocation_contexts/core_default.v1.json",
+        include_str!("builtin/invocation_contexts/core_default.v1.json"),
+    ),
+    asset(
+        "invocation_contexts",
+        "general_compute_pack_state_required.v1.json",
+        "configs/invocation_contexts/general_compute_pack_state_required.v1.json",
+        include_str!("builtin/invocation_contexts/general_compute_pack_state_required.v1.json"),
+    ),
+    asset(
+        "invocation_contexts",
+        "python_extension_state_advisory.v1.json",
+        "configs/invocation_contexts/python_extension_state_advisory.v1.json",
+        include_str!("builtin/invocation_contexts/python_extension_state_advisory.v1.json"),
+    ),
+    asset(
+        "policy",
+        "general_compute_default.v1.json",
+        "configs/policy/general_compute_default.v1.json",
+        include_str!("builtin/policy/general_compute_default.v1.json"),
+    ),
+    asset(
+        "policy",
+        "gpu_compute_default.v1.json",
+        "configs/policy/gpu_compute_default.v1.json",
+        include_str!("builtin/policy/gpu_compute_default.v1.json"),
+    ),
+    asset(
+        "policy",
+        "nvidia_gpu_complete_required.v1.json",
+        "configs/policy/nvidia_gpu_complete_required.v1.json",
+        include_str!("builtin/policy/nvidia_gpu_complete_required.v1.json"),
+    ),
+    asset(
+        "policy",
+        "nvidia_gpu_default.v1.json",
+        "configs/policy/nvidia_gpu_default.v1.json",
+        include_str!("builtin/policy/nvidia_gpu_default.v1.json"),
+    ),
+    asset(
+        "policy_packs",
+        "general_compute_default_pack.v1.json",
+        "configs/policy_packs/general_compute_default_pack.v1.json",
+        include_str!("builtin/policy_packs/general_compute_default_pack.v1.json"),
+    ),
+    asset(
+        "recommendations",
+        "general_compute_advisory.v1.json",
+        "configs/recommendations/general_compute_advisory.v1.json",
+        include_str!("builtin/recommendations/general_compute_advisory.v1.json"),
+    ),
+    asset(
+        "service_profile_catalogues",
+        "general_compute.v1.json",
+        "configs/service_profile_catalogues/general_compute.v1.json",
+        include_str!("builtin/service_profile_catalogues/general_compute.v1.json"),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_contract_only.v2.json",
+        "configs/service_profiles/general_compute_contract_only.v2.json",
+        include_str!("builtin/service_profiles/general_compute_contract_only.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_cuda_extension_contract_only.v2.json",
+        "configs/service_profiles/general_compute_cuda_extension_contract_only.v2.json",
+        include_str!(
+            "builtin/service_profiles/general_compute_cuda_extension_contract_only.v2.json"
+        ),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_cuda_runtime_allocatable_memory_required.v2.json",
+        "configs/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json",
+        include_str!(
+            "builtin/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json"
+        ),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_hardware_attested.v2.json",
+        "configs/service_profiles/general_compute_hardware_attested.v2.json",
+        include_str!("builtin/service_profiles/general_compute_hardware_attested.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_no_gpu_contract_only.v2.json",
+        "configs/service_profiles/general_compute_no_gpu_contract_only.v2.json",
+        include_str!("builtin/service_profiles/general_compute_no_gpu_contract_only.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_node_extension_contract_only.v2.json",
+        "configs/service_profiles/general_compute_node_extension_contract_only.v2.json",
+        include_str!("builtin/service_profiles/general_compute_node_extension_contract_only.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_python_extension_contract_only.v2.json",
+        "configs/service_profiles/general_compute_python_extension_contract_only.v2.json",
+        include_str!(
+            "builtin/service_profiles/general_compute_python_extension_contract_only.v2.json"
+        ),
+    ),
+    asset(
+        "service_profiles",
+        "general_compute_stateful_thresholds.v2.json",
+        "configs/service_profiles/general_compute_stateful_thresholds.v2.json",
+        include_str!("builtin/service_profiles/general_compute_stateful_thresholds.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_locality_single_numa_contract_only.v2.json",
+        "configs/service_profiles/gpu_locality_single_numa_contract_only.v2.json",
+        include_str!("builtin/service_profiles/gpu_locality_single_numa_contract_only.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_preferred_with_general_compute_fallback_contract_only.v2.json",
+        "configs/service_profiles/gpu_preferred_with_general_compute_fallback_contract_only.v2.json",
+        include_str!(
+            "builtin/service_profiles/gpu_preferred_with_general_compute_fallback_contract_only.v2.json"
+        ),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_required_contract_only.v2.json",
+        "configs/service_profiles/gpu_required_contract_only.v2.json",
+        include_str!("builtin/service_profiles/gpu_required_contract_only.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_two_required_contract_only.v2.json",
+        "configs/service_profiles/gpu_two_required_contract_only.v2.json",
+        include_str!("builtin/service_profiles/gpu_two_required_contract_only.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_two_required_cuda_runtime_per_device_memory_required.v2.json",
+        "configs/service_profiles/gpu_two_required_cuda_runtime_per_device_memory_required.v2.json",
+        include_str!(
+            "builtin/service_profiles/gpu_two_required_cuda_runtime_per_device_memory_required.v2.json"
+        ),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_two_required_cuda_runtime_qualifying_device_aggregate_memory_required.v2.json",
+        "configs/service_profiles/gpu_two_required_cuda_runtime_qualifying_device_aggregate_memory_required.v2.json",
+        include_str!(
+            "builtin/service_profiles/gpu_two_required_cuda_runtime_qualifying_device_aggregate_memory_required.v2.json"
+        ),
+    ),
+    asset(
+        "service_profiles",
+        "gpu_two_required_cuda_runtime_required.v2.json",
+        "configs/service_profiles/gpu_two_required_cuda_runtime_required.v2.json",
+        include_str!("builtin/service_profiles/gpu_two_required_cuda_runtime_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "local_image_generation_cuda_state_required.v2.json",
+        "configs/service_profiles/local_image_generation_cuda_state_required.v2.json",
+        include_str!("builtin/service_profiles/local_image_generation_cuda_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "local_image_generation_storage_state_required.v2.json",
+        "configs/service_profiles/local_image_generation_storage_state_required.v2.json",
+        include_str!("builtin/service_profiles/local_image_generation_storage_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "local_model_high_memory_state_required.v2.json",
+        "configs/service_profiles/local_model_high_memory_state_required.v2.json",
+        include_str!("builtin/service_profiles/local_model_high_memory_state_required.v2.json"),
+    ),
+    asset(
+        "trust",
+        "local_self_signed_allow_unsigned.v1.json",
+        "configs/trust/local_self_signed_allow_unsigned.v1.json",
+        include_str!("builtin/trust/local_self_signed_allow_unsigned.v1.json"),
+    ),
+    asset(
+        "trust",
+        "local_self_signed_bundle_deny_unsigned.v1.json",
+        "configs/trust/local_self_signed_bundle_deny_unsigned.v1.json",
+        include_str!("builtin/trust/local_self_signed_bundle_deny_unsigned.v1.json"),
+    ),
+    asset(
+        "trust",
+        "local_self_signed_deny_unsigned.v1.json",
+        "configs/trust/local_self_signed_deny_unsigned.v1.json",
+        include_str!("builtin/trust/local_self_signed_deny_unsigned.v1.json"),
+    ),
+];
+
+pub fn built_in_config_assets_v1() -> &'static [BuiltInConfigAssetV1] {
+    BUILT_IN_CONFIG_ASSETS_V1
+}
+
+const fn asset(
+    category: &'static str,
+    id: &'static str,
+    relative_path: &'static str,
+    contents: &'static str,
+) -> BuiltInConfigAssetV1 {
+    BuiltInConfigAssetV1 {
+        category,
+        id,
+        relative_path,
+        contents,
+    }
+}

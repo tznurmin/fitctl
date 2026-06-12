@@ -12,6 +12,7 @@ mod bundle;
 mod bundle_config;
 mod classify;
 mod completion;
+mod config;
 mod contract;
 mod diff;
 mod export;
@@ -82,6 +83,9 @@ fn dispatch_subcommand(raw_subcommand: &str, subcommand_args: &[String]) -> Exit
     }
     if subcommand == "completion" {
         return completion::run(subcommand_args);
+    }
+    if subcommand == "config" {
+        return config::run(subcommand_args);
     }
     if subcommand == "state" {
         return state::run(subcommand_args);

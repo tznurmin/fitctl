@@ -61,6 +61,7 @@ Add `state` when the decision depends on live runtime conditions, such as:
 
 - current accelerator visibility
 - allocatable memory
+- checked path capacity
 - runtime freshness requirements
 
 State-aware validation should also set the validation mode, validation time, and freshness bound
@@ -78,6 +79,35 @@ fitctl validate \
 ```
 
 See `fitctl --help validate` for more details.
+
+## Path capacity requirements
+
+Use `fitctl state --path-check <id>=<path>` to record filesystem capacity for paths that matter to
+a workload:
+
+```bash
+fitctl state \
+  --path-check model-cache=/var/lib/local-model-cache \
+  --path-check output=/var/tmp/image-output \
+  > host.state.json
+```
+
+Service profiles can require matching path ids through `core_requirements.required_paths`.
+Validation checks existence and available bytes from `state.core_state.path_resources`.
+
+Inline live validation can collect the same evidence:
+
+```bash
+fitctl validate \
+  --contract host.contract.json \
+  --profile configs/service_profiles/local_image_generation_storage_state_required.v2.json \
+  --live-state \
+  --path-check model-cache=/var/lib/local-model-cache \
+  --path-check output=/var/tmp/image-output \
+  --validation-mode state_required \
+  --require-fit \
+  > validation.json
+```
 
 ## Default flow
 

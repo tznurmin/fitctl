@@ -403,7 +403,7 @@ fn public_readme_examples_and_gate_wording_are_traceable() {
         "command-line tool for producing host-fit artifacts",
         "returning failure exit codes",
         "validation rejects a host",
-        "Commands emit typed JSON",
+        "The core workflow emits typed JSON artifacts",
         "validation should control the process exit status",
         "--fail-on-unfit",
         "--require-fit",

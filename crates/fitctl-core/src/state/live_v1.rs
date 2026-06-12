@@ -1,12 +1,17 @@
 // Copyright 2026 fitctl contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::ffi::CString;
 use std::fs;
+use std::mem::MaybeUninit;
+use std::os::unix::ffi::OsStrExt;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::artifacts::state_v1::{
     FreshnessStateV1, HostRuntimeResourcesV1, HostStateExecutionBoundariesV1,
-    HostStateOperabilityV1, HostStateTopologyV1, StateFieldV1, StateFreshnessV1,
+    HostStateOperabilityV1, HostStatePathResourceV1, HostStatePathResourcesV1, HostStateTopologyV1,
+    StateFieldV1, StateFreshnessV1,
 };
 use crate::identity::{select_live_linux_identity_input_v2, LocalStableIdentityInputV2};
 use crate::state::{LiveStateProbeV1, StateError, StateErrorCode};
@@ -29,12 +34,28 @@ pub struct CollectedHostStateSnapshotV1 {
     pub collectors: Vec<String>,
     pub freshness: StateFreshnessV1,
     pub resources: HostRuntimeResourcesV1,
+    pub path_resources: HostStatePathResourcesV1,
     pub boundaries: HostStateExecutionBoundariesV1,
     pub topology: HostStateTopologyV1,
     pub operability: HostStateOperabilityV1,
 }
 
-pub struct LocalLiveStateProbeV1;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatePathCheckRequestV1 {
+    pub path_id: String,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LocalLiveStateProbeV1 {
+    path_checks: Vec<StatePathCheckRequestV1>,
+}
+
+impl LocalLiveStateProbeV1 {
+    pub fn new(path_checks: Vec<StatePathCheckRequestV1>) -> Self {
+        Self { path_checks }
+    }
+}
 
 pub struct NoopLiveStateProbeV1;
 
@@ -99,6 +120,19 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
             .map(observed)
             .unwrap_or_else(unknown);
 
+        let path_resources = collect_path_resources(&self.path_checks);
+        let mut collectors = vec![
+            "runtime_cpu_capacity".to_string(),
+            "procfs_meminfo".to_string(),
+            "cgroupfs_cpuset".to_string(),
+            "cgroupfs_cpu_quota".to_string(),
+            "cgroupfs_memory_boundary".to_string(),
+            "sysfs_topology".to_string(),
+        ];
+        if !path_resources.paths.is_empty() {
+            collectors.push("statvfs_path_capacity".to_string());
+        }
+
         Ok(CollectedHostStateSnapshotV1 {
             source_kind: SnapshotSourceKindV1::Live,
             provenance_source: "live:linux_runtime_v1".to_string(),
@@ -106,14 +140,7 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
             collected_at: collected_at.clone(),
             host_alias,
             local_stable_identity_input: Some(live_identity.input),
-            collectors: vec![
-                "runtime_cpu_capacity".to_string(),
-                "procfs_meminfo".to_string(),
-                "cgroupfs_cpuset".to_string(),
-                "cgroupfs_cpu_quota".to_string(),
-                "cgroupfs_memory_boundary".to_string(),
-                "sysfs_topology".to_string(),
-            ],
+            collectors,
             freshness: StateFreshnessV1 {
                 observed_at: collected_at,
                 freshness_state: FreshnessStateV1::Fresh,
@@ -124,6 +151,7 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
                 allocatable_memory_bytes,
                 memory_used_excluding_cache_bytes,
             },
+            path_resources,
             boundaries,
             topology: HostStateTopologyV1 {
                 visible_numa_nodes: read_visible_numa_nodes(),
@@ -133,6 +161,44 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
             },
         })
     }
+}
+
+fn collect_path_resources(requests: &[StatePathCheckRequestV1]) -> HostStatePathResourcesV1 {
+    let mut paths = requests
+        .iter()
+        .map(|request| collect_path_resource(request))
+        .collect::<Vec<_>>();
+    paths.sort_by(|left, right| left.path_id.cmp(&right.path_id));
+    HostStatePathResourcesV1 { paths }
+}
+
+fn collect_path_resource(request: &StatePathCheckRequestV1) -> HostStatePathResourceV1 {
+    let exists = request.path.exists();
+    let (available, total) = statvfs_bytes(&request.path).unwrap_or((unknown(), unknown()));
+    HostStatePathResourceV1 {
+        path_id: request.path_id.clone(),
+        path: request.path.to_string_lossy().to_string(),
+        exists: observed(exists),
+        filesystem_available_bytes: available,
+        filesystem_total_bytes: total,
+    }
+}
+
+fn statvfs_bytes(path: &std::path::Path) -> Option<(StateFieldV1<u64>, StateFieldV1<u64>)> {
+    let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut stats = MaybeUninit::<libc::statvfs>::uninit();
+    let result = unsafe { libc::statvfs(c_path.as_ptr(), stats.as_mut_ptr()) };
+    if result != 0 {
+        return None;
+    }
+    let stats = unsafe { stats.assume_init() };
+    let fragment_size = stats.f_frsize.max(1);
+    let available = (stats.f_bavail as u128).checked_mul(fragment_size as u128)?;
+    let total = (stats.f_blocks as u128).checked_mul(fragment_size as u128)?;
+    Some((
+        observed(u64::try_from(available).ok()?),
+        observed(u64::try_from(total).ok()?),
+    ))
 }
 
 fn read_execution_boundaries() -> HostStateExecutionBoundariesV1 {

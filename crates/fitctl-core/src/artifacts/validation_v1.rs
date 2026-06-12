@@ -704,6 +704,27 @@ pub fn validate_service_profile(profile: &ServiceProfileV1) -> Result<(), Artifa
             "service profile accelerator locality limits must stay positive when populated",
         ));
     }
+    let mut required_path_ids = BTreeSet::new();
+    for path in &profile.profile.core_requirements.required_paths {
+        if is_blank(&path.path_id) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required path ids must be non-blank",
+            ));
+        }
+        if !required_path_ids.insert(path.path_id.clone()) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required path ids must be unique",
+            ));
+        }
+        if path.min_available_bytes.is_some_and(|value| value == 0) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required path minimum available bytes must be positive when populated",
+            ));
+        }
+    }
 
     Ok(())
 }
@@ -1330,8 +1351,9 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
             "cgroupfs_cpu_quota",
             "cgroupfs_memory_boundary",
             "sysfs_topology",
+            "statvfs_path_capacity",
         ],
-        &["rust_std", "procfs", "cgroupfs", "sysfs"],
+        &["rust_std", "procfs", "cgroupfs", "sysfs", "statvfs"],
     )?;
     validate_namespaced_json_map(&state.state.extension_state, "host-state extension state")?;
 
@@ -1364,6 +1386,9 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
         |value| *value > 0,
     )?;
     validate_claim_metadata(&state.state.core_state.section_metadata.resources)?;
+    if !state.state.core_state.path_resources.paths.is_empty() {
+        validate_claim_metadata(&state.state.core_state.section_metadata.path_resources)?;
+    }
     validate_claim_metadata(&state.state.core_state.section_metadata.boundaries)?;
     validate_claim_metadata(&state.state.core_state.section_metadata.topology)?;
     validate_claim_metadata(&state.state.core_state.section_metadata.operability)?;
@@ -1394,6 +1419,7 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
         |_value| true,
     )?;
     validate_state_memory_accounting(state)?;
+    validate_state_path_resources(state)?;
     validate_state_field(
         &state.state.core_state.topology.visible_numa_nodes,
         "visible_numa_nodes",
@@ -1413,6 +1439,50 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
         ));
     }
 
+    Ok(())
+}
+
+fn validate_state_path_resources(state: &HostStateV1) -> Result<(), ArtifactValidationError> {
+    let mut path_ids = BTreeSet::new();
+    for path in &state.state.core_state.path_resources.paths {
+        if is_blank(&path.path_id) || is_blank(&path.path) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state path resources must include non-blank path_id and path",
+            ));
+        }
+        if !path_ids.insert(path.path_id.clone()) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("host-state path resource id {} is duplicated", path.path_id),
+            ));
+        }
+        validate_state_field(&path.exists, "path_resources.exists", |_| true)?;
+        validate_state_field(
+            &path.filesystem_available_bytes,
+            "path_resources.filesystem_available_bytes",
+            |_| true,
+        )?;
+        validate_state_field(
+            &path.filesystem_total_bytes,
+            "path_resources.filesystem_total_bytes",
+            |value| *value > 0,
+        )?;
+        if let (Some(available), Some(total)) = (
+            scalar_state_value(&path.filesystem_available_bytes),
+            scalar_state_value(&path.filesystem_total_bytes),
+        ) {
+            if available > total {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    format!(
+                        "host-state path resource {} available bytes must not exceed total bytes",
+                        path.path_id
+                    ),
+                ));
+            }
+        }
+    }
     Ok(())
 }
 

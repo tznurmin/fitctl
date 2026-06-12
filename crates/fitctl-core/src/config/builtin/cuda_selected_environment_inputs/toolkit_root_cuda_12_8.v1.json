@@ -1,0 +1,35 @@
+{
+  "schema_id": "fitctl.extension.runtime.cuda.selected_environment_input.v1",
+  "schema_version": 1,
+  "selected_environment": {
+    "environment_id": "cuda_12_8_toolkit_root",
+    "selection": {
+      "kind": "toolkit_install_root",
+      "install_root": "/usr/local/cuda-12.8"
+    }
+  },
+  "toolkit_version": {
+    "major": 12,
+    "minor": 8,
+    "patch": 93
+  },
+  "runtime_version": {
+    "major": 12,
+    "minor": 8,
+    "patch": 0
+  },
+  "probe_diagnostics": {
+    "toolkit_version": {
+      "source_tier": "primary",
+      "source_kind": "command_probe",
+      "source_ref": "/usr/local/cuda-12.8/bin/nvcc",
+      "status": "observed"
+    },
+    "runtime_version": {
+      "source_tier": "primary",
+      "source_kind": "dynamic_library_probe",
+      "source_ref": "/usr/local/cuda-12.8/lib64/libcudart.so",
+      "status": "observed"
+    }
+  }
+}

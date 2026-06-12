@@ -14,11 +14,12 @@ Use [workflow.yml](./workflow.yml) as the copyable GitHub Actions shape.
 
 The workflow runs:
 
-1. `fitctl survey` to collect host facts
-2. `fitctl contract` to derive the policy-shaped host claim
-3. `fitctl state` to capture live CUDA runtime detail
-4. `fitctl validate --require-fit` to produce the decision and gate the job
-5. `fitctl inspect` to print the validation artifact for logs
+1. `fitctl config export` to materialize bundled policies and profiles
+2. `fitctl survey` to collect host facts
+3. `fitctl contract` to derive the policy-shaped host claim
+4. `fitctl state` to capture live CUDA runtime detail
+5. `fitctl validate --require-fit` to produce the decision and gate the job
+6. `fitctl inspect` to print the validation artifact for logs
 
 The CUDA runtime extension is enabled with the built-in `fitctl.runtime.cuda` extension pack:
 
@@ -31,6 +32,8 @@ The CUDA runtime extension is enabled with the built-in `fitctl.runtime.cuda` ex
 The same flow can be replayed locally without a GPU by using bundled fixtures:
 
 ```bash
+fitctl config export --out-dir fitctl-config
+
 fitctl survey \
   --fixture linux-gpu-workstation-like-v1 \
   --enable-extension fitctl.runtime.cuda \
@@ -38,7 +41,7 @@ fitctl survey \
 
 fitctl contract \
   --survey gpu.survey.json \
-  --policy configs/policy/general_compute_default.v1.json \
+  --policy fitctl-config/configs/policy/general_compute_default.v1.json \
   --enable-extension fitctl.runtime.cuda \
   > gpu.contract.json
 
@@ -49,7 +52,7 @@ fitctl state \
 
 fitctl validate \
   --contract gpu.contract.json \
-  --profile configs/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json \
+  --profile fitctl-config/configs/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json \
   --state gpu.state.json \
   --validation-mode state_required \
   --validated-at 2025-06-17T10:00:00Z \

@@ -85,6 +85,19 @@
       ]
     },
     {
+      "fixture_id": "linux-gpu-workstation-like-path-resources-fit-v1",
+      "path": "linux-gpu-workstation-like-path-resources-fit-v1.json",
+      "coverage_tags": [
+        "bare_metal_like",
+        "fresh_state",
+        "discrete_gpu",
+        "path_resources"
+      ],
+      "related_survey_fixtures": [
+        "linux-gpu-workstation-like-v1"
+      ]
+    },
+    {
       "fixture_id": "linux-gpu-workstation-like-cuda-runtime-fit-v1",
       "path": "linux-gpu-workstation-like-cuda-runtime-fit-v1.json",
       "coverage_tags": [

@@ -1,0 +1,24 @@
+{
+  "schema_id": "fitctl.cuda-environment-catalogue.v1",
+  "schema_version": 1,
+  "catalogue_id": "default-and-toolkits-v1",
+  "catalogue_version": "1",
+  "summary": "Default CUDA view plus explicit toolkit roots for later selected-environment probing.",
+  "environments": [
+    {
+      "environment_id": "default_view",
+      "summary": "Use the collector-visible default CUDA view.",
+      "selection": {
+        "kind": "default_view"
+      }
+    },
+    {
+      "environment_id": "cuda_12_8_toolkit_root",
+      "summary": "Use the CUDA 12.8 toolkit installed under the named root.",
+      "selection": {
+        "kind": "toolkit_install_root",
+        "install_root": "/usr/local/cuda-12.8"
+      }
+    }
+  ]
+}

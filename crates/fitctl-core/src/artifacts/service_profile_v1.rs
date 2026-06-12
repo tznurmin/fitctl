@@ -71,6 +71,17 @@ pub struct ServiceRequirementsV1 {
     pub require_accelerator_locality_known: bool,
     #[serde(default)]
     pub max_accelerator_numa_nodes: Option<u32>,
+    #[serde(default)]
+    pub required_paths: Vec<ServicePathRequirementV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Runtime path capacity required by a workload.
+pub struct ServicePathRequirementV1 {
+    pub path_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_available_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

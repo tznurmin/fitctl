@@ -29,8 +29,8 @@ use crate::artifacts::service_profile_v1::{
 };
 use crate::artifacts::state_v1::{
     FreshnessStateV1, HostRuntimeResourcesV1, HostStateExecutionBoundariesV1,
-    HostStateOperabilityV1, HostStatePayloadV1, HostStateTopologyV1, HostStateV1,
-    StateCollectionModeV1, StateSectionMetadataV1,
+    HostStateOperabilityV1, HostStatePathResourcesV1, HostStatePayloadV1, HostStateTopologyV1,
+    HostStateV1, StateCollectionModeV1, StateSectionMetadataV1,
 };
 use crate::artifacts::survey_v1::HostSurveyV1;
 use crate::artifacts::validation_report_v1::{
@@ -537,6 +537,7 @@ struct StateCoreSemanticProjection {
     section_metadata: StateSectionMetadataV1,
     freshness: StateFreshnessSemanticProjection,
     resources: HostRuntimeResourcesV1,
+    path_resources: HostStatePathResourcesV1,
     boundaries: HostStateExecutionBoundariesV1,
     topology: HostStateTopologyV1,
     operability: HostStateOperabilityV1,
@@ -549,6 +550,7 @@ impl From<&crate::artifacts::state_v1::HostStateCoreV1> for StateCoreSemanticPro
             section_metadata: state.section_metadata.clone(),
             freshness: StateFreshnessSemanticProjection::from(&state.freshness),
             resources: state.resources.clone(),
+            path_resources: state.path_resources.clone(),
             boundaries: state.boundaries.clone(),
             topology: state.topology.clone(),
             operability: state.operability.clone(),

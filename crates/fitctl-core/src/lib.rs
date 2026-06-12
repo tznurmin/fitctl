@@ -61,7 +61,7 @@ pub const EXIT_CODE_POLICY_REJECTION: u8 = 1;
 /// Command-line usage or invocation shape was invalid.
 pub const EXIT_CODE_USAGE_ERROR: u8 = 2;
 
-pub const COMMANDS: [CommandSpec; 17] = [
+pub const COMMANDS: [CommandSpec; 18] = [
     CommandSpec {
         name: "survey",
         summary: "Collect raw host evidence",
@@ -126,6 +126,11 @@ pub const COMMANDS: [CommandSpec; 17] = [
         name: "completion",
         summary: "Emit a shell completion script",
         tier: CommandTier::Experimental,
+    },
+    CommandSpec {
+        name: "config",
+        summary: "List or export bundled configuration",
+        tier: CommandTier::StableCore,
     },
     CommandSpec {
         name: "inspect",

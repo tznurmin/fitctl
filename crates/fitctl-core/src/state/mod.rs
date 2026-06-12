@@ -18,10 +18,12 @@ pub mod replay_v1;
 
 pub use crate::artifacts::state_v1::{
     FreshnessStateV1, HostRuntimeResourcesV1, HostStateExecutionBoundariesV1,
-    StateCollectionModeV1, StateFieldV1, StateFreshnessV1,
+    HostStatePathResourceV1, HostStatePathResourcesV1, StateCollectionModeV1, StateFieldV1,
+    StateFreshnessV1,
 };
 pub use live_v1::{
-    CollectedHostStateSnapshotV1, LocalLiveStateProbeV1, NoopLiveStateProbeV1, SnapshotSourceKindV1,
+    CollectedHostStateSnapshotV1, LocalLiveStateProbeV1, NoopLiveStateProbeV1,
+    SnapshotSourceKindV1, StatePathCheckRequestV1,
 };
 pub use replay_v1::{
     load_fixture_corpus_manifest, FixtureCorpusEntryV1, FixtureCorpusManifestV1,

@@ -19,7 +19,9 @@ use fitctl_core::contract::{
     DerivationContextV1,
 };
 use fitctl_core::policy::load_policy_document_from_path;
-use fitctl_core::state::{LocalLiveStateProbeV1, StateEngineV1, StateModeV1};
+use fitctl_core::state::{
+    LocalLiveStateProbeV1, StateEngineV1, StateModeV1, StatePathCheckRequestV1,
+};
 use fitctl_core::validate::{
     load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
     load_service_profile_artifact_for_validation, validate_request_v1, ValidationModeV1,
@@ -58,6 +60,7 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut note: Option<String> = None;
     let mut mode_source = ValidationModeSourceV1::Default;
     let mut gate_policy = ValidationGatePolicyV1::ReportOnly;
+    let mut path_checks = Vec::new();
 
     let mut index = 0;
     while index < args.len() {
@@ -176,6 +179,20 @@ pub fn run(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 };
                 enabled_extension_namespaces.push(value.clone());
+                index += 2;
+            }
+            "--path-check" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --path-check requires <id>=<path>");
+                    return ExitCode::from(2);
+                };
+                match parse_path_check(value) {
+                    Ok(path_check) => path_checks.push(path_check),
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
                 index += 2;
             }
             "--validation-mode" => {
@@ -436,6 +453,10 @@ pub fn run(args: &[String]) -> ExitCode {
     }
     if live_state_requested && state_path.is_some() {
         eprintln!("fitctl validate: --live-state cannot be combined with --state");
+        return ExitCode::from(2);
+    }
+    if !path_checks.is_empty() && !live_state_requested {
+        eprintln!("fitctl validate: --path-check requires --live-state");
         return ExitCode::from(2);
     }
     if !live_state_requested
@@ -731,7 +752,7 @@ pub fn run(args: &[String]) -> ExitCode {
                 }
                 StateModeV1::Live => None,
             };
-            let engine = StateEngineV1::new(LocalLiveStateProbeV1);
+            let engine = StateEngineV1::new(LocalLiveStateProbeV1::new(path_checks));
             let state = match engine.collect_host_state(mode) {
                 Ok(state) => state,
                 Err(error) => {
@@ -790,7 +811,24 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n\nModes:\n  - contract_only decides from the contract and service profile only\n  - state_advisory uses host-state when provided and keeps missing or stale runtime evidence explicit\n  - state_required uses host-state for runtime-sensitive checks and treats missing or stale state as blocking evidence\n\nGate flags:\n  - --fail-on-unfit exits with policy rejection for unfit or indeterminate verdicts\n  - --require-fit exits with policy rejection unless the verdict is fit\n  - both flags preserve the validation report on stdout\n\nFreshness:\n  - --validated-at <timestamp> sets the decision timestamp used for state freshness checks\n    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n  - --max-state-age <value> requires explicit --state input and rejects state older than that age\n    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n\nNotes:\n  - contract_only does not accept host-state input\n  - --max-state-age is not allowed with --live-state\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path> | --live-state [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n"
+    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n\nModes:\n  - contract_only decides from the contract and service profile only\n  - state_advisory uses host-state when provided and keeps missing or stale runtime evidence explicit\n  - state_required uses host-state for runtime-sensitive checks and treats missing or stale state as blocking evidence\n\nGate flags:\n  - --fail-on-unfit exits with policy rejection for unfit or indeterminate verdicts\n  - --require-fit exits with policy rejection unless the verdict is fit\n  - both flags preserve the validation report on stdout\n\nFreshness:\n  - --validated-at <timestamp> sets the decision timestamp used for state freshness checks\n    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n  - --max-state-age <value> requires explicit --state input and rejects state older than that age\n    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n\nNotes:\n  - contract_only does not accept host-state input\n  - --path-check records filesystem capacity for named workload paths during --live-state\n  - --max-state-age is not allowed with --live-state\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path> | --live-state [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n"
+}
+
+fn parse_path_check(value: &str) -> Result<StatePathCheckRequestV1, &'static str> {
+    let Some((path_id, path)) = value.split_once('=') else {
+        return Err("--path-check must use <id>=<path>");
+    };
+    let path_id = path_id.trim();
+    if path_id.is_empty() || path_id.contains(char::is_whitespace) {
+        return Err("--path-check id must be non-empty and contain no whitespace");
+    }
+    if path.trim().is_empty() {
+        return Err("--path-check path must be non-empty");
+    }
+    Ok(StatePathCheckRequestV1 {
+        path_id: path_id.to_string(),
+        path: PathBuf::from(path),
+    })
 }
 
 fn current_epoch_marker() -> String {

@@ -1,0 +1,26 @@
+{
+  "schema_id": "fitctl.extension-pack.v1",
+  "schema_version": 1,
+  "pack_id": "fitctl-runtime-python-v1",
+  "namespace": "fitctl.runtime.python",
+  "namespace_owner": "fitctl",
+  "pack_version": "1.0.0",
+  "collector_ids": [
+    "fitctl.runtime.python.collector.v1"
+  ],
+  "emitted_sections": [
+    {
+      "section_kind": "survey_evidence",
+      "schema_id": "fitctl.extension.runtime.python.evidence.v1",
+      "schema_version": 1
+    },
+    {
+      "section_kind": "extension_contract",
+      "schema_id": "fitctl.extension.runtime.python.contract.v1",
+      "schema_version": 1
+    }
+  ],
+  "required_privilege": "unprivileged",
+  "freshness_model": "static_until_recollected",
+  "failure_semantics": "fail_closed"
+}

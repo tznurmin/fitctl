@@ -1,0 +1,34 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-general-compute-hardware-attested-v1",
+    "provenance": {
+      "source": "config:service_profiles/general_compute_hardware_attested.v2.json",
+      "collected_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "general_compute_hardware_attested_v1",
+    "display_name": "General compute with hardware attestation",
+    "short_display_name": "General compute + attestation",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like"
+      ]
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": [
+      "hardware_attested_required"
+    ]
+  }
+}

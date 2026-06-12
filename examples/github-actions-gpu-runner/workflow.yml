@@ -13,6 +13,9 @@ jobs:
       - name: Install fitctl
         run: cargo install fitctl --locked
 
+      - name: Export bundled fitctl config
+        run: fitctl config export --out-dir fitctl-config
+
       - name: Survey host
         run: |
           fitctl survey \
@@ -23,7 +26,7 @@ jobs:
         run: |
           fitctl contract \
             --survey gpu.survey.json \
-            --policy configs/policy/general_compute_default.v1.json \
+            --policy fitctl-config/configs/policy/general_compute_default.v1.json \
             --enable-extension fitctl.runtime.cuda \
             > gpu.contract.json
 
@@ -37,7 +40,7 @@ jobs:
         run: |
           fitctl validate \
             --contract gpu.contract.json \
-            --profile configs/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json \
+            --profile fitctl-config/configs/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json \
             --state gpu.state.json \
             --validation-mode state_required \
             --require-fit \

@@ -27,6 +27,7 @@ pub enum FixtureCoverageTagV1 {
     ArmCpuFallback,
     FreshState,
     StaleState,
+    PathResources,
     CgroupLimited,
     RuntimeCollectorGap,
 }

@@ -54,6 +54,7 @@ pub(crate) fn build_host_state_from_snapshot(
         |value| *value > 0,
     )?;
     validate_memory_accounting(&snapshot.resources)?;
+    validate_path_resources(&snapshot.path_resources)?;
 
     canonicalise_snapshot(&mut snapshot);
 
@@ -75,6 +76,14 @@ pub(crate) fn build_host_state_from_snapshot(
                     derivation_stage: DerivationStageV1::Normalized,
                     source_collectors: snapshot.collectors.clone(),
                     evidence_paths: vec!["$.state.core_state.resources".to_string()],
+                    policy_rule_id: None,
+                    trust_evidence_refs: Vec::new(),
+                },
+                path_resources: ClaimMetadataV1 {
+                    assurance_source: AssuranceSourceV1::SelfObserved,
+                    derivation_stage: DerivationStageV1::Normalized,
+                    source_collectors: snapshot.collectors.clone(),
+                    evidence_paths: vec!["$.state.core_state.path_resources".to_string()],
                     policy_rule_id: None,
                     trust_evidence_refs: Vec::new(),
                 },
@@ -105,6 +114,7 @@ pub(crate) fn build_host_state_from_snapshot(
             },
             freshness: snapshot.freshness.clone(),
             resources: snapshot.resources.clone(),
+            path_resources: snapshot.path_resources.clone(),
             boundaries: snapshot.boundaries.clone(),
             topology: snapshot.topology.clone(),
             operability: snapshot.operability.clone(),
@@ -210,6 +220,55 @@ fn validate_memory_accounting(
     Ok(())
 }
 
+fn validate_path_resources(
+    path_resources: &crate::state::HostStatePathResourcesV1,
+) -> Result<(), StateError> {
+    let mut path_ids = std::collections::BTreeSet::new();
+    for path in &path_resources.paths {
+        if path.path_id.trim().is_empty() || path.path.trim().is_empty() {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "state_emit",
+                "path resource entries must include non-blank path_id and path",
+            ));
+        }
+        if !path_ids.insert(path.path_id.clone()) {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "state_emit",
+                format!("path resource id {} is duplicated", path.path_id),
+            ));
+        }
+        validate_field(&path.exists, "path_resources.exists", |_| true)?;
+        validate_field(
+            &path.filesystem_available_bytes,
+            "path_resources.filesystem_available_bytes",
+            |_| true,
+        )?;
+        validate_field(
+            &path.filesystem_total_bytes,
+            "path_resources.filesystem_total_bytes",
+            |value| *value > 0,
+        )?;
+        if let (Some(available), Some(total)) = (
+            scalar_value(&path.filesystem_available_bytes),
+            scalar_value(&path.filesystem_total_bytes),
+        ) {
+            if available > total {
+                return Err(StateError::new(
+                    StateErrorCode::StateNormalizationFailed,
+                    "state_emit",
+                    format!(
+                        "path resource {} available bytes must not exceed total bytes",
+                        path.path_id
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn scalar_value<T: Copy>(field: &StateFieldV1<T>) -> Option<T> {
     match (&field.state, &field.value) {
         (ObservationStateV1::Observed, Some(value))
@@ -255,6 +314,7 @@ fn state_source_family_for_collector(collector_id: &str) -> &'static str {
         "std::available_parallelism" | "runtime_cpu_capacity" => "rust_std",
         "procfs_meminfo" => "procfs",
         "cgroupfs_cpuset" | "cgroupfs_cpu_quota" | "cgroupfs_memory_boundary" => "cgroupfs",
+        "statvfs_path_capacity" => "statvfs",
         "sysfs_topology" => "sysfs",
         _ => "unknown",
     }

@@ -78,6 +78,8 @@ pub struct HostStateCoreV1 {
     pub freshness: StateFreshnessV1,
     pub resources: HostRuntimeResourcesV1,
     #[serde(default)]
+    pub path_resources: HostStatePathResourcesV1,
+    #[serde(default)]
     pub boundaries: HostStateExecutionBoundariesV1,
     #[serde(default)]
     pub topology: HostStateTopologyV1,
@@ -140,10 +142,31 @@ pub struct HostRuntimeResourcesV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+/// Runtime filesystem capacity observed for explicit workload paths.
+pub struct HostStatePathResourcesV1 {
+    #[serde(default)]
+    pub paths: Vec<HostStatePathResourceV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// One path checked for state-aware storage suitability.
+pub struct HostStatePathResourceV1 {
+    pub path_id: String,
+    pub path: String,
+    pub exists: StateFieldV1<bool>,
+    pub filesystem_available_bytes: StateFieldV1<u64>,
+    pub filesystem_total_bytes: StateFieldV1<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 /// Per-section provenance for runtime values.
 pub struct StateSectionMetadataV1 {
     #[serde(default)]
     pub resources: ClaimMetadataV1,
+    #[serde(default)]
+    pub path_resources: ClaimMetadataV1,
     #[serde(default)]
     pub boundaries: ClaimMetadataV1,
     #[serde(default)]

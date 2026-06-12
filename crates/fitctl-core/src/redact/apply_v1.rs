@@ -354,6 +354,16 @@ fn redact_state_artifact(
     }
     if profile.applies_auditor_redactions() {
         artifact.state.source_ref = profile.source_ref_placeholder();
+        for (index, path) in artifact
+            .state
+            .core_state
+            .path_resources
+            .paths
+            .iter_mut()
+            .enumerate()
+        {
+            path.path = indexed_placeholder(&profile.mount_path_placeholder(), index);
+        }
     }
 
     apply_redaction_metadata(&mut artifact.envelope, profile, redacted_at);

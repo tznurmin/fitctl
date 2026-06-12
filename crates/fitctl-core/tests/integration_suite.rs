@@ -16,6 +16,8 @@ mod accelerator_locality_summary_surfaces_known_numa_nodes;
 mod accelerator_present_but_not_locally_usable_is_explicit;
 #[path = "integration/survey/accelerator_visibility_detail_surfaces_hidden_node_access.rs"]
 mod accelerator_visibility_detail_surfaces_hidden_node_access;
+#[path = "integration/config/bundled_config_assets_match_public_configs.rs"]
+mod bundled_config_assets_match_public_configs;
 #[path = "integration/artifacts/core_extension_split_uses_core_and_extension_sections.rs"]
 mod core_extension_split_uses_core_and_extension_sections;
 #[path = "integration/contract/derivation_uses_survey_and_policy_only.rs"]

@@ -6,8 +6,8 @@ validation rejects a host.
 It records observed host facts, derives policy-shaped host contracts, captures runtime state when
 required, and validates contracts against workload profiles.
 
-Commands emit typed JSON. `fitctl inspect` prints structured text views for supported artifacts.
-Automation reads the JSON directly.
+The core workflow emits typed JSON artifacts. `fitctl inspect` prints structured text views for
+supported artifacts, and automation reads the JSON directly.
 
 Use `--fail-on-unfit` or `--require-fit` when validation should control the process exit status.
 The validation report is written to stdout, and the exit status reflects the gate result.
@@ -94,8 +94,19 @@ requirements_satisfied
 ```
 
 When a decision depends on live runtime conditions, collect `state` and pass `--state` to
-`fitctl validate`. This is typically required for accelerator visibility, allocatable memory, and
-other runtime-only detail.
+`fitctl validate`. This is typically required for accelerator visibility, allocatable memory,
+checked path capacity, and other runtime-only detail.
+
+## Use Installed Config
+
+Installed binaries include bundled configuration files. Export them when you are not working from a
+repository checkout:
+
+```bash
+fitctl config export --out-dir fitctl-config
+```
+
+The exported files keep the same `configs/...` paths used in the examples.
 
 ## Integration examples
 
@@ -113,6 +124,7 @@ other runtime-only detail.
 | `fitctl state` | `host-state.v2` | Current runtime-sensitive facts |
 | `fitctl validate` | `validation-report.v2` | Verdict, posture, and reason codes |
 | `fitctl classify` | `fitctl.batch-classification-report.v3` | Batch comparison |
+| `fitctl config` | configuration files | Bundled config list and export |
 
 The artifact you inspect is the artifact automation reads.
 
@@ -183,6 +195,8 @@ cargo install --path crates/fitctl-cli --locked
 * [Validation](./docs/validation.md) — validation, batch comparison, and fit decisions
 * [Accelerators](./docs/accelerators.md) — accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
 * [Artifacts](./docs/artifacts.md) — survey, contract, state, and validation-report artifacts
+* [Installed Configuration](./docs/installed-config.md) — bundled config listing and export
+* [Workload Reports](./docs/workload-reports.md) — attaching fit artifacts to workload-run reports
 
 Version history and release notes: [GitHub Releases](https://github.com/tznurmin/fitctl/releases)
 

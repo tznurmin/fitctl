@@ -1,0 +1,105 @@
+{
+  "schema_id": "fitctl.fixture.host_state.snapshot.v1",
+  "schema_version": 1,
+  "fixture_id": "linux-gpu-workstation-like-path-resources-fit-v1",
+  "collected_at": "2025-04-21T14:37:19Z",
+  "host_alias": "gpu-host-01",
+  "collectors": [
+    "procfs_meminfo",
+    "runtime_cpu_capacity",
+    "cgroupfs_cpuset",
+    "cgroupfs_cpu_quota",
+    "cgroupfs_memory_boundary",
+    "sysfs_topology",
+    "statvfs_path_capacity"
+  ],
+  "freshness": {
+    "observed_at": "2025-04-21T14:37:19Z",
+    "freshness_state": "fresh"
+  },
+  "resources": {
+    "allocatable_cpu_logical_cores": {
+      "state": "observed",
+      "value": 24
+    },
+    "memory_total_bytes": {
+      "state": "observed",
+      "value": 68719476736
+    },
+    "allocatable_memory_bytes": {
+      "state": "observed",
+      "value": 51539607552
+    },
+    "memory_used_excluding_cache_bytes": {
+      "state": "observed",
+      "value": 8589934592
+    }
+  },
+  "path_resources": {
+    "paths": [
+      {
+        "path_id": "model-cache",
+        "path": "/var/lib/local-model-cache",
+        "exists": {
+          "state": "observed",
+          "value": true
+        },
+        "filesystem_available_bytes": {
+          "state": "observed",
+          "value": 32212254720
+        },
+        "filesystem_total_bytes": {
+          "state": "observed",
+          "value": 107374182400
+        }
+      },
+      {
+        "path_id": "output",
+        "path": "/var/tmp/image-output",
+        "exists": {
+          "state": "observed",
+          "value": true
+        },
+        "filesystem_available_bytes": {
+          "state": "observed",
+          "value": 42949672960
+        },
+        "filesystem_total_bytes": {
+          "state": "observed",
+          "value": 107374182400
+        }
+      }
+    ]
+  },
+  "boundaries": {
+    "cgroup_version": {
+      "state": "observed",
+      "value": "v2"
+    },
+    "cpuset_cpu_logical_cores": {
+      "state": "observed",
+      "value": 24
+    },
+    "cpu_quota_logical_cores": {
+      "state": "unknown",
+      "value": null
+    },
+    "memory_limit_bytes": {
+      "state": "unknown",
+      "value": null
+    },
+    "memory_current_bytes": {
+      "state": "unknown",
+      "value": null
+    }
+  },
+  "topology": {
+    "visible_numa_nodes": {
+      "state": "observed",
+      "value": 1
+    }
+  },
+  "operability": {
+    "degraded_capability_classes": []
+  }
+}

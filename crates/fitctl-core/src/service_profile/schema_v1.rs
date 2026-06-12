@@ -171,6 +171,7 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "min_policy_scoped_accelerators",
             "require_accelerator_locality_known",
             "max_accelerator_numa_nodes",
+            "required_paths",
         ],
     )?;
     reject_explicit_nulls(
@@ -189,9 +190,36 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "min_policy_scoped_accelerators",
             "require_accelerator_locality_known",
             "max_accelerator_numa_nodes",
+            "required_paths",
         ],
         "service profile requirement field",
     )?;
+    if let Some(required_paths) = requirements.get("required_paths") {
+        let required_paths = required_paths.as_array().ok_or_else(|| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                "profile_decode",
+                "service profile required_paths must be an array",
+            )
+        })?;
+        for (index, path) in required_paths.iter().enumerate() {
+            let path = path.as_object().ok_or_else(|| {
+                ServiceProfileError::new(
+                    ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                    "profile_decode",
+                    format!(
+                        "service profile required_paths entry at index {index} must be an object"
+                    ),
+                )
+            })?;
+            reject_unknown_keys(path, &["path_id", "min_available_bytes"])?;
+            reject_explicit_nulls(
+                path,
+                &["path_id", "min_available_bytes"],
+                "service profile required_paths field",
+            )?;
+        }
+    }
 
     if let Some(extension_requirements) = profile.get("extension_requirements") {
         let extension_requirements = extension_requirements.as_object().ok_or_else(|| {
@@ -448,6 +476,31 @@ fn validate_service_profile_semantics(
                 ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
                 "profile_validate",
                 "required network interface kinds must be unique",
+            ));
+        }
+    }
+
+    let mut required_path_ids = BTreeSet::new();
+    for path in &payload.core_requirements.required_paths {
+        if is_blank(&path.path_id) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required path ids must be non-empty",
+            ));
+        }
+        if !required_path_ids.insert(path.path_id.clone()) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required path ids must be unique",
+            ));
+        }
+        if path.min_available_bytes.is_some_and(|value| value == 0) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required path minimum available bytes must be positive when present",
             ));
         }
     }

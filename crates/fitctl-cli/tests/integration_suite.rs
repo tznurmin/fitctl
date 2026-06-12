@@ -14,6 +14,8 @@ mod batch_classification_matrix_view_renders_verdict_grid;
 mod batch_classification_proves_profile_matrix_use_case;
 #[path = "integration/redaction/bundle_artifacts_accept_builtin_redaction_profiles.rs"]
 mod bundle_artifacts_accept_builtin_redaction_profiles;
+#[path = "integration/config/bundled_config_export_supports_repository_free_flow.rs"]
+mod bundled_config_export_supports_repository_free_flow;
 #[path = "integration/inspect/color_modes_control_ansi_output.rs"]
 mod color_modes_control_ansi_output;
 #[path = "integration/cli/completion_outputs_supported_shell_scripts.rs"]
@@ -58,6 +60,8 @@ mod invocation_context_selects_single_catalogue_profile;
 mod local_preflight_reports_go_no_go_without_scraping_prose;
 #[path = "integration/inspect/operator_views_surface_validation_posture_and_classification_summary.rs"]
 mod operator_views_surface_validation_posture_and_classification_summary;
+#[path = "integration/e2e/storage_path_suitability/path_resources_drive_state_required_validation.rs"]
+mod path_resources_drive_state_required_validation;
 #[path = "integration/extensions/python_runtime_end_to_end.rs"]
 mod python_runtime_end_to_end;
 #[path = "integration/recommendation/recommendation_pack_selection_accepts_cli_and_invocation_ids.rs"]

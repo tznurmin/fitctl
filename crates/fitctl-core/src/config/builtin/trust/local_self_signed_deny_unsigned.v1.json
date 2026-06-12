@@ -1,0 +1,12 @@
+{
+  "schema_id": "fitctl.trust-policy.v1",
+  "schema_version": 1,
+  "policy_id": "local-self-signed-deny-unsigned-v1",
+  "trusted_signers": [],
+  "accepted_signature_namespaces": [
+    "fitctl-artifact-v1"
+  ],
+  "unsigned_action": "deny",
+  "untrusted_signer_action": "deny",
+  "allow_self_signed": true
+}

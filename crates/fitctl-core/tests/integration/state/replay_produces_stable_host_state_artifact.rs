@@ -25,3 +25,18 @@ fn replay_produces_stable_host_state_artifact() {
             .expect("right semantic bytes")
     );
 }
+
+#[test]
+fn path_resources_contribute_to_state_semantic_hash() {
+    let left = common::collect_state_fixture("linux-gpu-workstation-like-path-resources-fit-v1");
+    let mut right =
+        common::collect_state_fixture("linux-gpu-workstation-like-path-resources-fit-v1");
+    right.state.core_state.path_resources.paths[0]
+        .filesystem_available_bytes
+        .value = Some(1);
+
+    assert_ne!(
+        semantic_hash_hex_for_state(&left).expect("left semantic hash"),
+        semantic_hash_hex_for_state(&right).expect("right semantic hash")
+    );
+}

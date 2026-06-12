@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::artifacts::state_v1::{
     HostRuntimeResourcesV1, HostStateExecutionBoundariesV1, HostStateOperabilityV1,
-    HostStateTopologyV1, StateFreshnessV1,
+    HostStatePathResourcesV1, HostStateTopologyV1, StateFreshnessV1,
 };
 use crate::fixtures::FixtureCoverageTagV1;
 use crate::identity::select_live_linux_identity_input_v2;
@@ -52,6 +52,8 @@ pub struct HostStateFixtureSnapshotV1 {
     pub collectors: Vec<String>,
     pub freshness: StateFreshnessV1,
     pub resources: HostRuntimeResourcesV1,
+    #[serde(default)]
+    pub path_resources: HostStatePathResourcesV1,
     #[serde(default)]
     pub boundaries: HostStateExecutionBoundariesV1,
     #[serde(default)]
@@ -171,6 +173,7 @@ pub(crate) fn load_snapshot_from_corpus(
         collectors: snapshot.collectors.clone(),
         freshness: snapshot.freshness.clone(),
         resources: snapshot.resources.clone(),
+        path_resources: snapshot.path_resources.clone(),
         boundaries: snapshot.boundaries.clone(),
         topology: snapshot.topology.clone(),
         operability: snapshot.operability.clone(),

@@ -75,6 +75,7 @@ fn completion_outputs_supported_shell_scripts() {
             "config-bundle",
             "invocation-context",
             "live-state",
+            "path-check",
             "policy-pack-lock",
             "recommendation-pack-id",
         ] {
@@ -83,10 +84,30 @@ fn completion_outputs_supported_shell_scripts() {
                 "missing completion option {option} for {shell}"
             );
         }
+        assert!(
+            stdout.contains("config"),
+            "missing config command for {shell}"
+        );
+        assert!(
+            stdout.contains("list export"),
+            "missing config subcommands for {shell}"
+        );
+        assert!(
+            stdout.contains("out-dir"),
+            "missing config export output directory option for {shell}"
+        );
         if shell == "fish" {
             assert!(
                 stdout.contains("__fish_seen_subcommand_from inspect-config resolve-config"),
                 "fish completion should resolve inspect-config aliases for option completion"
+            );
+            assert!(
+                stdout.contains("__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from list export' -a 'list export"),
+                "fish completion should offer config subcommands before a nested command is selected"
+            );
+            assert!(
+                stdout.contains("__fish_seen_subcommand_from config; and __fish_seen_subcommand_from export' -l out-dir"),
+                "fish completion should offer --out-dir only for config export"
             );
         }
     }

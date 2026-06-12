@@ -46,3 +46,30 @@ fn external_profile_redacts_sensitive_fields() {
             .len()
     );
 }
+
+#[test]
+fn external_profile_redacts_state_checked_paths() {
+    let state = common::collect_state_fixture("linux-gpu-workstation-like-path-resources-fit-v1");
+    let artifact = redact_artifact_v1(RedactionRequestV1 {
+        artifact: ArtifactRecordV1::State(state),
+        profile: BuiltInRedactionProfileV1::External,
+        redacted_at: common::FIXED_TIMESTAMP.to_string(),
+    })
+    .expect("external state redaction should succeed");
+
+    let ArtifactRecordV1::State(redacted) = artifact else {
+        panic!("expected state artifact");
+    };
+
+    let rendered = serde_json::to_string(&redacted).expect("redacted state should encode");
+    assert!(!rendered.contains("/var/lib/local-model-cache"));
+    assert!(!rendered.contains("/var/tmp/image-output"));
+    assert_eq!(
+        redacted.state.core_state.path_resources.paths[0].path,
+        "redacted:external:mount_path:0"
+    );
+    assert_eq!(
+        redacted.state.core_state.path_resources.paths[1].path,
+        "redacted:external:mount_path:1"
+    );
+}

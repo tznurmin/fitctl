@@ -221,9 +221,13 @@ It contains:
 - `section_metadata`
 - `freshness`
 - `resources`
+- `path_resources`
 - `boundaries`
 - `topology`
 - `operability`
+
+`path_resources` records explicit path checks requested during live state collection. Each entry
+contains a path id, path, existence state, filesystem available bytes, and filesystem total bytes.
 
 `extension_state` carries namespaced runtime facts that do not belong in the stable contract. CUDA
 runtime replay and live state appear under
