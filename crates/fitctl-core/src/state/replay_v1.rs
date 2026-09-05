@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::artifacts::state_v1::{
-    HostRuntimeResourcesV1, HostStateExecutionBoundariesV1, HostStateOperabilityV1,
-    HostStatePathResourcesV1, HostStateTopologyV1, StateFreshnessV1,
+    HostRuntimeResourcesV1, HostStateExecutionBoundariesV1, HostStateGpuReliabilityV1,
+    HostStateMemoryReliabilityV1, HostStateOperabilityV1, HostStatePathResourcesV1,
+    HostStateThermalResourcesV1, HostStateTopologyV1, StateFreshnessV1,
 };
 use crate::fixtures::FixtureCoverageTagV1;
 use crate::identity::select_live_linux_identity_input_v2;
@@ -54,6 +55,12 @@ pub struct HostStateFixtureSnapshotV1 {
     pub resources: HostRuntimeResourcesV1,
     #[serde(default)]
     pub path_resources: HostStatePathResourcesV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_resources: Option<HostStateThermalResourcesV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_reliability: Option<HostStateMemoryReliabilityV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_reliability: Option<HostStateGpuReliabilityV1>,
     #[serde(default)]
     pub boundaries: HostStateExecutionBoundariesV1,
     #[serde(default)]
@@ -174,6 +181,9 @@ pub(crate) fn load_snapshot_from_corpus(
         freshness: snapshot.freshness.clone(),
         resources: snapshot.resources.clone(),
         path_resources: snapshot.path_resources.clone(),
+        thermal_resources: snapshot.thermal_resources.clone(),
+        memory_reliability: snapshot.memory_reliability.clone(),
+        gpu_reliability: snapshot.gpu_reliability.clone(),
         boundaries: snapshot.boundaries.clone(),
         topology: snapshot.topology.clone(),
         operability: snapshot.operability.clone(),

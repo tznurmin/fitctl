@@ -7,9 +7,28 @@
 //! needed for sharing and downstream tooling.
 
 pub mod apply_v1;
+pub mod artifact_v1;
+mod auxiliary_reports_v1;
+mod bundles_v1;
+mod config_bundle_lineage_v1;
+mod contract_artifact_v1;
+mod core_metadata_v1;
+mod extension_basis_v1;
+mod extension_payloads_v1;
+mod extension_sections_v1;
+mod path_resources_v1;
 pub mod profile_v1;
+mod provenance_v1;
+mod runtime_artifacts_v1;
+mod service_profile_artifact_v1;
+mod survey_artifact_v1;
+mod validation_report_v1;
 
 pub use apply_v1::{load_artifact_record_for_redaction, redact_artifact_v1, RedactionRequestV1};
+pub use artifact_v1::{
+    load_redactable_artifact_for_redaction, load_redactable_artifact_from_value,
+    redact_supported_artifact_v1, RedactableArtifactRequestV1, RedactableArtifactV1,
+};
 pub use profile_v1::{parse_builtin_redaction_profile_v1, BuiltInRedactionProfileV1};
 
 pub const REDACTION_ERROR_MODEL_ID: &str = "fitctl.redaction.v1";
@@ -20,6 +39,7 @@ pub enum RedactionErrorCode {
     ArtifactInputInvalid,
     RedactionProfileInvalid,
     RedactionInputAlreadyRedacted,
+    ExtensionRedactorUnavailable,
     RedactionApplyFailed,
     RedactionOutputInvalid,
 }
@@ -30,6 +50,7 @@ impl RedactionErrorCode {
             Self::ArtifactInputInvalid => "artifact_input_invalid",
             Self::RedactionProfileInvalid => "redaction_profile_invalid",
             Self::RedactionInputAlreadyRedacted => "redaction_input_already_redacted",
+            Self::ExtensionRedactorUnavailable => "extension_redactor_unavailable",
             Self::RedactionApplyFailed => "redaction_apply_failed",
             Self::RedactionOutputInvalid => "redaction_output_invalid",
         }

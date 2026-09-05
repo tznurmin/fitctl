@@ -63,9 +63,65 @@ A service profile may also declare a minimum policy-scoped accelerator count in 
 Runtime availability remains separate and belongs to `state`.
 
 A state-aware service profile may declare `required_paths`. Each entry names a path id, such as
-`model-cache` or `output`, and may require a minimum available byte count. Validation checks those
-requirements against `state` path resources collected with matching `--path-check <id>=<path>`
-inputs.
+`model-cache`, `scratch`, or `output`, and may require minimum available bytes, accepted media
+classes, accepted durability classes, filesystem types, accepted filesystem UUIDs, accepted
+partition UUIDs, accepted persistent device links, or explicit link capabilities. Validation checks
+those requirements against `state` path resources collected with matching
+`--path-check <id>=<path>` inputs. Link capability requirements need matching
+`--probe-path-links <id>` evidence.
+
+Profiles may also declare `path_relationships` and `required_path_link_pairs`.
+`path_relationships` compare two checked path ids and can require distinct storage identities,
+such as distinct filesystem UUIDs. `required_path_link_pairs` checks link or copy capability from
+one checked path id to another and requires matching `--probe-path-link-pair <from-id>:<to-id>`
+evidence.
+
+Storage identity requirements are low-level checks. A profile can say "this path must be mounted
+from one of these UUIDs or persistent device links", but fitctl does not decide whether that
+identity is scratch, data, cache, or another project-specific role.
+
+`fitctl storage profile init` can generate a reviewable service-profile skeleton from observed
+checked-path evidence. Use it to avoid manual transcription of UUIDs, media classes, filesystem
+types, and link capabilities:
+
+```bash
+fitctl storage profile init \
+  --path scratch=/scratch/workload \
+  --path output=/data/workload-output \
+  --probe-path-links scratch \
+  --min-available-bytes scratch=107374182400 \
+  --out workload-storage.profile.json
+```
+
+The generated file is configuration input for review and version control. It does not assign
+project-specific storage roles by itself.
+
+State-aware profiles may also declare `required_thermal_sensors`. Each entry names a thermal
+requirement, selects readings by provider id, sensor id, sensor alias, or normalized sensor role,
+and sets a maximum temperature in millidegrees Celsius. Provider configs may map raw sensor labels
+to site-local aliases so profiles can avoid motherboard-specific labels where possible.
+
+`fitctl thermal profile init` can generate a reviewable thermal service-profile skeleton from
+thermal evidence in either a state artifact or a standalone thermal-evidence artifact:
+
+```bash
+fitctl thermal profile init \
+  --state host.state.json \
+  --profile-id thermal_safe_v1 \
+  --margin-mc 10000 \
+  --out thermal-safe.profile.json
+```
+
+```bash
+fitctl thermal profile init \
+  --thermal-evidence host.thermal.json \
+  --profile-id thermal_safe_v1 \
+  --margin-mc 10000 \
+  --out thermal-safe.profile.json
+```
+
+The generated thresholds are observed temperatures plus the supplied margin. Review them before
+using the profile as an admission gate.
 
 Service profiles may also carry `display_name` and `short_display_name` fields for `inspect` and
 matrix views. These are presentation labels, not selection identity.

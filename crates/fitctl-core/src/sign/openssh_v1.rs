@@ -13,7 +13,8 @@ use crate::artifacts::envelope_v1::SignatureEnvelopeV1;
 use crate::artifacts::record_v1::{load_artifact_record_from_path, ArtifactRecordV1};
 use crate::artifacts::validation_v1::{
     validate_config_bundle, validate_decision_bundle, validate_host_contract, validate_host_state,
-    validate_host_survey, validate_service_profile, validate_validation_report,
+    validate_host_survey, validate_service_profile, validate_thermal_evidence,
+    validate_validation_report,
 };
 use crate::sign::{SignError, SignErrorCode};
 
@@ -567,6 +568,7 @@ fn validate_artifact_record(artifact: &ArtifactRecordV1) -> Result<(), String> {
         ArtifactRecordV1::Contract(artifact) => validate_host_contract(artifact),
         ArtifactRecordV1::ServiceProfile(artifact) => validate_service_profile(artifact),
         ArtifactRecordV1::State(artifact) => validate_host_state(artifact),
+        ArtifactRecordV1::ThermalEvidence(artifact) => validate_thermal_evidence(artifact),
         ArtifactRecordV1::ValidationReport(artifact) => validate_validation_report(artifact),
         ArtifactRecordV1::ConfigBundle(artifact) => validate_config_bundle(artifact),
         ArtifactRecordV1::DecisionBundle(artifact) => validate_decision_bundle(artifact),
@@ -582,6 +584,7 @@ fn artifact_envelope(
         ArtifactRecordV1::Contract(artifact) => &artifact.envelope,
         ArtifactRecordV1::ServiceProfile(artifact) => &artifact.envelope,
         ArtifactRecordV1::State(artifact) => &artifact.envelope,
+        ArtifactRecordV1::ThermalEvidence(artifact) => &artifact.envelope,
         ArtifactRecordV1::ValidationReport(artifact) => &artifact.envelope,
         ArtifactRecordV1::ConfigBundle(artifact) => &artifact.envelope,
         ArtifactRecordV1::DecisionBundle(artifact) => &artifact.envelope,
@@ -596,6 +599,7 @@ fn artifact_envelope_mut(
         ArtifactRecordV1::Contract(artifact) => &mut artifact.envelope,
         ArtifactRecordV1::ServiceProfile(artifact) => &mut artifact.envelope,
         ArtifactRecordV1::State(artifact) => &mut artifact.envelope,
+        ArtifactRecordV1::ThermalEvidence(artifact) => &mut artifact.envelope,
         ArtifactRecordV1::ValidationReport(artifact) => &mut artifact.envelope,
         ArtifactRecordV1::ConfigBundle(artifact) => &mut artifact.envelope,
         ArtifactRecordV1::DecisionBundle(artifact) => &mut artifact.envelope,

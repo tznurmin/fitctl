@@ -76,8 +76,12 @@ fn completion_outputs_supported_shell_scripts() {
             "invocation-context",
             "live-state",
             "path-check",
+            "probe-path-health",
+            "probe-path-links",
+            "probe-path-link-pair",
             "policy-pack-lock",
             "recommendation-pack-id",
+            "thermal-provider-config",
         ] {
             assert!(
                 stdout.contains(option),
@@ -95,6 +99,22 @@ fn completion_outputs_supported_shell_scripts() {
         assert!(
             stdout.contains("out-dir"),
             "missing config export output directory option for {shell}"
+        );
+        assert!(
+            stdout.contains("storage"),
+            "missing storage command for {shell}"
+        );
+        assert!(
+            stdout.contains("profile"),
+            "missing storage profile for {shell}"
+        );
+        assert!(
+            stdout.contains("init"),
+            "missing storage profile init for {shell}"
+        );
+        assert!(
+            stdout.contains("min-available-bytes"),
+            "missing storage profile minimum-byte option for {shell}"
         );
         if shell == "fish" {
             assert!(

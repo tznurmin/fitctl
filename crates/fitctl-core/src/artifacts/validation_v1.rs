@@ -11,6 +11,10 @@ mod report_semantics;
 use self::report_semantics::*;
 
 use crate::artifacts::batch_classification_report_v1::BatchClassificationReportV1;
+use crate::artifacts::categorical_values_v1::{
+    is_supported_gpu_provider_error_code, is_supported_memory_provider_error_code,
+    is_supported_survey_collection_mode, is_supported_thermal_provider_error_code,
+};
 use crate::artifacts::config_bundle_v1::ConfigBundleV1;
 use crate::artifacts::contract_v1::{ContractBasisV1, HostContractV1};
 use crate::artifacts::decision_bundle_v1::DecisionBundleV1;
@@ -27,7 +31,8 @@ use crate::artifacts::schema_ids_v1::{
     BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, CONFIG_BUNDLE_SCHEMA_ID, DECISION_BUNDLE_SCHEMA_ID,
     HOST_CONTRACT_SCHEMA_ID, HOST_STATE_SCHEMA_ID, HOST_SURVEY_SCHEMA_ID,
     LEGACY_BATCH_CLASSIFICATION_REPORT_SCHEMA_ID, RECOMMENDATION_REPORT_SCHEMA_ID,
-    SERVICE_PROFILE_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION, VALIDATION_REPORT_SCHEMA_ID,
+    SERVICE_PROFILE_SCHEMA_ID, THERMAL_EVIDENCE_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
+    VALIDATION_REPORT_SCHEMA_ID,
 };
 use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_config_bundle, semantic_hash_hex_for_contract,
@@ -35,8 +40,11 @@ use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_state, semantic_hash_hex_for_validation_report,
 };
 use crate::artifacts::service_profile_v1::ServiceProfileV1;
-use crate::artifacts::state_v1::{HostStateV1, StateFieldV1, StateLocalIdentityV1};
+use crate::artifacts::state_v1::{
+    HostStateThermalResourcesV1, HostStateV1, StateFieldV1, StateLocalIdentityV1,
+};
 use crate::artifacts::survey_v1::{decode_host_survey_payload, HostSurveyV1};
+use crate::artifacts::thermal_evidence_v1::ThermalEvidenceV1;
 use crate::artifacts::validation_report_v1::ValidationReportV1;
 use crate::artifacts::validation_report_v1::{
     ValidationExplanationV1, ValidationModeV1, ValidationReasonCodeV1,
@@ -117,6 +125,12 @@ pub fn validate_host_survey(survey: &HostSurveyV1) -> Result<(), ArtifactValidat
             format!("host survey payload must decode to the typed survey shape: {error}"),
         )
     })?;
+    if !is_supported_survey_collection_mode(&payload.collection_mode) {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host survey collection_mode is not supported",
+        ));
+    }
     if is_blank(&payload.snapshot_id)
         || is_blank(&payload.host_alias)
         || is_blank(&payload.source_ref)
@@ -432,6 +446,10 @@ pub fn validate_host_contract(contract: &HostContractV1) -> Result<(), ArtifactV
         &payload.extension_contract,
         "host contract extension contract",
     )?;
+    crate::artifacts::contract_extension_integrity_v1::validate_contract_extension_integrity_v1(
+        contract.contract_basis.extension_basis.as_ref(),
+        &payload.extension_contract,
+    )?;
     validate_known_extension_contract(&payload.extension_contract)?;
     validate_identity_summary(&payload.core_contract.identity_summary)?;
     if payload.core_contract.capability_classes.is_empty() {
@@ -724,8 +742,173 @@ pub fn validate_service_profile(profile: &ServiceProfileV1) -> Result<(), Artifa
                 "service profile required path minimum available bytes must be positive when populated",
             ));
         }
+        validate_unique_non_blank_strings(
+            &path.required_filesystem_types,
+            "service profile required path filesystem types",
+        )?;
+        validate_unique_non_blank_strings(
+            &path.accepted_filesystem_uuids,
+            "service profile required path accepted filesystem UUIDs",
+        )?;
+        validate_unique_non_blank_strings(
+            &path.accepted_partition_uuids,
+            "service profile required path accepted partition UUIDs",
+        )?;
+        validate_unique_non_blank_strings(
+            &path.accepted_persistent_device_links,
+            "service profile required path accepted persistent device links",
+        )?;
+        if path
+            .accepted_media_classes
+            .iter()
+            .any(|value| matches!(value, crate::state::StateStorageMediaClassV1::Unknown))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile accepted media classes must not require unknown",
+            ));
+        }
+        if path
+            .accepted_durability_classes
+            .iter()
+            .any(|value| matches!(value, crate::state::StateStorageDurabilityClassV1::Unknown))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile accepted durability classes must not require unknown",
+            ));
+        }
+        if let Some(storage_health) = path.storage_health.as_ref() {
+            let mut accepted_health_states = BTreeSet::new();
+            for state in &storage_health.accepted_health_states {
+                if matches!(state, crate::state::StateStorageHealthStateV1::Unknown) {
+                    return Err(ArtifactValidationError::new(
+                        ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                        "service profile accepted storage health states must not require unknown",
+                    ));
+                }
+                if !accepted_health_states.insert(state.as_str()) {
+                    return Err(ArtifactValidationError::new(
+                        ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                        "service profile accepted storage health states must be unique",
+                    ));
+                }
+            }
+            if storage_health
+                .max_temperature_celsius
+                .is_some_and(|value| value <= 0)
+                || storage_health
+                    .max_percentage_used
+                    .is_some_and(|value| value > 100)
+                || storage_health
+                    .min_available_spare_percent
+                    .is_some_and(|value| value > 100)
+            {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "service profile path storage health thresholds must use positive temperatures and percentages from 0 to 100",
+                ));
+            }
+        }
+    }
+    if let Some(requirement) = profile
+        .profile
+        .core_requirements
+        .required_memory_reliability
+        .as_ref()
+    {
+        if !requirement.require_provider_success
+            && requirement.max_corrected_error_count.is_none()
+            && requirement.max_uncorrected_error_count.is_none()
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required memory reliability must require provider success or at least one threshold",
+            ));
+        }
+    }
+    if let Some(requirement) = profile
+        .profile
+        .core_requirements
+        .required_gpu_reliability
+        .as_ref()
+    {
+        if requirement
+            .require_ecc_mode_current
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+            || (!requirement.require_provider_success
+                && requirement.require_ecc_mode_current.is_none()
+                && requirement.max_volatile_corrected_ecc_error_count.is_none()
+                && requirement
+                    .max_volatile_uncorrected_ecc_error_count
+                    .is_none()
+                && !requirement.require_no_retired_pages_pending
+                && !requirement.require_no_row_remapper_pending)
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required GPU reliability must require provider success or at least one concrete GPU reliability threshold",
+            ));
+        }
+    }
+    let mut thermal_requirement_ids = BTreeSet::new();
+    for requirement in &profile.profile.core_requirements.required_thermal_sensors {
+        if is_blank(&requirement.requirement_id)
+            || !thermal_requirement_ids.insert(requirement.requirement_id.clone())
+            || requirement
+                .provider_id
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || requirement
+                .sensor_id
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || requirement
+                .sensor_alias
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || requirement.max_temperature_millidegrees_celsius <= 0
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required thermal sensor requirements must have unique ids, non-blank selectors, and positive maximum temperatures",
+            ));
+        }
+        if requirement.provider_id.is_none()
+            && requirement.sensor_id.is_none()
+            && requirement.sensor_alias.is_none()
+            && requirement.sensor_role.is_none()
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "service profile required thermal sensors must declare at least one selector",
+            ));
+        }
     }
 
+    Ok(())
+}
+
+fn validate_unique_non_blank_strings(
+    values: &[String],
+    label: &str,
+) -> Result<(), ArtifactValidationError> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        if is_blank(value) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("{label} must be non-blank when present"),
+            ));
+        }
+        if !seen.insert(value.clone()) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("{label} must be unique when present"),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1352,8 +1535,27 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
             "cgroupfs_memory_boundary",
             "sysfs_topology",
             "statvfs_path_capacity",
+            "mountinfo_path_storage",
+            "sysfs_block_media",
+            "path_link_probe",
+            "path_storage_health_probe",
+            "thermal_provider",
+            "edac_memory_reliability",
+            "nvidia_smi_gpu_reliability",
         ],
-        &["rust_std", "procfs", "cgroupfs", "sysfs", "statvfs"],
+        &[
+            "rust_std",
+            "procfs",
+            "cgroupfs",
+            "sysfs",
+            "statvfs",
+            "mountinfo",
+            "filesystem_probe",
+            "storage_health_probe",
+            "thermal_provider",
+            "edac_memory_reliability",
+            "nvidia_smi_gpu_reliability",
+        ],
     )?;
     validate_namespaced_json_map(&state.state.extension_state, "host-state extension state")?;
 
@@ -1399,6 +1601,15 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
         |value| matches!(value.as_str(), "v1" | "v2"),
     )?;
     validate_state_field(
+        &state
+            .state
+            .core_state
+            .boundaries
+            .available_cgroup_controllers,
+        "available_cgroup_controllers",
+        |value| value.iter().all(|entry| !entry.trim().is_empty()),
+    )?;
+    validate_state_field(
         &state.state.core_state.boundaries.cpuset_cpu_logical_cores,
         "cpuset_cpu_logical_cores",
         |value| *value > 0,
@@ -1420,6 +1631,9 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
     )?;
     validate_state_memory_accounting(state)?;
     validate_state_path_resources(state)?;
+    validate_state_thermal_resources(state)?;
+    validate_state_memory_reliability(state)?;
+    validate_state_gpu_reliability(state)?;
     validate_state_field(
         &state.state.core_state.topology.visible_numa_nodes,
         "visible_numa_nodes",
@@ -1442,6 +1656,291 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
     Ok(())
 }
 
+fn validate_state_memory_reliability(state: &HostStateV1) -> Result<(), ArtifactValidationError> {
+    let Some(memory) = state.state.core_state.memory_reliability.as_ref() else {
+        return Ok(());
+    };
+    if is_blank(&memory.observed_at) || memory.providers.is_empty() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host-state memory reliability must include observed_at and provider outcomes",
+        ));
+    }
+    let mut provider_ids = BTreeSet::new();
+    for provider in &memory.providers {
+        if provider
+            .error_code
+            .as_deref()
+            .is_some_and(|value| !is_supported_memory_provider_error_code(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state memory reliability provider error_code is not supported",
+            ));
+        }
+        if is_blank(&provider.provider_id)
+            || is_blank(&provider.observed_at)
+            || !provider_ids.insert(provider.provider_id.clone())
+            || provider
+                .source
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || provider
+                .error_code
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || provider
+                .diagnostics
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state memory reliability provider metadata must be non-blank and unique",
+            ));
+        }
+    }
+    validate_state_field(
+        &memory.controller_count,
+        "memory_reliability.controller_count",
+        |_| true,
+    )?;
+    validate_state_field(&memory.dimm_count, "memory_reliability.dimm_count", |_| {
+        true
+    })?;
+    validate_state_field(
+        &memory.corrected_error_count,
+        "memory_reliability.corrected_error_count",
+        |_| true,
+    )?;
+    validate_state_field(
+        &memory.uncorrected_error_count,
+        "memory_reliability.uncorrected_error_count",
+        |_| true,
+    )?;
+    Ok(())
+}
+
+fn validate_state_gpu_reliability(state: &HostStateV1) -> Result<(), ArtifactValidationError> {
+    let Some(gpu) = state.state.core_state.gpu_reliability.as_ref() else {
+        return Ok(());
+    };
+    if is_blank(&gpu.observed_at) || gpu.providers.is_empty() {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "host-state GPU reliability must include observed_at and provider outcomes",
+        ));
+    }
+    let mut provider_ids = BTreeSet::new();
+    for provider in &gpu.providers {
+        if provider
+            .error_code
+            .as_deref()
+            .is_some_and(|value| !is_supported_gpu_provider_error_code(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state GPU reliability provider error_code is not supported",
+            ));
+        }
+        if is_blank(&provider.provider_id)
+            || is_blank(&provider.observed_at)
+            || !provider_ids.insert(provider.provider_id.clone())
+            || provider
+                .error_code
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || provider
+                .diagnostics
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state GPU reliability provider metadata must be non-blank and unique",
+            ));
+        }
+    }
+    for device in &gpu.devices {
+        validate_state_field(&device.gpu_uuid, "gpu_reliability.gpu_uuid", |value| {
+            !is_blank(value)
+        })?;
+        validate_state_field(
+            &device.product_name,
+            "gpu_reliability.product_name",
+            |value| !is_blank(value),
+        )?;
+        validate_state_field(
+            &device.ecc_mode_current,
+            "gpu_reliability.ecc_mode_current",
+            |value| !is_blank(value),
+        )?;
+        validate_state_field(
+            &device.volatile_corrected_ecc_error_count,
+            "gpu_reliability.volatile_corrected_ecc_error_count",
+            |_| true,
+        )?;
+        validate_state_field(
+            &device.volatile_uncorrected_ecc_error_count,
+            "gpu_reliability.volatile_uncorrected_ecc_error_count",
+            |_| true,
+        )?;
+        validate_state_field(
+            &device.retired_pages_pending,
+            "gpu_reliability.retired_pages_pending",
+            |_| true,
+        )?;
+        validate_state_field(
+            &device.row_remapper_pending,
+            "gpu_reliability.row_remapper_pending",
+            |_| true,
+        )?;
+    }
+    Ok(())
+}
+
+pub fn validate_thermal_evidence(
+    artifact: &ThermalEvidenceV1,
+) -> Result<(), ArtifactValidationError> {
+    validate_envelope(&artifact.envelope, THERMAL_EVIDENCE_SCHEMA_ID)?;
+    validate_local_execution_provenance(&artifact.envelope.provenance)?;
+    validate_thermal_resources(
+        &artifact.thermal_evidence,
+        "thermal evidence",
+        "thermal evidence artifact",
+    )
+}
+
+fn validate_state_thermal_resources(state: &HostStateV1) -> Result<(), ArtifactValidationError> {
+    let Some(thermal_resources) = state.state.core_state.thermal_resources.as_ref() else {
+        return Ok(());
+    };
+    validate_thermal_resources(thermal_resources, "host-state thermal", "host-state")
+}
+
+fn validate_thermal_resources(
+    thermal_resources: &HostStateThermalResourcesV1,
+    field_label: &str,
+    artifact_label: &str,
+) -> Result<(), ArtifactValidationError> {
+    if is_blank(&thermal_resources.observed_at)
+        || thermal_resources.providers.is_empty()
+        || thermal_resources
+            .collector_host
+            .host_alias
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        || thermal_resources
+            .collector_host
+            .local_stable_id
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            format!(
+                "{field_label} resources must include observed_at, provider outcomes, and non-blank collector host metadata"
+            ),
+        ));
+    }
+    let mut provider_ids = BTreeSet::new();
+    for provider in &thermal_resources.providers {
+        if provider
+            .error_code
+            .as_deref()
+            .is_some_and(|value| !is_supported_thermal_provider_error_code(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("{artifact_label} thermal provider error_code is not supported"),
+            ));
+        }
+        if is_blank(&provider.provider_id) || !provider_ids.insert(provider.provider_id.clone()) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("{artifact_label} thermal provider ids must be non-blank and unique"),
+            ));
+        }
+        validate_state_thermal_target(&provider.evidence_target)?;
+        if is_blank(&provider.observed_at)
+            || provider
+                .error_code
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || provider
+                .diagnostics
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "{artifact_label} thermal provider metadata must be non-blank when present"
+                ),
+            ));
+        }
+    }
+    let mut sensor_ids = BTreeSet::new();
+    for reading in &thermal_resources.readings {
+        if is_blank(&reading.sensor_id)
+            || is_blank(&reading.provider_id)
+            || is_blank(&reading.raw_label)
+            || is_blank(&reading.observed_at)
+            || !sensor_ids.insert(reading.sensor_id.clone())
+            || !provider_ids.contains(&reading.provider_id)
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "{artifact_label} thermal readings must include unique sensor ids and known provider ids"
+                ),
+            ));
+        }
+        validate_state_thermal_target(&reading.evidence_target)?;
+        if reading.source.as_ref().is_some_and(|value| is_blank(value)) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("{artifact_label} thermal reading source must be non-blank when present"),
+            ));
+        }
+        if reading
+            .sensor_alias
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!("{artifact_label} thermal reading alias must be non-blank when present"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_state_thermal_target(
+    target: &crate::artifacts::state_v1::HostStateThermalEvidenceTargetV1,
+) -> Result<(), ArtifactValidationError> {
+    match target.target_kind {
+        crate::artifacts::state_v1::ThermalEvidenceTargetKindV1::CurrentHost => {
+            if target.host_id.is_some() {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "host-state current_host thermal target must not include host_id",
+                ));
+            }
+        }
+        crate::artifacts::state_v1::ThermalEvidenceTargetKindV1::HostId => {
+            if target.host_id.as_deref().is_none_or(is_blank) {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "host-state host_id thermal target requires non-blank host_id",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_state_path_resources(state: &HostStateV1) -> Result<(), ArtifactValidationError> {
     let mut path_ids = BTreeSet::new();
     for path in &state.state.core_state.path_resources.paths {
@@ -1458,6 +1957,84 @@ fn validate_state_path_resources(state: &HostStateV1) -> Result<(), ArtifactVali
             ));
         }
         validate_state_field(&path.exists, "path_resources.exists", |_| true)?;
+        validate_state_field(
+            &path.canonical_path,
+            "path_resources.canonical_path",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field(
+            &path.containing_mount_point,
+            "path_resources.containing_mount_point",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field(
+            &path.filesystem_type,
+            "path_resources.filesystem_type",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field(&path.mount_source, "path_resources.mount_source", |value| {
+            !value.trim().is_empty()
+        })?;
+        validate_state_field(
+            &path.mount_options,
+            "path_resources.mount_options",
+            |value| value.iter().all(|entry| !entry.trim().is_empty()),
+        )?;
+        validate_state_field(
+            &path.mount_device_major_minor,
+            "path_resources.mount_device_major_minor",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field(
+            &path.filesystem_uuid,
+            "path_resources.filesystem_uuid",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field(
+            &path.partition_uuid,
+            "path_resources.partition_uuid",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field(
+            &path.persistent_device_links,
+            "path_resources.persistent_device_links",
+            |value| value.iter().all(|entry| !entry.trim().is_empty()),
+        )?;
+        validate_unique_non_blank_strings(
+            &path.storage_identity_evidence,
+            "host-state path storage-identity evidence",
+        )?;
+        validate_state_field(&path.media_class, "path_resources.media_class", |_value| {
+            true
+        })?;
+        validate_state_field(
+            &path.media_class_confidence,
+            "path_resources.media_class_confidence",
+            |_value| true,
+        )?;
+        validate_unique_non_blank_strings(
+            &path.media_class_evidence,
+            "host-state path media-class evidence",
+        )?;
+        validate_state_field(
+            &path.durability_class,
+            "path_resources.durability_class",
+            |_value| true,
+        )?;
+        if path
+            .requested_path
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+            || path
+                .observed_at
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state path resources must not contain blank requested_path or observed_at values",
+            ));
+        }
         validate_state_field(
             &path.filesystem_available_bytes,
             "path_resources.filesystem_available_bytes",
@@ -1479,6 +2056,153 @@ fn validate_state_path_resources(state: &HostStateV1) -> Result<(), ArtifactVali
                         "host-state path resource {} available bytes must not exceed total bytes",
                         path.path_id
                     ),
+                ));
+            }
+        }
+        if let Some(link_capabilities) = path.link_capabilities.as_ref() {
+            validate_state_field(
+                &link_capabilities.hardlink_supported,
+                "path_resources.link_capabilities.hardlink_supported",
+                |_| true,
+            )?;
+            validate_state_field(
+                &link_capabilities.reflink_supported,
+                "path_resources.link_capabilities.reflink_supported",
+                |_| true,
+            )?;
+            validate_state_field(
+                &link_capabilities.symlink_supported,
+                "path_resources.link_capabilities.symlink_supported",
+                |_| true,
+            )?;
+            validate_state_field(
+                &link_capabilities.copy_possible,
+                "path_resources.link_capabilities.copy_possible",
+                |_| true,
+            )?;
+            for value in [
+                link_capabilities.probe_method.as_ref(),
+                link_capabilities.probe_error.as_ref(),
+                link_capabilities.probe_root.as_ref(),
+                link_capabilities.observed_at.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if is_blank(value) {
+                    return Err(ArtifactValidationError::new(
+                        ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                        "host-state path link capability metadata must be non-blank when present",
+                    ));
+                }
+            }
+        }
+        if let Some(storage_health) = path.storage_health.as_ref() {
+            validate_state_field(
+                &storage_health.health_state,
+                "path_resources.storage_health.health_state",
+                |_value| true,
+            )?;
+            validate_state_field(
+                &storage_health.temperature_celsius,
+                "path_resources.storage_health.temperature_celsius",
+                |_| true,
+            )?;
+            validate_state_field(
+                &storage_health.percentage_used,
+                "path_resources.storage_health.percentage_used",
+                |value| *value <= 100,
+            )?;
+            validate_state_field(
+                &storage_health.available_spare_percent,
+                "path_resources.storage_health.available_spare_percent",
+                |value| *value <= 100,
+            )?;
+            for value in [
+                storage_health.source.as_ref(),
+                storage_health.probe_method.as_ref(),
+                storage_health.probe_error.as_ref(),
+                storage_health.observed_at.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if is_blank(value) {
+                    return Err(ArtifactValidationError::new(
+                        ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                        "host-state path storage health metadata must be non-blank when present",
+                    ));
+                }
+            }
+        }
+    }
+    let mut pair_ids = BTreeSet::new();
+    for pair in &state.state.core_state.path_resources.link_pairs {
+        if is_blank(&pair.pair_id)
+            || is_blank(&pair.from_path_id)
+            || is_blank(&pair.to_path_id)
+            || pair.from_path_id == pair.to_path_id
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "host-state path link pairs must include non-blank distinct path ids",
+            ));
+        }
+        if !pair_ids.insert(pair.pair_id.clone()) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "host-state path link pair id {} is duplicated",
+                    pair.pair_id
+                ),
+            ));
+        }
+        if !path_ids.contains(&pair.from_path_id) || !path_ids.contains(&pair.to_path_id) {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                format!(
+                    "host-state path link pair {} references an unknown path id",
+                    pair.pair_id
+                ),
+            ));
+        }
+        validate_state_field(
+            &pair.same_filesystem,
+            "path_resources.link_pairs.same_filesystem",
+            |_| true,
+        )?;
+        validate_state_field(
+            &pair.hardlink_supported,
+            "path_resources.link_pairs.hardlink_supported",
+            |_| true,
+        )?;
+        validate_state_field(
+            &pair.reflink_supported,
+            "path_resources.link_pairs.reflink_supported",
+            |_| true,
+        )?;
+        validate_state_field(
+            &pair.symlink_supported,
+            "path_resources.link_pairs.symlink_supported",
+            |_| true,
+        )?;
+        validate_state_field(
+            &pair.copy_possible,
+            "path_resources.link_pairs.copy_possible",
+            |_| true,
+        )?;
+        for value in [
+            pair.probe_method.as_ref(),
+            pair.probe_error.as_ref(),
+            pair.observed_at.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if is_blank(value) {
+                return Err(ArtifactValidationError::new(
+                    ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                    "host-state path link pair metadata must be non-blank when present",
                 ));
             }
         }
@@ -1540,6 +2264,22 @@ pub fn validate_validation_report(
             .assurance_mismatches
             .iter()
             .any(|value| is_blank(value))
+        || report.report.path_diagnostics.iter().any(|entry| {
+            is_blank(&entry.diagnostic_id)
+                || is_blank(&entry.requirement_key)
+                || is_blank(&entry.check_id)
+                || is_blank(&entry.reason_code)
+                || entry.path_ids.iter().any(|value| is_blank(value))
+                || entry
+                    .expected
+                    .iter()
+                    .any(|(key, value)| is_blank(key) || is_blank(value))
+                || entry
+                    .observed
+                    .iter()
+                    .any(|(key, value)| is_blank(key) || is_blank(value))
+                || entry.evidence_refs.iter().any(|value| is_blank(value))
+        })
         || report
             .report
             .explanations
@@ -2438,11 +3178,30 @@ fn validate_validation_basis_semantics(
         && report.validation_basis.state_freshness_state.is_some();
     let has_partial_state_freshness_context = report.validation_basis.state_observed_at.is_some()
         ^ report.validation_basis.state_freshness_state.is_some();
+    let has_thermal_evidence_lineage = !report
+        .validation_basis
+        .thermal_evidence_artifact_ids
+        .is_empty()
+        && !report
+            .validation_basis
+            .thermal_evidence_semantic_hashes
+            .is_empty();
 
     if has_partial_state_freshness_context {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "validation reports must carry complete state freshness context or none at all",
+        ));
+    }
+    if report.validation_basis.thermal_evidence_artifact_ids.len()
+        != report
+            .validation_basis
+            .thermal_evidence_semantic_hashes
+            .len()
+    {
+        return Err(ArtifactValidationError::new(
+            ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+            "validation reports must carry paired thermal evidence artifact ids and semantic hashes",
         ));
     }
 
@@ -2453,10 +3212,11 @@ fn validate_validation_basis_semantics(
                 || report.validation_basis.state_observed_at.is_some()
                 || report.validation_basis.state_freshness_state.is_some()
                 || report.validation_basis.max_state_age_seconds.is_some()
+                || has_thermal_evidence_lineage
             {
                 return Err(ArtifactValidationError::new(
                     ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-                    "contract_only validation reports must not carry host-state freshness context",
+                    "contract_only validation reports must not carry runtime evidence context",
                 ));
             }
         }
@@ -2482,6 +3242,7 @@ fn validate_validation_basis_semantics(
                 ));
             }
             if !has_state_lineage
+                && !has_thermal_evidence_lineage
                 && !matches!(
                     report.report.primary_reason_code,
                     ValidationReasonCodeV1::StateMissing | ValidationReasonCodeV1::StateStale
@@ -2692,7 +3453,10 @@ fn validate_local_execution_provenance(
     let Some(command_name) = provenance.command_name.as_deref() else {
         unreachable!("validated above")
     };
-    if !matches!(command_name, "survey" | "contract" | "state" | "validate") {
+    if !matches!(
+        command_name,
+        "survey" | "contract" | "state" | "thermal" | "validate"
+    ) {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "local execution provenance command_name must be a supported fitctl command",
@@ -2770,6 +3534,22 @@ fn validate_identity_summary(summary: &IdentitySummaryV1) -> Result<(), Artifact
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             "identity summary must include stable identity and digest fields",
         ));
+    }
+
+    if summary.identity_class == crate::artifacts::metadata_v1::IdentityClassV1::Redacted {
+        if summary.local_stable_id_version != 0
+            || summary.local_stable_anchor_family.is_some()
+            || summary.local_stable_anchor_source.is_some()
+            || summary.local_stable_stability_class.is_some()
+            || summary.local_stable_id_degraded
+            || summary.local_stable_id_degraded_reason.is_some()
+        {
+            return Err(ArtifactValidationError::new(
+                ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
+                "redacted identity summaries must not carry local identity derivation metadata",
+            ));
+        }
+        return Ok(());
     }
 
     let has_identity_v2_metadata = summary.local_stable_id_version != 0

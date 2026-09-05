@@ -55,6 +55,9 @@ pub(crate) fn build_host_state_from_snapshot(
     )?;
     validate_memory_accounting(&snapshot.resources)?;
     validate_path_resources(&snapshot.path_resources)?;
+    validate_thermal_resources(snapshot.thermal_resources.as_ref())?;
+    validate_memory_reliability(snapshot.memory_reliability.as_ref())?;
+    validate_gpu_reliability(snapshot.gpu_reliability.as_ref())?;
 
     canonicalise_snapshot(&mut snapshot);
 
@@ -115,6 +118,9 @@ pub(crate) fn build_host_state_from_snapshot(
             freshness: snapshot.freshness.clone(),
             resources: snapshot.resources.clone(),
             path_resources: snapshot.path_resources.clone(),
+            thermal_resources: snapshot.thermal_resources.clone(),
+            memory_reliability: snapshot.memory_reliability.clone(),
+            gpu_reliability: snapshot.gpu_reliability.clone(),
             boundaries: snapshot.boundaries.clone(),
             topology: snapshot.topology.clone(),
             operability: snapshot.operability.clone(),
@@ -163,6 +169,273 @@ pub(crate) fn build_host_state_from_snapshot(
     })?;
 
     Ok(artifact)
+}
+
+fn validate_memory_reliability(
+    memory_reliability: Option<&crate::state::HostStateMemoryReliabilityV1>,
+) -> Result<(), StateError> {
+    let Some(memory_reliability) = memory_reliability else {
+        return Ok(());
+    };
+    if memory_reliability.observed_at.trim().is_empty() || memory_reliability.providers.is_empty() {
+        return Err(StateError::new(
+            StateErrorCode::StateNormalizationFailed,
+            "memory_reliability_emit",
+            "memory reliability evidence must include observed_at and provider outcomes",
+        ));
+    }
+    let mut provider_ids = std::collections::BTreeSet::new();
+    for provider in &memory_reliability.providers {
+        if provider.provider_id.trim().is_empty()
+            || provider.observed_at.trim().is_empty()
+            || !provider_ids.insert(provider.provider_id.clone())
+        {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "memory_reliability_emit",
+                "memory reliability provider ids must be unique and metadata must be non-blank",
+            ));
+        }
+        for value in [
+            provider.source.as_ref(),
+            provider.error_code.as_ref(),
+            provider.diagnostics.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if value.trim().is_empty() {
+                return Err(StateError::new(
+                    StateErrorCode::StateNormalizationFailed,
+                    "memory_reliability_emit",
+                    "memory reliability provider optional strings must be non-blank",
+                ));
+            }
+        }
+    }
+    validate_field(
+        &memory_reliability.controller_count,
+        "memory_reliability.controller_count",
+        |_| true,
+    )?;
+    validate_field(
+        &memory_reliability.dimm_count,
+        "memory_reliability.dimm_count",
+        |_| true,
+    )?;
+    validate_field(
+        &memory_reliability.corrected_error_count,
+        "memory_reliability.corrected_error_count",
+        |_| true,
+    )?;
+    validate_field(
+        &memory_reliability.uncorrected_error_count,
+        "memory_reliability.uncorrected_error_count",
+        |_| true,
+    )?;
+    Ok(())
+}
+
+fn validate_gpu_reliability(
+    gpu_reliability: Option<&crate::state::HostStateGpuReliabilityV1>,
+) -> Result<(), StateError> {
+    let Some(gpu_reliability) = gpu_reliability else {
+        return Ok(());
+    };
+    if gpu_reliability.observed_at.trim().is_empty() || gpu_reliability.providers.is_empty() {
+        return Err(StateError::new(
+            StateErrorCode::StateNormalizationFailed,
+            "gpu_reliability_emit",
+            "GPU reliability evidence must include observed_at and provider outcomes",
+        ));
+    }
+    let mut provider_ids = std::collections::BTreeSet::new();
+    for provider in &gpu_reliability.providers {
+        if provider.provider_id.trim().is_empty()
+            || provider.observed_at.trim().is_empty()
+            || !provider_ids.insert(provider.provider_id.clone())
+        {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "gpu_reliability_emit",
+                "GPU reliability provider ids must be unique and metadata must be non-blank",
+            ));
+        }
+        for value in [provider.error_code.as_ref(), provider.diagnostics.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if value.trim().is_empty() {
+                return Err(StateError::new(
+                    StateErrorCode::StateNormalizationFailed,
+                    "gpu_reliability_emit",
+                    "GPU reliability provider optional strings must be non-blank",
+                ));
+            }
+        }
+    }
+    for device in &gpu_reliability.devices {
+        validate_field(&device.gpu_uuid, "gpu_reliability.gpu_uuid", |value| {
+            !value.trim().is_empty()
+        })?;
+        validate_field(
+            &device.product_name,
+            "gpu_reliability.product_name",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_field(
+            &device.ecc_mode_current,
+            "gpu_reliability.ecc_mode_current",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_field(
+            &device.volatile_corrected_ecc_error_count,
+            "gpu_reliability.volatile_corrected_ecc_error_count",
+            |_| true,
+        )?;
+        validate_field(
+            &device.volatile_uncorrected_ecc_error_count,
+            "gpu_reliability.volatile_uncorrected_ecc_error_count",
+            |_| true,
+        )?;
+        validate_field(
+            &device.retired_pages_pending,
+            "gpu_reliability.retired_pages_pending",
+            |_| true,
+        )?;
+        validate_field(
+            &device.row_remapper_pending,
+            "gpu_reliability.row_remapper_pending",
+            |_| true,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_thermal_resources(
+    thermal_resources: Option<&crate::state::HostStateThermalResourcesV1>,
+) -> Result<(), StateError> {
+    let Some(thermal_resources) = thermal_resources else {
+        return Ok(());
+    };
+    if thermal_resources.observed_at.trim().is_empty()
+        || thermal_resources.providers.is_empty()
+        || thermal_resources
+            .collector_host
+            .host_alias
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        || thermal_resources
+            .collector_host
+            .local_stable_id
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(StateError::new(
+            StateErrorCode::StateNormalizationFailed,
+            "thermal_provider_emit",
+            "thermal resources must include observed_at, provider outcomes, and non-blank collector host metadata",
+        ));
+    }
+    let mut provider_ids = std::collections::BTreeSet::new();
+    for provider in &thermal_resources.providers {
+        if provider.provider_id.trim().is_empty()
+            || !provider_ids.insert(provider.provider_id.clone())
+        {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "thermal_provider_emit",
+                "thermal provider ids must be non-blank and unique",
+            ));
+        }
+        validate_thermal_target(&provider.evidence_target)?;
+        for value in [
+            provider.error_code.as_ref(),
+            provider.diagnostics.as_ref(),
+            Some(&provider.observed_at),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if value.trim().is_empty() {
+                return Err(StateError::new(
+                    StateErrorCode::StateNormalizationFailed,
+                    "thermal_provider_emit",
+                    "thermal provider metadata must be non-blank when present",
+                ));
+            }
+        }
+    }
+    let mut sensor_ids = std::collections::BTreeSet::new();
+    for reading in &thermal_resources.readings {
+        if reading.sensor_id.trim().is_empty()
+            || reading.provider_id.trim().is_empty()
+            || reading.raw_label.trim().is_empty()
+            || reading.observed_at.trim().is_empty()
+            || !sensor_ids.insert(reading.sensor_id.clone())
+            || !provider_ids.contains(&reading.provider_id)
+        {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "thermal_provider_emit",
+                "thermal readings must include unique sensor ids and known provider ids",
+            ));
+        }
+        validate_thermal_target(&reading.evidence_target)?;
+        if reading
+            .source
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "thermal_provider_emit",
+                "thermal reading source must be non-blank when present",
+            ));
+        }
+        if reading
+            .sensor_alias
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(StateError::new(
+                StateErrorCode::StateNormalizationFailed,
+                "thermal_provider_emit",
+                "thermal reading alias must be non-blank when present",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_thermal_target(
+    target: &crate::state::HostStateThermalEvidenceTargetV1,
+) -> Result<(), StateError> {
+    match target.target_kind {
+        crate::state::ThermalEvidenceTargetKindV1::CurrentHost => {
+            if target.host_id.is_some() {
+                return Err(StateError::new(
+                    StateErrorCode::StateNormalizationFailed,
+                    "thermal_provider_emit",
+                    "current_host thermal target must not include host_id",
+                ));
+            }
+        }
+        crate::state::ThermalEvidenceTargetKindV1::HostId => {
+            if target
+                .host_id
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(StateError::new(
+                    StateErrorCode::StateNormalizationFailed,
+                    "thermal_provider_emit",
+                    "host_id thermal target requires non-blank host_id",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_field<T>(
@@ -241,6 +514,26 @@ fn validate_path_resources(
         }
         validate_field(&path.exists, "path_resources.exists", |_| true)?;
         validate_field(
+            &path.mount_device_major_minor,
+            "path_resources.mount_device_major_minor",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_field(
+            &path.filesystem_uuid,
+            "path_resources.filesystem_uuid",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_field(
+            &path.partition_uuid,
+            "path_resources.partition_uuid",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_field(
+            &path.persistent_device_links,
+            "path_resources.persistent_device_links",
+            |value| value.iter().all(|entry| !entry.trim().is_empty()),
+        )?;
+        validate_field(
             &path.filesystem_available_bytes,
             "path_resources.filesystem_available_bytes",
             |_| true,
@@ -315,6 +608,13 @@ fn state_source_family_for_collector(collector_id: &str) -> &'static str {
         "procfs_meminfo" => "procfs",
         "cgroupfs_cpuset" | "cgroupfs_cpu_quota" | "cgroupfs_memory_boundary" => "cgroupfs",
         "statvfs_path_capacity" => "statvfs",
+        "mountinfo_path_storage" => "mountinfo",
+        "sysfs_block_media" => "sysfs",
+        "path_link_probe" => "filesystem_probe",
+        "path_storage_health_probe" => "storage_health_probe",
+        "thermal_provider" => "thermal_provider",
+        "edac_memory_reliability" => "edac_memory_reliability",
+        "nvidia_smi_gpu_reliability" => "nvidia_smi_gpu_reliability",
         "sysfs_topology" => "sysfs",
         _ => "unknown",
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::cli;
-use fitctl_core::artifacts::envelope_v1::LOCAL_FITCTL_VERSION_V1;
+use fitctl_core::artifacts::envelope_v1::local_fitctl_version_display_v1;
 use std::process::Command;
 
 #[test]
@@ -22,7 +22,7 @@ fn version_flags_report_package_version() {
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            format!("fitctl {LOCAL_FITCTL_VERSION_V1}\n")
+            format!("fitctl {}\n", local_fitctl_version_display_v1())
         );
         assert!(
             output.stderr.is_empty(),

@@ -15,15 +15,25 @@ use crate::artifacts::validation_v1::{validate_host_state, ArtifactValidationErr
 pub mod live_v1;
 pub mod normalize_v1;
 pub mod replay_v1;
+pub mod thermal_v1;
 
 pub use crate::artifacts::state_v1::{
-    FreshnessStateV1, HostRuntimeResourcesV1, HostStateExecutionBoundariesV1,
-    HostStatePathResourceV1, HostStatePathResourcesV1, StateCollectionModeV1, StateFieldV1,
-    StateFreshnessV1,
+    FreshnessStateV1, GpuReliabilityProviderKindV1, HostRuntimeResourcesV1,
+    HostStateExecutionBoundariesV1, HostStateGpuReliabilityDeviceV1,
+    HostStateGpuReliabilityProviderV1, HostStateGpuReliabilityV1,
+    HostStateMemoryReliabilityProviderV1, HostStateMemoryReliabilityV1,
+    HostStatePathLinkCapabilitiesV1, HostStatePathLinkPairV1, HostStatePathResourceV1,
+    HostStatePathResourcesV1, HostStatePathStorageHealthV1, HostStateThermalCollectorHostV1,
+    HostStateThermalEvidenceTargetV1, HostStateThermalProviderV1, HostStateThermalReadingV1,
+    HostStateThermalResourcesV1, MemoryReliabilityProviderKindV1, StateCollectionModeV1,
+    StateEvidenceProviderOutcomeV1, StateFieldV1, StateFreshnessV1, StateStorageDurabilityClassV1,
+    StateStorageHealthStateV1, StateStorageMediaClassConfidenceV1, StateStorageMediaClassV1,
+    ThermalCollectionPathV1, ThermalEvidenceTargetKindV1, ThermalProviderKindV1,
+    ThermalProviderOutcomeV1, ThermalReadingStatusV1, ThermalSensorRoleV1,
 };
 pub use live_v1::{
     CollectedHostStateSnapshotV1, LocalLiveStateProbeV1, NoopLiveStateProbeV1,
-    SnapshotSourceKindV1, StatePathCheckRequestV1,
+    SnapshotSourceKindV1, StatePathCheckRequestV1, StatePathLinkPairProbeRequestV1,
 };
 pub use replay_v1::{
     load_fixture_corpus_manifest, FixtureCorpusEntryV1, FixtureCorpusManifestV1,

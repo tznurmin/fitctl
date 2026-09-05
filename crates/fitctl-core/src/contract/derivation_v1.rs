@@ -13,24 +13,19 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::artifacts::contract_v1::HostContractV1;
+use crate::artifacts::contract_v1::{ContractExtensionBasisV1, HostContractV1};
 use crate::artifacts::envelope_v1::{local_artifact_provenance_v1, ArtifactEnvelopeV1};
 use crate::artifacts::schema_ids_v1::{HOST_CONTRACT_SCHEMA_ID, TOP_LEVEL_ARTIFACT_SCHEMA_VERSION};
 use crate::artifacts::survey_v1::{decode_host_survey_payload, HostSurveyPayloadV1, HostSurveyV1};
 use crate::artifacts::validation_v1::{validate_host_contract, validate_host_survey};
 use crate::contract::contract_basis_v1::{build_contract_basis_v1, DerivationContextV1};
+use crate::contract::extension_derivation_v1::derive_enabled_extension_contract_v1;
 use crate::contract::payload_v1::{
     ContractAcceleratorSummaryV1, ContractNetworkOperabilityV1, ContractNetworkSummaryV1,
     ContractStorageOperabilityV1, ContractStorageSummaryV1, ContractTopologySummaryV1,
     ExecutionConstraintsV1, HostContractCoreV1, HostContractPayloadV1,
 };
 use crate::contract::{ContractDerivationError, ContractDerivationErrorCode};
-use crate::extensions::{
-    derive_cuda_runtime_contract_value_from_survey_v1,
-    derive_node_runtime_contract_value_from_survey_v1,
-    derive_python_runtime_contract_value_from_survey_v1, CUDA_RUNTIME_NAMESPACE,
-    NODE_RUNTIME_NAMESPACE, PYTHON_RUNTIME_NAMESPACE,
-};
 use crate::policy::capability_classes_v1::{
     classify_policy_scoped_accelerator_inventory, derive_policy_shaped_capability_claim,
     policy_scoped_accelerator_inventory_is_active, SurveyCapabilityInputV1,
@@ -54,6 +49,20 @@ pub struct ContractDerivationRequestV1 {
 
 pub fn derive_host_contract_v1(
     request: ContractDerivationRequestV1,
+) -> Result<HostContractV1, ContractDerivationError> {
+    derive_host_contract_internal_v1(request, None)
+}
+
+pub fn derive_host_contract_with_extensions_v1(
+    request: ContractDerivationRequestV1,
+    extension_basis: ContractExtensionBasisV1,
+) -> Result<HostContractV1, ContractDerivationError> {
+    derive_host_contract_internal_v1(request, Some(extension_basis))
+}
+
+fn derive_host_contract_internal_v1(
+    request: ContractDerivationRequestV1,
+    extension_basis: Option<ContractExtensionBasisV1>,
 ) -> Result<HostContractV1, ContractDerivationError> {
     // Contract derivation is intentionally pure over survey + policy. Runtime-sensitive checks
     // belong in validation with optional host-state input, not in the host promise itself.
@@ -103,7 +112,7 @@ pub fn derive_host_contract_v1(
     )?;
     validate_explanation_links(&claim.rule_ids, &claim.evidence_refs)?;
 
-    let contract_basis = build_contract_basis_v1(
+    let mut contract_basis = build_contract_basis_v1(
         &request.survey,
         &effective_policy,
         &request.derivation_context,
@@ -112,45 +121,14 @@ pub fn derive_host_contract_v1(
     let mut capability_classes = BTreeMap::new();
     capability_classes.insert(effective_policy.capability_class.clone(), claim);
 
-    let mut extension_contract = BTreeMap::new();
-    // Extension contract fragments are derived after the core claim so optional namespaces do not
-    // obscure the host's base contract semantics.
-    if let Some(python_runtime_contract) =
-        derive_python_runtime_contract_value_from_survey_v1(&request.survey).map_err(|error| {
-            ContractDerivationError::new(
-                ContractDerivationErrorCode::ContractDerivationFailed,
-                "python_extension_contract_derive",
-                error.message,
-            )
-        })?
-    {
-        extension_contract.insert(
-            PYTHON_RUNTIME_NAMESPACE.to_string(),
-            python_runtime_contract,
-        );
-    }
-    if let Some(node_runtime_contract) =
-        derive_node_runtime_contract_value_from_survey_v1(&request.survey).map_err(|error| {
-            ContractDerivationError::new(
-                ContractDerivationErrorCode::ContractDerivationFailed,
-                "node_extension_contract_derive",
-                error.message,
-            )
-        })?
-    {
-        extension_contract.insert(NODE_RUNTIME_NAMESPACE.to_string(), node_runtime_contract);
-    }
-    if let Some(cuda_runtime_contract) =
-        derive_cuda_runtime_contract_value_from_survey_v1(&request.survey).map_err(|error| {
-            ContractDerivationError::new(
-                ContractDerivationErrorCode::ContractDerivationFailed,
-                "cuda_extension_contract_derive",
-                error.message,
-            )
-        })?
-    {
-        extension_contract.insert(CUDA_RUNTIME_NAMESPACE.to_string(), cuda_runtime_contract);
-    }
+    // Core-only derivation remains the default. Optional contract payloads are admitted only after
+    // configuration resolution has produced a semantic basis for the selected namespaces.
+    let extension_contract = extension_basis
+        .as_ref()
+        .map(|basis| derive_enabled_extension_contract_v1(&request.survey, basis))
+        .transpose()?
+        .unwrap_or_default();
+    contract_basis.extension_basis = extension_basis;
 
     let contract = serde_json::to_value(HostContractPayloadV1 {
         core_contract: HostContractCoreV1 {
@@ -193,14 +171,16 @@ pub fn derive_host_contract_v1(
                     .topology
                     .value
                     .as_ref()
-                    .map(|value| value.numa_nodes),
+                    .map(|value| value.numa_nodes)
+                    .filter(|count| *count > 0),
                 cpu_packages: survey_payload
                     .core_evidence
                     .observations
                     .topology
                     .value
                     .as_ref()
-                    .map(|value| value.cpu_packages),
+                    .map(|value| value.cpu_packages)
+                    .filter(|count| *count > 0),
             },
         },
         extension_contract,
@@ -300,7 +280,9 @@ fn derive_network_summary(network: Option<&NetworkDetailsV1>) -> ContractNetwork
         return ContractNetworkSummaryV1::default();
     };
 
-    let total_interfaces = u32::try_from(network.interfaces.len()).ok();
+    let total_interfaces = u32::try_from(network.interfaces.len())
+        .ok()
+        .filter(|count| *count > 0);
     let non_loopback_interfaces = u32::try_from(
         network
             .interface_details
@@ -379,8 +361,15 @@ fn derive_storage_summary(storage: Option<&StorageDetailsV1>) -> ContractStorage
         return ContractStorageSummaryV1::default();
     };
 
-    let total_block_devices = u32::try_from(storage.block_devices.len()).ok();
-    let total_mounts = u32::try_from(storage.mounts.len()).ok();
+    // Contract count fields are positive observations. A collector that can observe no devices or
+    // mounts still contributes the explicit not-operable summary below, without emitting the
+    // zero values that the public contract schema reserves as invalid.
+    let total_block_devices = u32::try_from(storage.block_devices.len())
+        .ok()
+        .filter(|count| *count > 0);
+    let total_mounts = u32::try_from(storage.mounts.len())
+        .ok()
+        .filter(|count| *count > 0);
 
     let mut block_device_classes = storage
         .block_device_details
@@ -454,6 +443,9 @@ fn derive_accelerator_summary(
         | (ObservationStateV1::PartiallyObserved, Some(accelerators)) => accelerators,
         _ => return ContractAcceleratorSummaryV1::default(),
     };
+    if accelerators.devices.is_empty() {
+        return ContractAcceleratorSummaryV1::default();
+    }
 
     let total_accelerators = u32::try_from(accelerators.devices.len()).ok();
     let gpu_accelerators = u32::try_from(

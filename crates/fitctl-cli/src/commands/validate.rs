@@ -3,7 +3,8 @@
 
 //! CLI entrypoint for contract-only and state-aware service-profile validation.
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -19,18 +20,24 @@ use fitctl_core::contract::{
     DerivationContextV1,
 };
 use fitctl_core::policy::load_policy_document_from_path;
+use fitctl_core::state::thermal_v1::{
+    built_in_local_thermal_provider_entries_v1, load_thermal_provider_config_entries_from_paths_v1,
+};
 use fitctl_core::state::{
     LocalLiveStateProbeV1, StateEngineV1, StateModeV1, StatePathCheckRequestV1,
+    StatePathLinkPairProbeRequestV1,
 };
 use fitctl_core::validate::{
     load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
-    load_service_profile_artifact_for_validation, validate_request_v1, ValidationModeV1,
-    ValidationRequestV1, ValidationVerdictV1,
+    load_service_profile_artifact_for_validation, load_thermal_evidence_artifact_for_validation,
+    validate_request_v1, ValidationModeV1, ValidationRequestV1, ValidationVerdictV1,
 };
 
 use crate::commands::state_support::{
-    apply_state_extension_selection_v1, default_state_replay_extensions_root_v1,
-    prepare_state_extension_selection_v1, CudaSelectedEnvironmentCliInputV1,
+    apply_state_extension_selection_v1, collect_feature_extension_namespaces_v1,
+    default_state_replay_extensions_root_v1, parse_state_collect_feature_v1,
+    prepare_state_extension_selection_v1, push_state_collect_feature_v1,
+    CudaSelectedEnvironmentCliInputV1, StateCollectFeatureV1,
 };
 
 pub fn run(args: &[String]) -> ExitCode {
@@ -51,6 +58,7 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut profile_id: Option<String> = None;
     let mut invocation_context_path: Option<PathBuf> = None;
     let mut state_path: Option<PathBuf> = None;
+    let mut thermal_evidence_paths = Vec::new();
     let mut live_state_requested = false;
     let mut extension_pack_paths = Vec::new();
     let mut enabled_extension_namespaces = Vec::new();
@@ -61,6 +69,13 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut mode_source = ValidationModeSourceV1::Default;
     let mut gate_policy = ValidationGatePolicyV1::ReportOnly;
     let mut path_checks = Vec::new();
+    let mut link_probe_path_ids = Vec::new();
+    let mut link_pair_probe_requests = Vec::new();
+    let mut health_probe_path_ids = Vec::new();
+    let mut thermal_provider_config_paths = Vec::new();
+    let mut collect_features = Vec::new();
+    let mut state_out_path: Option<PathBuf> = None;
+    let mut validation_out_path: Option<PathBuf> = None;
 
     let mut index = 0;
     while index < args.len() {
@@ -193,6 +208,90 @@ pub fn run(args: &[String]) -> ExitCode {
                         return ExitCode::from(2);
                     }
                 }
+                index += 2;
+            }
+            "--probe-path-links" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --probe-path-links requires a path-check id");
+                    return ExitCode::from(2);
+                };
+                if value.trim().is_empty() || value.contains(char::is_whitespace) {
+                    eprintln!("fitctl validate: --probe-path-links id must be non-empty and contain no whitespace");
+                    return ExitCode::from(2);
+                }
+                link_probe_path_ids.push(value.clone());
+                index += 2;
+            }
+            "--probe-path-link-pair" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --probe-path-link-pair requires <from-id>:<to-id>");
+                    return ExitCode::from(2);
+                };
+                match parse_path_link_pair_probe(value) {
+                    Ok(request) => link_pair_probe_requests.push(request),
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+                index += 2;
+            }
+            "--probe-path-health" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --probe-path-health requires a path-check id");
+                    return ExitCode::from(2);
+                };
+                if value.trim().is_empty() || value.contains(char::is_whitespace) {
+                    eprintln!("fitctl validate: --probe-path-health id must be non-empty and contain no whitespace");
+                    return ExitCode::from(2);
+                }
+                health_probe_path_ids.push(value.clone());
+                index += 2;
+            }
+            "--thermal-provider-config" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --thermal-provider-config requires a path");
+                    return ExitCode::from(2);
+                };
+                thermal_provider_config_paths.push(PathBuf::from(value));
+                index += 2;
+            }
+            "--collect" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --collect requires a feature");
+                    return ExitCode::from(2);
+                };
+                match parse_state_collect_feature_v1(value) {
+                    Ok(feature) => push_state_collect_feature_v1(&mut collect_features, feature),
+                    Err(error) => {
+                        eprintln!("fitctl validate: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+                index += 2;
+            }
+            "--thermal-evidence" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --thermal-evidence requires a path");
+                    return ExitCode::from(2);
+                };
+                thermal_evidence_paths.push(PathBuf::from(value));
+                index += 2;
+            }
+            "--state-out" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --state-out requires a path");
+                    return ExitCode::from(2);
+                };
+                state_out_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--validation-out" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("fitctl validate: --validation-out requires a path");
+                    return ExitCode::from(2);
+                };
+                validation_out_path = Some(PathBuf::from(value));
                 index += 2;
             }
             "--validation-mode" => {
@@ -459,6 +558,43 @@ pub fn run(args: &[String]) -> ExitCode {
         eprintln!("fitctl validate: --path-check requires --live-state");
         return ExitCode::from(2);
     }
+    if !link_probe_path_ids.is_empty() && !live_state_requested {
+        eprintln!("fitctl validate: --probe-path-links requires --live-state");
+        return ExitCode::from(2);
+    }
+    if !link_pair_probe_requests.is_empty() && !live_state_requested {
+        eprintln!("fitctl validate: --probe-path-link-pair requires --live-state");
+        return ExitCode::from(2);
+    }
+    if !health_probe_path_ids.is_empty() && !live_state_requested {
+        eprintln!("fitctl validate: --probe-path-health requires --live-state");
+        return ExitCode::from(2);
+    }
+    if !thermal_provider_config_paths.is_empty() && !live_state_requested {
+        eprintln!("fitctl validate: --thermal-provider-config requires --live-state");
+        return ExitCode::from(2);
+    }
+    if !collect_features.is_empty() && !live_state_requested {
+        eprintln!("fitctl validate: --collect requires --live-state");
+        return ExitCode::from(2);
+    }
+    if state_out_path.is_some() && !live_state_requested {
+        eprintln!("fitctl validate: --state-out requires --live-state");
+        return ExitCode::from(2);
+    }
+    if let Err(error) = apply_link_probe_selection(&mut path_checks, &link_probe_path_ids) {
+        eprintln!("fitctl validate: {error}");
+        return ExitCode::from(2);
+    }
+    if let Err(error) = apply_health_probe_selection(&mut path_checks, &health_probe_path_ids) {
+        eprintln!("fitctl validate: {error}");
+        return ExitCode::from(2);
+    }
+    if let Err(error) = validate_link_pair_probe_selection(&path_checks, &link_pair_probe_requests)
+    {
+        eprintln!("fitctl validate: {error}");
+        return ExitCode::from(2);
+    }
     if !live_state_requested
         && (!extension_pack_paths.is_empty() || !enabled_extension_namespaces.is_empty())
     {
@@ -473,23 +609,40 @@ pub fn run(args: &[String]) -> ExitCode {
         eprintln!("fitctl validate: --max-state-age is not allowed in contract_only mode");
         return ExitCode::from(2);
     }
+    if mode == ValidationModeV1::ContractOnly && !thermal_evidence_paths.is_empty() {
+        eprintln!("fitctl validate: --thermal-evidence is not allowed in contract_only mode");
+        return ExitCode::from(2);
+    }
     if live_state_requested && max_state_age_seconds.is_some() {
         eprintln!("fitctl validate: --max-state-age is not allowed with --live-state");
         return ExitCode::from(2);
     }
-    if max_state_age_seconds.is_some() && state_path.is_none() && !live_state_requested {
-        eprintln!("fitctl validate: --max-state-age requires --state");
+    if max_state_age_seconds.is_some()
+        && state_path.is_none()
+        && !live_state_requested
+        && thermal_evidence_paths.is_empty()
+    {
+        eprintln!("fitctl validate: --max-state-age requires --state or --thermal-evidence");
         return ExitCode::from(2);
     }
     if mode == ValidationModeV1::StateAware && state_path.is_none() && !live_state_requested {
         eprintln!("fitctl validate: --mode state_aware requires --state or --live-state");
         return ExitCode::from(2);
     }
+    if mode == ValidationModeV1::StateAware && !thermal_evidence_paths.is_empty() {
+        eprintln!(
+            "fitctl validate: --thermal-evidence is not supported in state_aware compatibility mode"
+        );
+        return ExitCode::from(2);
+    }
     if matches!(mode, ValidationModeV1::StateRequired)
         && state_path.is_none()
         && !live_state_requested
+        && thermal_evidence_paths.is_empty()
     {
-        eprintln!("fitctl validate: state-aware validation requires --state or --live-state");
+        eprintln!(
+            "fitctl validate: state-aware validation requires --state, --live-state, or --thermal-evidence"
+        );
         return ExitCode::from(2);
     }
 
@@ -716,6 +869,9 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     };
     let extension_selection = if live_state_requested {
+        let mut collect_extension_namespaces =
+            collect_feature_extension_namespaces_v1(&collect_features);
+        collect_extension_namespaces.extend(enabled_extension_namespaces.iter().cloned());
         match prepare_state_extension_selection_v1(
             true,
             invocation_context
@@ -723,7 +879,7 @@ pub fn run(args: &[String]) -> ExitCode {
                 .map(|context| context.enabled_extension_namespaces.as_slice())
                 .unwrap_or(&[]),
             &extension_pack_paths,
-            &enabled_extension_namespaces,
+            &collect_extension_namespaces,
             &CudaSelectedEnvironmentCliInputV1::default(),
         ) {
             Ok(selection) => Some(selection),
@@ -735,6 +891,22 @@ pub fn run(args: &[String]) -> ExitCode {
     } else {
         None
     };
+    let mut thermal_provider_configs = if live_state_requested {
+        match load_thermal_provider_config_entries_from_paths_v1(&thermal_provider_config_paths) {
+            Ok(configs) => configs,
+            Err(error) => {
+                eprintln!("fitctl validate: {error}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    if collect_features.contains(&StateCollectFeatureV1::Thermal) {
+        let mut built_ins = built_in_local_thermal_provider_entries_v1();
+        built_ins.extend(thermal_provider_configs);
+        thermal_provider_configs = built_ins;
+    }
 
     let host_state = match state_path {
         Some(path) => match load_host_state_artifact_for_validation(&path) {
@@ -752,7 +924,18 @@ pub fn run(args: &[String]) -> ExitCode {
                 }
                 StateModeV1::Live => None,
             };
-            let engine = StateEngineV1::new(LocalLiveStateProbeV1::new(path_checks));
+            let live_probe = LocalLiveStateProbeV1::new_with_path_link_pairs_and_thermal_providers(
+                path_checks,
+                link_pair_probe_requests,
+                thermal_provider_configs,
+            )
+            .with_memory_reliability_collection(
+                collect_features.contains(&StateCollectFeatureV1::MemoryReliability),
+            )
+            .with_gpu_reliability_collection(
+                collect_features.contains(&StateCollectFeatureV1::GpuReliability),
+            );
+            let engine = StateEngineV1::new(live_probe);
             let state = match engine.collect_host_state(mode) {
                 Ok(state) => state,
                 Err(error) => {
@@ -783,10 +966,25 @@ pub fn run(args: &[String]) -> ExitCode {
         None => None,
     };
 
+    let retained_state = host_state.clone();
+    let thermal_evidence = {
+        let mut artifacts = Vec::with_capacity(thermal_evidence_paths.len());
+        for path in &thermal_evidence_paths {
+            match load_thermal_evidence_artifact_for_validation(path) {
+                Ok(artifact) => artifacts.push(artifact),
+                Err(error) => {
+                    eprintln!("fitctl validate: {error}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        artifacts
+    };
     match validate_request_v1(ValidationRequestV1 {
         contract,
         service_profile,
         host_state,
+        thermal_evidence,
         mode,
         validated_at,
         notes: note,
@@ -794,6 +992,24 @@ pub fn run(args: &[String]) -> ExitCode {
     }) {
         Ok(report) => match serde_json::to_string_pretty(&report) {
             Ok(text) => {
+                if let Some(path) = state_out_path.as_deref() {
+                    let Some(state) = retained_state.as_ref() else {
+                        eprintln!("fitctl validate: --state-out requires retained live state");
+                        return ExitCode::from(2);
+                    };
+                    if let Err(error) = write_pretty_json(path, state) {
+                        eprintln!("fitctl validate: failed to write --state-out artifact: {error}");
+                        return ExitCode::from(2);
+                    }
+                }
+                if let Some(path) = validation_out_path.as_deref() {
+                    if let Err(error) = fs::write(path, text.as_bytes()) {
+                        eprintln!(
+                            "fitctl validate: failed to write --validation-out artifact: {error}"
+                        );
+                        return ExitCode::from(2);
+                    }
+                }
                 let verdict = report.report.verdict;
                 println!("{text}");
                 gate_policy.exit_code(verdict)
@@ -811,7 +1027,72 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl validate --contract <path> (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n  fitctl validate --survey <path> (--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] [--invocation-context <path>] | --config-bundle <path>) (--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] [--invocation-context <path>] | --config-bundle <path>) [--validation-mode <contract_only|state_advisory|state_required>] [--state <path> | --live-state [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n\nModes:\n  - contract_only decides from the contract and service profile only\n  - state_advisory uses host-state when provided and keeps missing or stale runtime evidence explicit\n  - state_required uses host-state for runtime-sensitive checks and treats missing or stale state as blocking evidence\n\nGate flags:\n  - --fail-on-unfit exits with policy rejection for unfit or indeterminate verdicts\n  - --require-fit exits with policy rejection unless the verdict is fit\n  - both flags preserve the validation report on stdout\n\nFreshness:\n  - --validated-at <timestamp> sets the decision timestamp used for state freshness checks\n    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n  - --max-state-age <value> requires explicit --state input and rejects state older than that age\n    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n\nNotes:\n  - contract_only does not accept host-state input\n  - --path-check records filesystem capacity for named workload paths during --live-state\n  - --max-state-age is not allowed with --live-state\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n\nLegacy compatibility:\n  fitctl validate --mode <contract_only|state_aware> [--state <path> | --live-state [--path-check <id>=<path> ...] [--extension-pack <path> ...] [--enable-extension <namespace> ...]] [--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n"
+    concat!(
+        "Usage:\n",
+        "  fitctl validate --contract <path> ",
+        "(--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] ",
+        "[--invocation-context <path>] | --config-bundle <path>) ",
+        "[--validation-mode <contract_only|state_advisory|state_required>] ",
+        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] ",
+        "[--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] ",
+        "[--probe-path-health <id> ...] [--thermal-provider-config <path> ...] ",
+        "[--extension-pack <path> ...] [--enable-extension <namespace> ...]] ",
+        "[--thermal-evidence <path> ...] [--state-out <path>] [--validation-out <path>] ",
+        "[--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] ",
+        "[--fail-on-unfit | --require-fit]\n",
+        "  fitctl validate --survey <path> ",
+        "(--policy <path> | --policy-pack <path> [--policy-id <id> | --policy-pack-lock <path>] ",
+        "[--invocation-context <path>] | --config-bundle <path>) ",
+        "(--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] ",
+        "[--invocation-context <path>] | --config-bundle <path>) ",
+        "[--validation-mode <contract_only|state_advisory|state_required>] ",
+        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] ",
+        "[--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] ",
+        "[--probe-path-health <id> ...] [--thermal-provider-config <path> ...] ",
+        "[--extension-pack <path> ...] [--enable-extension <namespace> ...]] ",
+        "[--thermal-evidence <path> ...] [--state-out <path>] [--validation-out <path>] ",
+        "[--max-state-age <value>] [--validated-at <timestamp>] [--note <text>] ",
+        "[--fail-on-unfit | --require-fit]\n",
+        "\nModes:\n",
+        "  - contract_only decides from the contract and service profile only\n",
+        "  - state_advisory uses host-state or target-bound thermal evidence when provided ",
+        "and keeps missing or stale runtime evidence explicit\n",
+        "  - state_required uses host-state or target-bound thermal evidence for ",
+        "runtime-sensitive checks and treats missing or stale evidence as blocking\n",
+        "\nGate flags:\n",
+        "  - --fail-on-unfit exits with policy rejection for unfit or indeterminate verdicts\n",
+        "  - --require-fit exits with policy rejection unless the verdict is fit\n",
+        "  - both flags preserve the validation report on stdout\n",
+        "\nFreshness:\n",
+        "  - --validated-at <timestamp> sets the decision timestamp used for freshness checks\n",
+        "    accepts UTC RFC3339 or unix:<seconds> and defaults to the current time when omitted\n",
+        "  - --max-state-age <value> requires explicit --state or --thermal-evidence input ",
+        "and rejects older evidence\n",
+        "    accepts seconds or s/m/h suffixes such as 600, 10m, or 1h\n",
+        "\nNotes:\n",
+        "  - contract_only does not accept host-state or thermal-evidence input\n",
+        "  - --state-out requires --live-state and writes the exact state artifact used for validation\n",
+        "  - --validation-out writes the validation report artifact before gate flags affect process exit\n",
+        "  - --path-check records filesystem capacity for named workload paths during --live-state\n",
+        "  - --collect thermal enables built-in local sensors and nvidia-smi thermal providers when available\n",
+        "  - --collect cuda-runtime enables the built-in fitctl.runtime.cuda state namespace\n",
+        "  - --probe-path-links, --probe-path-link-pair, and --probe-path-health are opt-in ",
+        "and must reference --path-check ids\n",
+        "  - --thermal-provider-config adds exact-argv thermal providers to the live state artifact\n",
+        "  - --thermal-evidence supplies target-bound fitctl.thermal-evidence.v1 artifacts ",
+        "for thermal requirements\n",
+        "  - --max-state-age is not allowed with --live-state\n",
+        "  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, ",
+        "and fitctl.runtime.node\n",
+        "\nLegacy compatibility:\n",
+        "  fitctl validate --mode <contract_only|state_aware> ",
+        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] ",
+        "[--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] ",
+        "[--probe-path-health <id> ...] [--thermal-provider-config <path> ...] ",
+        "[--extension-pack <path> ...] [--enable-extension <namespace> ...]] ",
+        "[--state-out <path>] [--validation-out <path>] [--max-state-age <value>] ",
+        "[--validated-at <timestamp>] [--note <text>] [--fail-on-unfit | --require-fit]\n",
+    )
 }
 
 fn parse_path_check(value: &str) -> Result<StatePathCheckRequestV1, &'static str> {
@@ -828,7 +1109,104 @@ fn parse_path_check(value: &str) -> Result<StatePathCheckRequestV1, &'static str
     Ok(StatePathCheckRequestV1 {
         path_id: path_id.to_string(),
         path: PathBuf::from(path),
+        probe_links: false,
+        probe_health: false,
     })
+}
+
+fn parse_path_link_pair_probe(
+    value: &str,
+) -> Result<StatePathLinkPairProbeRequestV1, &'static str> {
+    let Some((from_path_id, to_path_id)) = value.split_once(':') else {
+        return Err("--probe-path-link-pair must use <from-id>:<to-id>");
+    };
+    let from_path_id = from_path_id.trim();
+    let to_path_id = to_path_id.trim();
+    if from_path_id.is_empty()
+        || to_path_id.is_empty()
+        || from_path_id.contains(char::is_whitespace)
+        || to_path_id.contains(char::is_whitespace)
+        || from_path_id == to_path_id
+    {
+        return Err(
+            "--probe-path-link-pair ids must be non-empty, distinct, and contain no whitespace",
+        );
+    }
+    Ok(StatePathLinkPairProbeRequestV1 {
+        from_path_id: from_path_id.to_string(),
+        to_path_id: to_path_id.to_string(),
+    })
+}
+
+fn apply_link_probe_selection(
+    path_checks: &mut [StatePathCheckRequestV1],
+    link_probe_path_ids: &[String],
+) -> Result<(), String> {
+    for path_id in link_probe_path_ids {
+        let Some(path_check) = path_checks
+            .iter_mut()
+            .find(|candidate| candidate.path_id == *path_id)
+        else {
+            return Err(format!(
+                "--probe-path-links id {path_id} does not match any --path-check id"
+            ));
+        };
+        path_check.probe_links = true;
+    }
+    Ok(())
+}
+
+fn apply_health_probe_selection(
+    path_checks: &mut [StatePathCheckRequestV1],
+    health_probe_path_ids: &[String],
+) -> Result<(), String> {
+    for path_id in health_probe_path_ids {
+        let Some(path_check) = path_checks
+            .iter_mut()
+            .find(|candidate| candidate.path_id == *path_id)
+        else {
+            return Err(format!(
+                "--probe-path-health id {path_id} does not match any --path-check id"
+            ));
+        };
+        path_check.probe_health = true;
+    }
+    Ok(())
+}
+
+fn validate_link_pair_probe_selection(
+    path_checks: &[StatePathCheckRequestV1],
+    pair_requests: &[StatePathLinkPairProbeRequestV1],
+) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for pair in pair_requests {
+        for path_id in [&pair.from_path_id, &pair.to_path_id] {
+            if !path_checks
+                .iter()
+                .any(|candidate| candidate.path_id == *path_id)
+            {
+                return Err(format!(
+                    "--probe-path-link-pair id {path_id} does not match any --path-check id"
+                ));
+            }
+        }
+        if !seen.insert((pair.from_path_id.clone(), pair.to_path_id.clone())) {
+            return Err(format!(
+                "--probe-path-link-pair {}:{} is duplicated",
+                pair.from_path_id, pair.to_path_id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn write_pretty_json<T: serde::Serialize>(
+    path: &Path,
+    value: &T,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let text = serde_json::to_string_pretty(value)?;
+    fs::write(path, text.as_bytes())?;
+    Ok(())
 }
 
 fn current_epoch_marker() -> String {

@@ -84,6 +84,7 @@ pub enum IdentityClassV1 {
     #[default]
     LocalStable,
     ExportPseudonym,
+    Redacted,
 }
 
 impl IdentityClassV1 {
@@ -91,6 +92,7 @@ impl IdentityClassV1 {
         match self {
             Self::LocalStable => "local_stable",
             Self::ExportPseudonym => "export_pseudonym",
+            Self::Redacted => "redacted",
         }
     }
 }

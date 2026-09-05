@@ -1,0 +1,36 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-cpu-small-state-required-v1",
+    "provenance": {
+      "source": "config:service_profiles/cpu_small_state_required.v2.json",
+      "collected_at": "2026-06-15T12:00:00Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "cpu_small_state_required_v1",
+    "display_name": "CPU small runtime gate",
+    "short_display_name": "CPU small",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like",
+        "container_restricted"
+      ],
+      "min_allocatable_cpu_logical_cores": 2,
+      "min_allocatable_memory_bytes": 4294967296
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

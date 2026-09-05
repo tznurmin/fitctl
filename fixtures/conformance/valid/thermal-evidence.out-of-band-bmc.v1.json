@@ -1,0 +1,70 @@
+{
+  "envelope": {
+    "schema_id": "fitctl.thermal-evidence.v1",
+    "schema_version": 2,
+    "artifact_id": "thermal-evidence-site-bmc",
+    "provenance": {
+      "source": "fixture_corpus:thermal_evidence_v1",
+      "collected_at": "2026-06-16T12:00:00Z",
+      "fitctl_version": "0.5.0",
+      "command_name": "thermal",
+      "correlation_id": "thermal-evidence-site-bmc"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "thermal_evidence": {
+    "observed_at": "2026-06-16T12:00:00Z",
+    "collector_host": {
+      "host_alias": "collector-host",
+      "local_stable_id": "collector-local-stable-id"
+    },
+    "providers": [
+      {
+        "provider_id": "site-bmc-thermal",
+        "provider_kind": "ipmitool_sensor",
+        "outcome": "success",
+        "evidence_target": {
+          "target_kind": "host_id",
+          "host_id": "host.compute-01",
+          "collection_path": "out_of_band_bmc"
+        },
+        "observed_at": "2026-06-16T12:00:00Z"
+      }
+    ],
+    "readings": [
+      {
+        "sensor_id": "site-bmc-thermal:inlet-temp",
+        "sensor_role": "inlet",
+        "sensor_alias": "target_inlet",
+        "provider_id": "site-bmc-thermal",
+        "raw_label": "Inlet Temp",
+        "temperature_millidegrees_celsius": 27000,
+        "status": "ok",
+        "observed_at": "2026-06-16T12:00:00Z",
+        "evidence_target": {
+          "target_kind": "host_id",
+          "host_id": "host.compute-01",
+          "collection_path": "out_of_band_bmc"
+        },
+        "source": "ipmitool_sensor"
+      },
+      {
+        "sensor_id": "site-bmc-thermal:system-board-temp",
+        "sensor_role": "board",
+        "sensor_alias": "target_system_board",
+        "provider_id": "site-bmc-thermal",
+        "raw_label": "System Board Temp",
+        "temperature_millidegrees_celsius": 33000,
+        "status": "ok",
+        "observed_at": "2026-06-16T12:00:00Z",
+        "evidence_target": {
+          "target_kind": "host_id",
+          "host_id": "host.compute-01",
+          "collection_path": "out_of_band_bmc"
+        },
+        "source": "ipmitool_sensor"
+      }
+    ]
+  }
+}

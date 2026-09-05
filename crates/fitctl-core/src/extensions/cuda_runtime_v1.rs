@@ -417,6 +417,16 @@ pub struct CudaRuntimeDeviceStateV1 {
         skip_serializing_if = "is_missing_u64_state_field_v1"
     )]
     pub used_memory_bytes: StateFieldV1<u64>,
+    #[serde(
+        default = "missing_string_state_field_v1",
+        skip_serializing_if = "is_missing_string_state_field_v1"
+    )]
+    pub compute_capability: StateFieldV1<String>,
+    #[serde(
+        default = "missing_string_state_field_v1",
+        skip_serializing_if = "is_missing_string_state_field_v1"
+    )]
+    pub mig_mode: StateFieldV1<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1787,9 +1797,7 @@ fn validate_cuda_runtime_state(
         "allocatable_memory_bytes",
         |value| *value > 0,
     )?;
-    validate_state_field_value(&state.used_memory_bytes, "used_memory_bytes", |value| {
-        *value > 0
-    })?;
+    validate_state_field_value(&state.used_memory_bytes, "used_memory_bytes", |_| true)?;
     validate_cuda_runtime_version_state_field(
         &state.default_toolkit_version,
         "default_toolkit_version",
@@ -1849,8 +1857,16 @@ fn validate_cuda_runtime_state(
         validate_state_field_value(
             &device.used_memory_bytes,
             "device.used_memory_bytes",
-            |value| *value > 0,
+            |_| true,
         )?;
+        validate_state_field_value(
+            &device.compute_capability,
+            "device.compute_capability",
+            |value| !value.trim().is_empty(),
+        )?;
+        validate_state_field_value(&device.mig_mode, "device.mig_mode", |value| {
+            !value.trim().is_empty()
+        })?;
         validate_cuda_memory_triplet(
             scalar_state_value(&device.total_memory_bytes),
             scalar_state_value(&device.allocatable_memory_bytes),
@@ -3349,10 +3365,19 @@ fn collect_live_cuda_state_probe_output() -> (
     let output = collect_command_probe_output(
         &executable_path,
         &[
-            "--query-gpu=index,uuid,memory.total,memory.free,memory.used",
+            "--query-gpu=index,uuid,memory.total,memory.free,memory.used,compute_cap,mig.mode.current",
             "--format=csv,noheader,nounits",
         ],
-    );
+    )
+    .or_else(|| {
+        collect_command_probe_output(
+            &executable_path,
+            &[
+                "--query-gpu=index,uuid,memory.total,memory.free,memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+        )
+    });
     let missing_reason = if output.is_some() {
         None
     } else {
@@ -3643,7 +3668,7 @@ fn parse_cuda_runtime_state_probe_output(
         .filter(|line| !line.is_empty())
     {
         let columns = line.split(',').map(|part| part.trim()).collect::<Vec<_>>();
-        if columns.len() != 5 {
+        if !matches!(columns.len(), 5 | 7) {
             return Err(CudaRuntimeExtensionError::new(
                 "cuda_used_memory_collect",
                 format!("CUDA runtime state probe returned an unsupported row: {line}"),
@@ -3692,6 +3717,14 @@ fn parse_cuda_runtime_state_probe_output(
             total_memory_bytes: observed_state_field(total_memory_bytes),
             allocatable_memory_bytes: observed_state_field(allocatable_memory_bytes),
             used_memory_bytes: observed_state_field(used_memory_bytes),
+            compute_capability: columns
+                .get(5)
+                .map(|value| optional_cuda_string_state_field(value))
+                .unwrap_or_else(missing_string_state_field_v1),
+            mig_mode: columns
+                .get(6)
+                .map(|value| optional_cuda_string_state_field(value))
+                .unwrap_or_else(missing_string_state_field_v1),
         });
     }
 
@@ -3765,6 +3798,23 @@ fn version_state_field_from_optional(
         .unwrap_or_else(missing_cuda_runtime_version_state_field_v1)
 }
 
+fn optional_cuda_string_state_field(value: &str) -> StateFieldV1<String> {
+    let value = value.trim();
+    if value.is_empty()
+        || matches!(
+            value.to_ascii_lowercase().as_str(),
+            "n/a" | "[n/a]" | "not supported" | "[not supported]"
+        )
+    {
+        return StateFieldV1 {
+            state: ObservationStateV1::Unknown,
+            limitation_reason: Some(ObservationLimitationReasonV1::SourceUnavailable),
+            value: None,
+        };
+    }
+    observed_state_field(value.to_string())
+}
+
 fn cuda_runtime_version_state_field_is_observed(
     field: &StateFieldV1<CudaRuntimeVersionV1>,
 ) -> bool {
@@ -3790,6 +3840,10 @@ fn missing_u64_state_field_v1() -> StateFieldV1<u64> {
     missing_state_field()
 }
 
+fn missing_string_state_field_v1() -> StateFieldV1<String> {
+    missing_state_field()
+}
+
 fn is_missing_cuda_runtime_version_state_field_v1(
     field: &StateFieldV1<CudaRuntimeVersionV1>,
 ) -> bool {
@@ -3799,6 +3853,12 @@ fn is_missing_cuda_runtime_version_state_field_v1(
 }
 
 fn is_missing_u64_state_field_v1(field: &StateFieldV1<u64>) -> bool {
+    matches!(field.state, ObservationStateV1::Missing)
+        && field.limitation_reason.is_none()
+        && field.value.is_none()
+}
+
+fn is_missing_string_state_field_v1(field: &StateFieldV1<String>) -> bool {
     matches!(field.state, ObservationStateV1::Missing)
         && field.limitation_reason.is_none()
         && field.value.is_none()
@@ -4210,5 +4270,33 @@ mod tests {
 
         assert_eq!(error.checkpoint_id, "cuda_extension_collect");
         assert!(error.message.contains("unsupported version integer 12045"));
+    }
+
+    #[test]
+    fn parse_cuda_runtime_state_probe_output_accepts_legacy_five_column_rows() {
+        let devices = parse_cuda_runtime_state_probe_output("0, GPU-abc, 24576, 20000, 4576\n")
+            .expect("legacy nvidia-smi row should decode");
+
+        assert_eq!(devices.len(), 1);
+        assert!(matches!(
+            devices[0].compute_capability.state,
+            ObservationStateV1::Missing
+        ));
+        assert!(matches!(
+            devices[0].mig_mode.state,
+            ObservationStateV1::Missing
+        ));
+    }
+
+    #[test]
+    fn parse_cuda_runtime_state_probe_output_accepts_extended_admission_rows() {
+        let devices = parse_cuda_runtime_state_probe_output(
+            "0, GPU-abc, 24576, 20000, 4576, 8.6, Disabled\n",
+        )
+        .expect("extended nvidia-smi row should decode");
+
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].compute_capability.value.as_deref(), Some("8.6"));
+        assert_eq!(devices[0].mig_mode.value.as_deref(), Some("Disabled"));
     }
 }

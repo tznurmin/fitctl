@@ -6,10 +6,11 @@ Compare Linux hosts against service profiles and produce machine-readable fit de
 
 ## What it provides
 
-- typed artifacts for survey, contract, state, and validation results
+- typed artifacts for survey, contract, state, thermal evidence, and validation results
 - host survey collection and replay
 - policy-shaped contract derivation
-- service-profile validation
+- runtime health evidence for memory, GPUs, storage paths, and provider-backed temperatures
+- service-profile validation against declared host and runtime requirements
 - batch classification across several contracts and service profiles
 
 ## Installation
@@ -18,7 +19,7 @@ Add the library crate to your project:
 
 ```toml
 [dependencies]
-fitctl-core = "0.5.0"
+fitctl-core = "0.6.0"
 ```
 
 ## Related crate

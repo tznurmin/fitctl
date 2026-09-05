@@ -16,6 +16,36 @@
       "profile_path": "../service_profiles/general_compute_stateful_thresholds.v2.json"
     },
     {
+      "profile_id": "cpu_small_state_required_v1",
+      "summary": "State-required small CPU and memory gate.",
+      "profile_path": "../service_profiles/cpu_small_state_required.v2.json"
+    },
+    {
+      "profile_id": "cpu_large_state_required_v1",
+      "summary": "State-required larger CPU and memory gate.",
+      "profile_path": "../service_profiles/cpu_large_state_required.v2.json"
+    },
+    {
+      "profile_id": "scratch_tmpfs_state_required_v1",
+      "summary": "State-required scratch path gate requiring tmpfs-backed capacity.",
+      "profile_path": "../service_profiles/scratch_tmpfs_state_required.v2.json"
+    },
+    {
+      "profile_id": "scratch_nvme_state_required_v1",
+      "summary": "State-required scratch path gate requiring NVMe-backed capacity.",
+      "profile_path": "../service_profiles/scratch_nvme_state_required.v2.json"
+    },
+    {
+      "profile_id": "cuda_24gb_state_required_v1",
+      "summary": "State-required CUDA runtime gate requiring 24 GiB allocatable GPU memory.",
+      "profile_path": "../service_profiles/cuda_24gb_state_required.v2.json"
+    },
+    {
+      "profile_id": "cuda_48gb_state_required_v1",
+      "summary": "State-required CUDA runtime gate requiring 48 GiB allocatable GPU memory.",
+      "profile_path": "../service_profiles/cuda_48gb_state_required.v2.json"
+    },
+    {
       "profile_id": "general_compute_python_extension_contract_only_v1",
       "summary": "Contract-only general-compute profile with the Python extension namespace enabled.",
       "profile_path": "../service_profiles/general_compute_python_extension_contract_only.v2.json"

@@ -7,7 +7,9 @@
 //! diffs, redacts, and inspects.
 
 pub mod batch_classification_report_v1;
+pub(crate) mod categorical_values_v1;
 pub mod config_bundle_v1;
+pub(crate) mod contract_extension_integrity_v1;
 pub mod contract_v1;
 pub mod decision_bundle_v1;
 pub mod envelope_v1;
@@ -20,5 +22,6 @@ pub mod semantic_hash_v1;
 pub mod service_profile_v1;
 pub mod state_v1;
 pub mod survey_v1;
+pub mod thermal_evidence_v1;
 pub mod validation_report_v1;
 pub mod validation_v1;

@@ -1,103 +1,68 @@
 // Copyright 2026 fitctl contributors
 // SPDX-License-Identifier: Apache-2.0
 
+mod build_support;
+
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=build_support.rs");
+    println!("cargo:rerun-if-env-changed=FITCTL_EMBED_VCS");
+
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("Cargo should provide OUT_DIR"));
+    let enabled = build_support::vcs_embedding_enabled(env::var_os("FITCTL_EMBED_VCS").as_deref())
+        .unwrap_or_else(|error| panic!("invalid VCS provenance configuration: {error}"));
+    let generated = if enabled {
+        // Git status includes unstaged and untracked worktree changes outside this crate. An
+        // intentionally absent Cargo input refreshes this opt-in snapshot on every invocation,
+        // without recursively watching ignored caches or relying on Git metadata mtimes alone.
+        let refresh_input = out_dir.join("fitctl-vcs-refresh-required");
+        match fs::symlink_metadata(&refresh_input) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => watch(refresh_input),
+            _ => panic!("VCS refresh input must remain absent"),
+        }
+        collect_build_provenance()
+    } else {
+        build_support::render_build_provenance_constants(None, None, None)
+    };
+
+    fs::write(out_dir.join("fitctl_build_provenance.rs"), generated)
+        .expect("generated build provenance constants should write");
+}
+
+fn collect_build_provenance() -> String {
     let manifest_dir = PathBuf::from(
         env::var_os("CARGO_MANIFEST_DIR").expect("Cargo should provide CARGO_MANIFEST_DIR"),
     );
-    let Some(repo_root) = find_repo_root(&manifest_dir) else {
-        return;
-    };
-    let Some(git_dir) = resolve_git_dir(&repo_root) else {
-        return;
-    };
+    let repo_root = build_support::expected_repository_root(&manifest_dir)
+        .unwrap_or_else(|error| panic!("cannot embed VCS provenance: {error}"));
+    let layout = build_support::resolve_git_layout(&repo_root)
+        .unwrap_or_else(|error| panic!("cannot resolve fitctl Git metadata: {error}"));
 
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed={}", git_dir.join("HEAD").display());
-    println!("cargo:rerun-if-changed={}", git_dir.join("index").display());
-    if let Some(head_ref) = current_head_ref(&git_dir) {
-        println!(
-            "cargo:rerun-if-changed={}",
-            git_dir.join(head_ref).display()
-        );
+    watch(layout.git_dir.join("HEAD"));
+    watch(layout.git_dir.join("index"));
+    watch(layout.common_dir.join("packed-refs"));
+    watch(layout.common_dir.join("refs").join("tags"));
+    if let Some(head_ref) = build_support::current_head_ref(&repo_root)
+        .unwrap_or_else(|error| panic!("cannot resolve current Git reference: {error}"))
+    {
+        watch(layout.common_dir.join(head_ref));
     }
 
-    if let Some(revision) = git_stdout(&repo_root, &["rev-parse", "HEAD"]) {
-        println!("cargo:rustc-env=FITCTL_VCS_REVISION={revision}");
-    }
-    if let Some(describe) = git_stdout(&repo_root, &["describe", "--always", "--tags", "--long"]) {
-        println!("cargo:rustc-env=FITCTL_VCS_DESCRIBE={describe}");
-    }
-    if let Some(dirty) = git_dirty(&repo_root) {
-        println!("cargo:rustc-env=FITCTL_BUILD_DIRTY={dirty}");
-    }
+    let revision = build_support::git_stdout(&repo_root, &["rev-parse", "HEAD"])
+        .unwrap_or_else(|error| panic!("cannot collect VCS revision: {error}"));
+    let describe =
+        build_support::git_stdout(&repo_root, &["describe", "--always", "--tags", "--long"])
+            .unwrap_or_else(|error| panic!("cannot collect VCS description: {error}"));
+    let dirty = build_support::git_dirty(&repo_root)
+        .unwrap_or_else(|error| panic!("cannot collect VCS dirty state: {error}"));
+
+    build_support::render_build_provenance_constants(Some(&revision), Some(&describe), Some(dirty))
 }
 
-fn find_repo_root(start: &Path) -> Option<PathBuf> {
-    start
-        .ancestors()
-        .find(|path| path.join(".git").exists())
-        .map(Path::to_path_buf)
-}
-
-fn resolve_git_dir(repo_root: &Path) -> Option<PathBuf> {
-    let dot_git = repo_root.join(".git");
-    if dot_git.is_dir() {
-        return Some(dot_git);
-    }
-    let contents = fs::read_to_string(dot_git).ok()?;
-    let git_dir = contents.strip_prefix("gitdir:")?.trim();
-    let path = PathBuf::from(git_dir);
-    Some(if path.is_absolute() {
-        path
-    } else {
-        repo_root.join(path)
-    })
-}
-
-fn current_head_ref(git_dir: &Path) -> Option<String> {
-    let head = fs::read_to_string(git_dir.join("HEAD")).ok()?;
-    let reference = head.strip_prefix("ref:")?.trim();
-    Some(reference.to_string())
-}
-
-fn git_stdout(repo_root: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .args(["-C", repo_root.to_str()?])
-        .args(args)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8(output.stdout).ok()?;
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn git_dirty(repo_root: &Path) -> Option<bool> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            repo_root.to_str()?,
-            "status",
-            "--porcelain",
-            "--untracked-files=no",
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8(output.stdout).ok()?;
-    Some(!text.trim().is_empty())
+fn watch(path: PathBuf) {
+    println!("cargo:rerun-if-changed={}", path.display());
 }

@@ -14,6 +14,7 @@ mod classify;
 mod completion;
 mod config;
 mod contract;
+mod contract_extension_activation;
 mod diff;
 mod export;
 mod inspect;
@@ -24,7 +25,9 @@ mod redact;
 mod sign;
 mod state;
 mod state_support;
+mod storage;
 mod survey;
+mod thermal;
 mod validate;
 mod verify;
 
@@ -56,7 +59,7 @@ pub fn run(args: &[String]) -> ExitCode {
     if args[1] == "--version" || args[1] == "-V" || args[1] == "version" {
         println!(
             "fitctl {}",
-            fitctl_core::artifacts::envelope_v1::LOCAL_FITCTL_VERSION_V1
+            fitctl_core::artifacts::envelope_v1::local_fitctl_version_display_v1()
         );
         return ExitCode::SUCCESS;
     }
@@ -89,6 +92,12 @@ fn dispatch_subcommand(raw_subcommand: &str, subcommand_args: &[String]) -> Exit
     }
     if subcommand == "state" {
         return state::run(subcommand_args);
+    }
+    if subcommand == "storage" {
+        return storage::run(subcommand_args);
+    }
+    if subcommand == "thermal" {
+        return thermal::run(subcommand_args);
     }
     if subcommand == "validate" {
         return validate::run(subcommand_args);

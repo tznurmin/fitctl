@@ -1,0 +1,260 @@
+{
+  "schema_id": "fitctl.conformance.corpus.v1",
+  "schema_version": 1,
+  "corpus_id": "core-artifact-conformance-v1",
+  "valid_cases": [
+    {
+      "case_id": "survey_linux_bare_metal_like",
+      "path": "fixtures/host_survey/linux-bare-metal-like-v1.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "survey_linux_arm_sbc_like",
+      "path": "fixtures/host_survey/linux-arm-sbc-like-v1.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "survey_linux_network_mixed_like",
+      "path": "fixtures/host_survey/linux-network-mixed-like-v1.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "survey_accelerator_inventory_depth_gpu_detail",
+      "path": "fixtures/host_survey/linux-gpu-workstation-like-v1.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "survey_accelerator_locality_detail",
+      "path": "fixtures/host_survey/linux-gpu-dual-numa-like-v1.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "survey_accelerator_visibility_operability_detail",
+      "path": "fixtures/host_survey/linux-gpu-container-restricted-like-v1.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "state_linux_bare_metal_like_fresh",
+      "path": "fixtures/host_state/linux-bare-metal-like-fresh-v1.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "state_cuda_runtime_extension_replay",
+      "path": "fixtures/conformance/valid/host-state.cuda-runtime-extension.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "state_cuda_runtime_extension_replay_missing",
+      "path": "fixtures/conformance/valid/host-state.cuda-runtime-extension-missing.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "state_cuda_runtime_extension_replay_stale",
+      "path": "fixtures/conformance/valid/host-state.cuda-runtime-extension-stale.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "state_cuda_runtime_extension_replay_insufficient",
+      "path": "fixtures/conformance/valid/host-state.cuda-runtime-extension-insufficient.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "service_profile_general_compute_contract_only",
+      "path": "configs/service_profiles/general_compute_contract_only.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_general_compute_node_extension_contract_only",
+      "path": "configs/service_profiles/general_compute_node_extension_contract_only.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_general_compute_cuda_extension_contract_only",
+      "path": "configs/service_profiles/general_compute_cuda_extension_contract_only.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_general_compute_cuda_runtime_allocatable_memory_required",
+      "path": "configs/service_profiles/general_compute_cuda_runtime_allocatable_memory_required.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_gpu_locality_single_numa_contract_only",
+      "path": "configs/service_profiles/gpu_locality_single_numa_contract_only.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_gpu_two_required_contract_only",
+      "path": "configs/service_profiles/gpu_two_required_contract_only.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_gpu_two_required_cuda_runtime_required",
+      "path": "configs/service_profiles/gpu_two_required_cuda_runtime_required.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_gpu_two_required_cuda_runtime_per_device_memory_required",
+      "path": "configs/service_profiles/gpu_two_required_cuda_runtime_per_device_memory_required.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "service_profile_reliability_storage_health_requirements",
+      "path": "fixtures/conformance/valid/service-profile.reliability-storage-health-requirements.v2.json",
+      "schema_id": "service-profile.v2"
+    },
+    {
+      "case_id": "survey_local_stable_identity_v2",
+      "path": "fixtures/conformance/valid/host-survey.local-stable-identity-v2.v2.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "survey_cuda_default_view_version_split",
+      "path": "fixtures/conformance/valid/host-survey.cuda-default-view-version-split.v2.json",
+      "schema_id": "host-survey.v2"
+    },
+    {
+      "case_id": "contract_device_operability_expanded",
+      "path": "fixtures/conformance/valid/host-contract.device-operability-expanded.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_accelerator_inventory_depth_gpu_detail",
+      "path": "fixtures/conformance/valid/host-contract.accelerator-inventory-depth.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_accelerator_visibility_operability_detail",
+      "path": "fixtures/conformance/valid/host-contract.accelerator-visibility-operability.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_accelerator_locality_summary",
+      "path": "fixtures/conformance/valid/host-contract.accelerator-locality.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_accelerator_policy_scoped_inventory",
+      "path": "fixtures/conformance/valid/host-contract.policy-scoped-accelerator-inventory.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_policy_scoped_accelerator_complete_required_blocked",
+      "path": "fixtures/conformance/valid/host-contract.policy-scoped-accelerator-complete-required-blocked.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_local_stable_identity_v2",
+      "path": "fixtures/conformance/valid/host-contract.local-stable-identity-v2.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "contract_cuda_default_view_version_split",
+      "path": "fixtures/conformance/valid/host-contract.cuda-default-view-version-split.v2.json",
+      "schema_id": "host-contract.v2"
+    },
+    {
+      "case_id": "state_cuda_default_view_version_split",
+      "path": "fixtures/conformance/valid/host-state.cuda-default-view-version-split.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "state_thermal_resources_out_of_band_bmc",
+      "path": "fixtures/conformance/valid/host-state.thermal-resources.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "thermal_evidence_out_of_band_bmc",
+      "path": "fixtures/conformance/valid/thermal-evidence.out-of-band-bmc.v1.json",
+      "schema_id": "fitctl.thermal-evidence.v1"
+    },
+    {
+      "case_id": "validation_accelerator_present_but_unusable_detail",
+      "path": "fixtures/conformance/valid/validation-report.accelerator-present-but-unusable.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_accelerator_locality_mismatch",
+      "path": "fixtures/conformance/valid/validation-report.accelerator-locality-mismatch.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_policy_scoped_accelerator_count_fit",
+      "path": "fixtures/conformance/valid/validation-report.policy-scoped-accelerator-count-fit.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_cuda_runtime_allocatable_memory_fit",
+      "path": "fixtures/conformance/valid/validation-report.cuda-runtime-allocatable-memory-fit.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_cuda_runtime_state_missing",
+      "path": "fixtures/conformance/valid/validation-report.cuda-runtime-state-missing.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_cuda_runtime_state_stale",
+      "path": "fixtures/conformance/valid/validation-report.cuda-runtime-state-stale.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_cuda_runtime_allocatable_memory_insufficient",
+      "path": "fixtures/conformance/valid/validation-report.cuda-runtime-allocatable-memory-insufficient.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_cuda_runtime_multi_gpu_fit",
+      "path": "fixtures/conformance/valid/validation-report.cuda-runtime-multi-gpu-fit.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "validation_cuda_runtime_multi_gpu_per_device_insufficient",
+      "path": "fixtures/conformance/valid/validation-report.cuda-runtime-multi-gpu-per-device-insufficient.v2.json",
+      "schema_id": "validation-report.v2"
+    },
+    {
+      "case_id": "batch_classification_state_aware_cuda_runtime_shortlist",
+      "path": "fixtures/conformance/valid/batch-classification-report.cuda-runtime-shortlist.v3.json",
+      "schema_id": "fitctl.batch-classification-report.v3"
+    }
+  ],
+  "redaction_valid_cases": [
+    {
+      "case_id": "recommendation_report_external_redacted",
+      "path": "fixtures/conformance/valid/recommendation-report.external-redacted.v2.json",
+      "schema_id": "fitctl.recommendation-report.v2"
+    },
+    {
+      "case_id": "batch_classification_report_external_redacted",
+      "path": "fixtures/conformance/valid/batch-classification-report.external-redacted.v3.json",
+      "schema_id": "fitctl.batch-classification-report.v3"
+    }
+  ],
+  "invalid_cases": [
+    {
+      "case_id": "missing_envelope_schema_id",
+      "path": "fixtures/conformance/invalid/missing-envelope-schema-id.json",
+      "expected_error_code": "artifact_decode_invalid",
+      "expected_checkpoint": "artifact_load"
+    },
+    {
+      "case_id": "unsupported_core_schema_id",
+      "path": "fixtures/conformance/invalid/unsupported-core-schema-id.json",
+      "expected_error_code": "artifact_schema_unsupported",
+      "expected_checkpoint": "artifact_load"
+    },
+    {
+      "case_id": "survey_missing_required_sections",
+      "path": "fixtures/conformance/invalid/survey-missing-required-sections.json",
+      "expected_error_code": "artifact_load_invalid",
+      "expected_checkpoint": "artifact_load"
+    },
+    {
+      "case_id": "survey_unknown_provenance_key",
+      "path": "fixtures/conformance/invalid/survey-unknown-provenance-key.json",
+      "expected_error_code": "artifact_load_invalid",
+      "expected_checkpoint": "artifact_load"
+    }
+  ]
+}

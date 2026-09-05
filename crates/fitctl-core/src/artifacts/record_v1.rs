@@ -15,28 +15,31 @@ use crate::artifacts::envelope_v1::ArtifactEnvelopeV1;
 use crate::artifacts::schema_ids_v1::{
     CONFIG_BUNDLE_SCHEMA_ID, DECISION_BUNDLE_SCHEMA_ID, HOST_CONTRACT_SCHEMA_ID,
     HOST_STATE_SCHEMA_ID, HOST_SURVEY_SCHEMA_ID, SERVICE_PROFILE_SCHEMA_ID,
-    VALIDATION_REPORT_SCHEMA_ID,
+    THERMAL_EVIDENCE_SCHEMA_ID, VALIDATION_REPORT_SCHEMA_ID,
 };
 use crate::artifacts::semantic_hash_v1::{
     semantic_bytes_for_config_bundle, semantic_bytes_for_contract,
     semantic_bytes_for_decision_bundle, semantic_bytes_for_service_profile,
-    semantic_bytes_for_state, semantic_bytes_for_survey, semantic_bytes_for_validation_report,
-    semantic_content_json_for_config_bundle, semantic_content_json_for_contract,
-    semantic_content_json_for_decision_bundle, semantic_content_json_for_service_profile,
-    semantic_content_json_for_state, semantic_content_json_for_survey,
+    semantic_bytes_for_state, semantic_bytes_for_survey, semantic_bytes_for_thermal_evidence,
+    semantic_bytes_for_validation_report, semantic_content_json_for_config_bundle,
+    semantic_content_json_for_contract, semantic_content_json_for_decision_bundle,
+    semantic_content_json_for_service_profile, semantic_content_json_for_state,
+    semantic_content_json_for_survey, semantic_content_json_for_thermal_evidence,
     semantic_content_json_for_validation_report, semantic_hash_hex_for_config_bundle,
     semantic_hash_hex_for_contract, semantic_hash_hex_for_decision_bundle,
     semantic_hash_hex_for_service_profile, semantic_hash_hex_for_state,
-    semantic_hash_hex_for_survey, semantic_hash_hex_for_validation_report,
+    semantic_hash_hex_for_survey, semantic_hash_hex_for_thermal_evidence,
+    semantic_hash_hex_for_validation_report,
 };
 use crate::artifacts::service_profile_v1::ServiceProfileV1;
 use crate::artifacts::state_v1::HostStateV1;
 use crate::artifacts::survey_v1::HostSurveyV1;
+use crate::artifacts::thermal_evidence_v1::ThermalEvidenceV1;
 use crate::artifacts::validation_report_v1::ValidationReportV1;
 use crate::artifacts::validation_v1::{
     validate_config_bundle, validate_decision_bundle, validate_host_contract, validate_host_state,
-    validate_host_survey, validate_service_profile, validate_validation_report,
-    ArtifactValidationErrorCode,
+    validate_host_survey, validate_service_profile, validate_thermal_evidence,
+    validate_validation_report, ArtifactValidationErrorCode,
 };
 pub const ARTIFACT_RECORD_ERROR_MODEL_ID: &str = "fitctl.artifact_record.v1";
 pub const ARTIFACT_RECORD_ERROR_MODEL_VERSION: u32 = 1;
@@ -106,6 +109,7 @@ pub enum ArtifactRecordV1 {
     Contract(HostContractV1),
     ServiceProfile(ServiceProfileV1),
     State(HostStateV1),
+    ThermalEvidence(ThermalEvidenceV1),
     ValidationReport(ValidationReportV1),
     ConfigBundle(ConfigBundleV1),
     DecisionBundle(DecisionBundleV1),
@@ -118,6 +122,7 @@ impl ArtifactRecordV1 {
             Self::Contract(artifact) => &artifact.envelope,
             Self::ServiceProfile(artifact) => &artifact.envelope,
             Self::State(artifact) => &artifact.envelope,
+            Self::ThermalEvidence(artifact) => &artifact.envelope,
             Self::ValidationReport(artifact) => &artifact.envelope,
             Self::ConfigBundle(artifact) => &artifact.envelope,
             Self::DecisionBundle(artifact) => &artifact.envelope,
@@ -130,6 +135,7 @@ impl ArtifactRecordV1 {
             Self::Contract(artifact) => &mut artifact.envelope,
             Self::ServiceProfile(artifact) => &mut artifact.envelope,
             Self::State(artifact) => &mut artifact.envelope,
+            Self::ThermalEvidence(artifact) => &mut artifact.envelope,
             Self::ValidationReport(artifact) => &mut artifact.envelope,
             Self::ConfigBundle(artifact) => &mut artifact.envelope,
             Self::DecisionBundle(artifact) => &mut artifact.envelope,
@@ -150,6 +156,7 @@ impl ArtifactRecordV1 {
             Self::Contract(artifact) => semantic_hash_hex_for_contract(artifact),
             Self::ServiceProfile(artifact) => semantic_hash_hex_for_service_profile(artifact),
             Self::State(artifact) => semantic_hash_hex_for_state(artifact),
+            Self::ThermalEvidence(artifact) => semantic_hash_hex_for_thermal_evidence(artifact),
             Self::ValidationReport(artifact) => semantic_hash_hex_for_validation_report(artifact),
             Self::ConfigBundle(artifact) => semantic_hash_hex_for_config_bundle(artifact),
             Self::DecisionBundle(artifact) => semantic_hash_hex_for_decision_bundle(artifact),
@@ -169,6 +176,7 @@ impl ArtifactRecordV1 {
             Self::Contract(artifact) => semantic_bytes_for_contract(artifact),
             Self::ServiceProfile(artifact) => semantic_bytes_for_service_profile(artifact),
             Self::State(artifact) => semantic_bytes_for_state(artifact),
+            Self::ThermalEvidence(artifact) => semantic_bytes_for_thermal_evidence(artifact),
             Self::ValidationReport(artifact) => semantic_bytes_for_validation_report(artifact),
             Self::ConfigBundle(artifact) => semantic_bytes_for_config_bundle(artifact),
             Self::DecisionBundle(artifact) => semantic_bytes_for_decision_bundle(artifact),
@@ -192,6 +200,7 @@ impl ArtifactRecordV1 {
             Self::Contract(artifact) => semantic_content_json_for_contract(artifact),
             Self::ServiceProfile(artifact) => semantic_content_json_for_service_profile(artifact),
             Self::State(artifact) => semantic_content_json_for_state(artifact),
+            Self::ThermalEvidence(artifact) => semantic_content_json_for_thermal_evidence(artifact),
             Self::ValidationReport(artifact) => {
                 semantic_content_json_for_validation_report(artifact)
             }
@@ -236,6 +245,7 @@ impl serde::Serialize for ArtifactRecordV1 {
             Self::Contract(artifact) => artifact.serialize(serializer),
             Self::ServiceProfile(artifact) => artifact.serialize(serializer),
             Self::State(artifact) => artifact.serialize(serializer),
+            Self::ThermalEvidence(artifact) => artifact.serialize(serializer),
             Self::ValidationReport(artifact) => artifact.serialize(serializer),
             Self::ConfigBundle(artifact) => artifact.serialize(serializer),
             Self::DecisionBundle(artifact) => artifact.serialize(serializer),
@@ -366,6 +376,17 @@ fn load_artifact_record_from_value_with_schema_id(
             })?;
             validate_host_state(&artifact).map_err(map_validation_error)?;
             Ok(ArtifactRecordV1::State(artifact))
+        }
+        THERMAL_EVIDENCE_SCHEMA_ID => {
+            let artifact: ThermalEvidenceV1 = serde_json::from_value(raw).map_err(|error| {
+                ArtifactRecordError::new(
+                    ArtifactRecordErrorCode::ArtifactDecodeInvalid,
+                    "artifact_load",
+                    format!("failed to decode fitctl.thermal-evidence.v1 artifact: {error}"),
+                )
+            })?;
+            validate_thermal_evidence(&artifact).map_err(map_validation_error)?;
+            Ok(ArtifactRecordV1::ThermalEvidence(artifact))
         }
         VALIDATION_REPORT_SCHEMA_ID => {
             let artifact: ValidationReportV1 = serde_json::from_value(raw).map_err(|error| {

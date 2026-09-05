@@ -175,6 +175,7 @@ pub fn validate_with_profile(
         contract,
         service_profile,
         host_state,
+        thermal_evidence: vec![],
         mode,
         validated_at: FIXED_TIMESTAMP.to_string(),
         notes: Some("integration-test".to_string()),

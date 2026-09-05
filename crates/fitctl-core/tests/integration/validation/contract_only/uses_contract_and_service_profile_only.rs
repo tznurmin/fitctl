@@ -27,6 +27,7 @@ fn contract_only_uses_contract_and_service_profile_only() {
         contract,
         service_profile,
         host_state: None,
+        thermal_evidence: vec![],
         mode: ValidationModeV1::ContractOnly,
         validated_at: common::FIXED_TIMESTAMP.to_string(),
         notes: Some("integration-test".to_string()),

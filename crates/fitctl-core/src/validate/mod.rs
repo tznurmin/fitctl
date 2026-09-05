@@ -14,8 +14,8 @@ pub use crate::artifacts::validation_report_v1::{
 };
 pub use contract_only_v1::{
     load_contract_artifact_for_validation, load_host_state_artifact_for_validation,
-    load_service_profile_artifact_for_validation, load_validation_report_from_path,
-    validate_request_v1, ValidationRequestV1,
+    load_service_profile_artifact_for_validation, load_thermal_evidence_artifact_for_validation,
+    load_validation_report_from_path, validate_request_v1, ValidationRequestV1,
 };
 pub use reason_codes_v1::{VALIDATION_REASON_CODES_V1, VALIDATION_VERDICTS_V1};
 
@@ -28,6 +28,7 @@ pub enum ValidationErrorCode {
     ContractArtifactInvalid,
     ServiceProfileArtifactInvalid,
     StateArtifactInvalid,
+    ThermalEvidenceArtifactInvalid,
     ValidationModeUnsupported,
     ValidationReportInvalid,
     ValidationExecutionFailed,
@@ -40,6 +41,7 @@ impl ValidationErrorCode {
             Self::ContractArtifactInvalid => "contract_artifact_invalid",
             Self::ServiceProfileArtifactInvalid => "service_profile_artifact_invalid",
             Self::StateArtifactInvalid => "state_artifact_invalid",
+            Self::ThermalEvidenceArtifactInvalid => "thermal_evidence_artifact_invalid",
             Self::ValidationModeUnsupported => "validation_mode_unsupported",
             Self::ValidationReportInvalid => "validation_report_invalid",
             Self::ValidationExecutionFailed => "validation_execution_failed",

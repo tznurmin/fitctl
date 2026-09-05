@@ -10,7 +10,7 @@ status can stop the job.
 
 ## Workflow
 
-Use [workflow.yml](./workflow.yml) as the copyable GitHub Actions shape.
+Use [workflow.yaml](./workflow.yaml) as the copyable GitHub Actions shape.
 
 The workflow runs:
 

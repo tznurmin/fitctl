@@ -1,0 +1,66 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-thermal-safe-v1",
+    "provenance": {
+      "source": "fixture:thermal-requirements",
+      "collected_at": "2026-06-16T12:00:00Z"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "thermal_safe_v1",
+    "display_name": "Thermal safe",
+    "short_display_name": "Thermal",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "min_allocatable_cpu_logical_cores": null,
+      "min_allocatable_memory_bytes": null,
+      "min_non_loopback_interfaces": null,
+      "min_network_link_speed_mbps": null,
+      "required_network_interface_kinds": [],
+      "min_numa_nodes": null,
+      "max_numa_nodes": null,
+      "min_cpu_packages": null,
+      "min_policy_scoped_accelerators": null,
+      "require_accelerator_locality_known": false,
+      "max_accelerator_numa_nodes": null,
+      "required_paths": [],
+      "path_relationships": [],
+      "required_path_link_pairs": [],
+      "required_thermal_sensors": [
+        {
+          "requirement_id": "target-inlet",
+          "provider_id": "site-bmc-thermal",
+          "sensor_alias": "target_inlet",
+          "sensor_role": "inlet",
+          "max_temperature_millidegrees_celsius": 37000,
+          "require_provider_success": true
+        },
+        {
+          "requirement_id": "target-system-board",
+          "provider_id": "site-bmc-thermal",
+          "sensor_alias": "target_system_board",
+          "sensor_role": "board",
+          "max_temperature_millidegrees_celsius": 43000,
+          "require_provider_success": true
+        }
+      ]
+    },
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": [],
+    "assurance_requirements": []
+  }
+}

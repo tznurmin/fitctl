@@ -10,6 +10,7 @@ Common artifacts in the local decision flow:
 | `host-survey.v2` | `fitctl survey` | observed host evidence |
 | `host-contract.v2` | `fitctl contract` | policy-shaped claim |
 | `host-state.v2` | `fitctl state` | current runtime-sensitive facts |
+| `fitctl.thermal-evidence.v1` | `fitctl thermal collect` | target-bound thermal evidence |
 | `validation-report.v2` | `fitctl validate` | verdict, posture, reason codes, evidence |
 | `fitctl.batch-classification-report.v3` | `fitctl classify` | multi-contract, multi-profile comparison |
 
@@ -69,6 +70,65 @@ provenance. When available, build provenance may also include:
 - `fitctl_vcs_describe`
 - `fitctl_build_dirty`
 
+Source builds omit these VCS fields by default. Set `FITCTL_EMBED_VCS=1` only when building from
+the fitctl workspace root and intentionally recording that checkout's revision. The build script is
+the sole authority for these values; ambient `FITCTL_VCS_*` variables are not read by product code.
+Untracked files count toward `fitctl_build_dirty` when VCS embedding is enabled.
+Opted-in builds refresh the snapshot on every Cargo invocation, including builds reusing an
+existing target directory. This may cause additional rebuild work; default builds do not collect
+VCS metadata.
+
+`fitctl redact` accepts the core decision artifacts, configuration and decision bundles, and
+standalone recommendation and batch-classification reports. Every non-local profile replaces
+`correlation_id` with the final redacted artifact id. The `auditor` and `external` profiles replace
+`source` and remove all three optional VCS fields; `local` and `fleet` retain source and VCS values.
+The same rule applies recursively to envelopes nested in bundles.
+
+For `auditor` and `external`, each populated extension section must have a registered,
+section-specific typed redactor. Unknown namespaces and known namespaces used in unsupported
+sections fail closed instead of passing through unchanged. In host contracts, enabled
+extension-basis namespaces must match semantic-hash keys, payload namespaces must be a subset of
+the enabled basis, and non-empty extension payloads require a basis. Retained extension semantic
+hashes must be 64 lowercase hexadecimal characters. This permits an enabled extension with no
+observed payload to remain a valid evidence-incomplete input.
+
+Every core and auxiliary envelope receives the same collection timestamp/version check at the
+`auditor`/`external` sharing boundary, including supported nested bundle envelopes. Collection
+timestamps must be `epoch:<seconds>`, `unix:<seconds>` (unsigned 64-bit seconds), or whole-second
+UTC `YYYY-MM-DDTHH:MM:SSZ` with valid calendar/time fields. Malformed timestamps fail redaction
+without an output artifact; no replacement time is invented. Plain numeric `major.minor.patch`
+fitctl versions remain available; custom/prerelease/build suffixes are replaced with deterministic
+profile-scoped placeholders. This checks version syntax, not publication status. Recognized core
+command names are preserved; auxiliary command names use the existing placeholder rule.
+Ordinary artifact loading and `local`/`fleet` provenance compatibility are unchanged.
+
+Those profiles also transform typed core claim metadata, free-form labels and notes, state path and
+relationship identifiers, service-profile identifiers and selectors, storage identities, and
+accelerator PCI/device-node topology. Survey and contract identity summaries use
+`identity_class = redacted`, fixed placeholders, and no local-anchor derivation metadata. The
+`redacted` enum value is additive in v0.6.0; exhaustive readers must handle it. State-local
+identity is absent from auditor and external views, and flexible engine identities are replaced
+with profile-scoped values.
+
+Redacted artifacts can retain semantic hashes so consumers can verify lineage. Those hashes are
+stable, linkable fingerprints: a recipient with a candidate original can test whether it matches,
+and can correlate separate disclosures carrying the same hash. They are not anonymity tokens.
+
+Some diagnostic software, driver, collector, and runtime versions remain available where they are
+needed to interpret evidence. Custom prerelease or build suffixes in those fields can disclose
+site-specific text; inspect the complete serialized artifact before sharing it.
+
+Configuration and decision bundle views retain configuration, trust-policy, signer,
+external-evidence, and lineage identities that form part of the bundle's audit meaning. Treat those
+views as structurally valid retained disclosures requiring manual review, not an anonymity
+boundary or generally publication-safe exports. Prefer narrower survey, state, and validation
+artifacts for host reports.
+
+Numeric resource facts, timestamps, freshness, typed enums, coarse CPU/accelerator facts,
+filesystem types, requirement thresholds, verdicts, typed reason codes, and closed provider
+error-code values remain available where needed to interpret the artifact. Redaction reduces
+identifying disclosure; it does not promise anonymity or unlinkability.
+
 Compact inspect continues to show `fitctl version`. Verbose inspect may show the optional build
 provenance fields separately when they are present.
 
@@ -98,6 +158,8 @@ It contains:
 - `core_evidence`
 - optional `extension_evidence`
 
+`collection_mode` is a closed compatibility string: only `live` and `replay` are valid.
+
 `core_evidence` combines collector metadata, execution context, identity summary, section metadata,
 and recorded observations.
 
@@ -112,6 +174,10 @@ It contains:
 `identity_summary` records the local correlation identity, including identity class, local stable
 ID and version, anchor family and source, stability class, degradation flags, composition digest,
 and provenance fingerprint.
+
+Canonical host evidence uses `local_stable`; trust-domain export identities use
+`export_pseudonym`; auditor/external sharing views use `redacted`. The `redacted` form contains
+fixed placeholders and omits local-anchor derivation metadata.
 
 `observations` carries the recorded host sections, including:
 
@@ -159,6 +225,12 @@ It contains:
 
 The `contract` section contains `core_contract` and may also carry optional
 `extension_contract`.
+
+When `extension_basis` is present, it records enabled extension namespaces and their semantic
+hashes. Ordinary validation and auditor/external sharing require its namespace list and hash keys
+to match. Populated `extension_contract` namespaces must be a subset of that enabled set, and a
+non-empty extension payload without a basis is invalid. Registered namespace strings and canonical
+hashes remain unchanged as linkable lineage.
 
 `core_contract` carries:
 
@@ -213,6 +285,9 @@ It contains:
 - `core_state`
 - optional `extension_state`
 
+`local_identity` remains available for local and Fleet correlation. Auditor and external sharing
+views omit the entire optional object rather than retaining its anchor or degradation metadata.
+
 `core_state` captures current runtime-sensitive sections.
 
 It contains:
@@ -222,12 +297,100 @@ It contains:
 - `freshness`
 - `resources`
 - `path_resources`
+- optional `thermal_resources`
+- optional `memory_reliability`
+- optional `gpu_reliability`
 - `boundaries`
 - `topology`
 - `operability`
 
 `path_resources` records explicit path checks requested during live state collection. Each entry
-contains a path id, path, existence state, filesystem available bytes, and filesystem total bytes.
+contains:
+
+- `path_id`
+- `path`
+- optional `requested_path`
+- `exists`
+- `filesystem_available_bytes`
+- `filesystem_total_bytes`
+- `canonical_path`
+- `containing_mount_point`
+- `filesystem_type`
+- `mount_source`
+- `mount_options`
+- `mount_device_major_minor`
+- `filesystem_uuid`
+- `partition_uuid`
+- `persistent_device_links`
+- `storage_identity_evidence`
+- `media_class`
+- `media_class_confidence`
+- `media_class_evidence`
+- `durability_class`
+- optional `observed_at`
+- optional `link_capabilities`
+- optional `storage_health`
+
+`path_resources.link_pairs` records optional pairwise probes requested with
+`--probe-path-link-pair <from-id>:<to-id>`. Each pair entry names the source and destination path
+ids, records whether they were on the same filesystem from the current process view, and reports
+hardlink, reflink, symlink, and copy probe results.
+
+`media_class` is one of `tmpfs`, `nvme`, `ssd`, `hdd`, `network`, or `unknown`.
+`durability_class` is one of `ephemeral`, `durable`, or `unknown`.
+
+Storage identity fields are evidence about the currently mounted path. They can include the
+mount major:minor value from mountinfo, filesystem UUIDs, partition UUIDs, and persistent
+`/dev/disk/by-id` links when visible. Device names such as `nvme0n1` are evidence labels only;
+they are not durable identity by themselves.
+
+`link_capabilities` is emitted only when the caller explicitly asks for link probes with
+`--probe-path-links <path-id>`. It can report hardlink, reflink, symlink, and copy fallback support
+for the checked path. These are filesystem facts only; they do not select a DVC cache policy.
+
+Pairwise link probes are also evidence only. They answer whether the observed source path can link
+or copy into the observed destination path; they do not decide which cache policy a downstream
+tool should select.
+
+`storage_health` is emitted only when requested with `--probe-path-health <path-id>`. It can record
+health state, probe source, probe method, temperature, used percentage, available spare percentage,
+probe errors, and observation time. Health evidence is included in the state semantic hash and is
+redacted under auditor/external redaction profiles where it can expose device identity.
+
+`memory_reliability` is emitted only when requested with `--collect memory-reliability`. It records
+safe local memory reliability provider outcomes and aggregate counters such as corrected and
+uncorrected error counts when the host exposes them. It is evidence only; fitctl does not change
+memory-controller configuration. Provider error codes use a closed fitctl-emitted vocabulary;
+unknown imported values fail artifact validation.
+
+`gpu_reliability` is emitted only when requested with `--collect gpu-reliability`. It records
+read-only GPU reliability provider outcomes and per-device evidence such as ECC mode, volatile ECC
+error counts, retired-page state, and row-remapper state when available. It is evidence only; fitctl
+does not enable ECC, change power limits, or modify GPU persistence settings. Provider error codes
+use a closed fitctl-emitted vocabulary; unknown imported values fail artifact validation.
+
+`thermal_resources` is emitted only when the caller supplies one or more thermal provider configs
+with `--thermal-provider-config <path>`. It records provider outcomes and normalized temperature
+readings from exact-argv providers such as `sensors -j`, `nvidia-smi` query output, or
+`ipmitool sensor`.
+
+Provider collection drains stdout and stderr within the configured timeout. Successful stdout
+larger than one MiB is rejected as `thermal_provider_output_too_large`, never parsed as truncated
+evidence. Stderr capture and failure diagnostics are bounded. Inherited output pipes remain subject
+to the same deadline; timeout cleanup kills and reaps the direct provider child, not a separate
+process group. Wrappers remain responsible for their own descendants.
+
+`thermal_resources` keeps collector and target identity separate. `collector_host` describes the
+host that ran the provider command. Each provider and reading also carries `evidence_target`, which
+may identify the current host or a different host observed through an out-of-band path such as a
+BMC. Provider kind never implies target identity.
+
+Provider outcomes are `success`, `unavailable`, `permission_denied`, `command_failed`,
+`malformed`, or `partial`. Sensor roles are normalized to `cpu`, `gpu`, `board`, `network_chip`,
+`storage_drive`, `nvme`, `ssd`, `inlet`, `exhaust`, `vrm`, `bmc`, or `unknown`. Provider configs
+may map raw labels to site-local `sensor_alias` values. Raw provider labels and aliases are
+evidence and may be redacted under auditor/external redaction profiles. Provider error codes use a
+closed fitctl-emitted vocabulary; unknown imported values fail artifact validation.
 
 `extension_state` carries namespaced runtime facts that do not belong in the stable contract. CUDA
 runtime replay and live state appear under
@@ -236,8 +399,52 @@ runtime replay and live state appear under
 CUDA extension payloads may also carry selected CUDA environment fields as additive observations.
 They do not redefine the default CUDA view.
 
+CUDA runtime device entries may include optional `compute_capability` and `mig_mode` state fields
+when the live probe can observe them. Older replay artifacts and hosts that cannot expose those
+facts remain valid with the fields missing or unknown.
+
 This separation is deliberate: `contract` records what the host may claim in principle, while
 `state` records what is true in the current execution context now.
+
+## fitctl.thermal-evidence.v1
+
+Produced by `fitctl thermal collect`.
+
+Top-level shape:
+
+```text
+{
+  "envelope": { ... },
+  "thermal_evidence": { ... }
+}
+```
+
+Standalone thermal evidence records provider outcomes and normalized temperature readings without
+embedding a full `host-state.v2` runtime state artifact. It is useful when temperature evidence is
+collected out of band, such as from a BMC/IPMI command run on one host for another host.
+
+`thermal_evidence` has the same schema shape as `state.core_state.thermal_resources`:
+
+- `observed_at`
+- `collector_host`
+- `providers`
+- `readings`
+
+Collector identity and evidence target identity remain separate. Validation compares
+`evidence_target` against the contract host identity before using the evidence. A thermal evidence
+artifact for one host must not satisfy requirements for another host.
+
+Standalone thermal evidence can satisfy `core_requirements.required_thermal_sensors`, but it does
+not satisfy non-thermal runtime requirements such as allocatable memory, path capacity, topology,
+or CUDA runtime state. Those still require `host-state.v2`.
+
+State-aware validation can also consume:
+
+- `state.core_state.path_resources.paths[].storage_health` for
+  `core_requirements.required_paths[<path-id>].storage_health`
+- `state.core_state.memory_reliability` for
+  `core_requirements.required_memory_reliability`
+- `state.core_state.gpu_reliability` for `core_requirements.required_gpu_reliability`
 
 ## validation-report.v2
 
@@ -269,11 +476,17 @@ It contains:
 - optional `state_observed_at`
 - optional `state_freshness_state`
 - optional `max_state_age_seconds`
+- optional `thermal_evidence_artifact_ids`
+- optional `thermal_evidence_semantic_hashes`
 - `validation_engine_id`
 - `validation_engine_version`
 
 When state participates in validation, the optional state fields preserve the extra runtime and
 freshness context.
+
+When standalone thermal evidence participates in validation, the thermal evidence artifact ids and
+semantic hashes preserve the evidence basis. They are paired lists; each id has a corresponding
+semantic hash at the same index.
 
 The `report` section carries the decision itself.
 
@@ -289,6 +502,7 @@ Key fields include:
 - `selected_degradation_tier`
 - `warnings`
 - `extension_diagnostics`
+- `path_diagnostics`
 - `explanations`
 - `remediation_hints`
 - `summary`
@@ -296,6 +510,10 @@ Key fields include:
 Count-sensitive and runtime-sensitive validation reuse these normal report fields. Scoped
 accelerator floors and runtime admission still surface through `matched_requirements`,
 `failed_requirements`, `primary_reason_code`, `summary`, and optional `extension_diagnostics`.
+
+`path_diagnostics` is emitted when path relationship or pairwise link checks need structured
+machine-readable detail. It records the requirement key, involved path ids, check id, status,
+reason code, expected values, observed values, and evidence refs.
 
 CUDA runtime detail is recorded under
 `report.extension_diagnostics.fitctl.runtime.cuda`.

@@ -12,6 +12,59 @@ fn cuda_extension_pack_path() -> std::path::PathBuf {
 }
 
 #[test]
+fn contract_without_activation_does_not_inherit_survey_extension_payload() {
+    let fitctl_bin = cli::fitctl_bin();
+    let temp_dir = common::unique_temp_dir("integration-cuda-contract-activation");
+    let survey_path = temp_dir.join("host-survey.v2.json");
+    let survey_output = Command::new(&fitctl_bin)
+        .current_dir(common::repo_root())
+        .args([
+            "survey",
+            "--fixture",
+            "linux-gpu-workstation-like-v1",
+            "--extension-pack",
+            cuda_extension_pack_path()
+                .to_str()
+                .expect("extension pack path should be valid UTF-8"),
+            "--enable-extension",
+            CUDA_RUNTIME_NAMESPACE,
+        ])
+        .output()
+        .expect("fitctl survey should execute");
+    assert!(survey_output.status.success());
+    std::fs::write(&survey_path, survey_output.stdout).expect("survey should be writable");
+
+    let contract_output = Command::new(&fitctl_bin)
+        .current_dir(common::repo_root())
+        .args([
+            "contract",
+            "--survey",
+            survey_path
+                .to_str()
+                .expect("survey path should be valid UTF-8"),
+            "--policy",
+            common::repo_policy_path()
+                .to_str()
+                .expect("policy path should be valid UTF-8"),
+            "--derived-at",
+            common::FIXED_TIMESTAMP,
+        ])
+        .output()
+        .expect("fitctl contract should execute");
+    assert!(
+        contract_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&contract_output.stderr)
+    );
+    let contract: fitctl_core::artifacts::contract_v1::HostContractV1 =
+        serde_json::from_slice(&contract_output.stdout).expect("contract should decode");
+    assert!(contract.contract_basis.extension_basis.is_none());
+    assert!(common::decode_contract_payload(&contract)
+        .extension_contract
+        .is_empty());
+}
+
+#[test]
 fn cuda_runtime_extension_end_to_end() {
     let fitctl_bin = cli::fitctl_bin();
     let temp_dir = common::unique_temp_dir("integration-cuda-extension");

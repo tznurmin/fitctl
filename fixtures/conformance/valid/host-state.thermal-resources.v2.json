@@ -1,0 +1,226 @@
+{
+  "envelope": {
+    "schema_id": "host-state.v2",
+    "schema_version": 2,
+    "artifact_id": "state-thermal-resources",
+    "provenance": {
+      "source": "fixture_corpus:thermal_resources_v1",
+      "collected_at": "2026-06-16T12:00:00Z",
+      "fitctl_version": "0.5.0",
+      "command_name": "state",
+      "correlation_id": "state-thermal-resources"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "state": {
+    "collection_mode": "replay",
+    "snapshot_id": "thermal-resources-v1",
+    "host_alias": "collector-host",
+    "source_ref": "fixture_corpus:thermal_resources_v1",
+    "core_state": {
+      "collectors": [
+        {
+          "collector_id": "runtime_cpu_capacity",
+          "collector_version": "1",
+          "source_family": "rust_std"
+        },
+        {
+          "collector_id": "procfs_meminfo",
+          "collector_version": "1",
+          "source_family": "procfs"
+        },
+        {
+          "collector_id": "cgroupfs_cpuset",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cgroupfs_cpu_quota",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cgroupfs_memory_boundary",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "sysfs_topology",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        },
+        {
+          "collector_id": "thermal_provider",
+          "collector_version": "1",
+          "source_family": "thermal_provider"
+        }
+      ],
+      "section_metadata": {
+        "resources": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "runtime_cpu_capacity",
+            "procfs_meminfo",
+            "cgroupfs_cpuset",
+            "cgroupfs_cpu_quota",
+            "cgroupfs_memory_boundary",
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.resources"
+          ],
+          "trust_evidence_refs": []
+        },
+        "boundaries": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "cgroupfs_cpuset",
+            "cgroupfs_cpu_quota",
+            "cgroupfs_memory_boundary"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.boundaries"
+          ],
+          "trust_evidence_refs": []
+        },
+        "topology": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "operability": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "runtime_cpu_capacity"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.operability"
+          ],
+          "trust_evidence_refs": []
+        }
+      },
+      "freshness": {
+        "observed_at": "2026-06-16T12:00:00Z",
+        "freshness_state": "fresh"
+      },
+      "resources": {
+        "allocatable_cpu_logical_cores": {
+          "state": "observed",
+          "value": 12
+        },
+        "memory_total_bytes": {
+          "state": "observed",
+          "value": 68719476736
+        },
+        "allocatable_memory_bytes": {
+          "state": "observed",
+          "value": 51539607552
+        },
+        "memory_used_excluding_cache_bytes": {
+          "state": "observed",
+          "value": 17179869184
+        }
+      },
+      "thermal_resources": {
+        "observed_at": "2026-06-16T12:00:00Z",
+        "collector_host": {
+          "host_alias": "collector-host",
+          "local_stable_id": "collector-local-stable-id"
+        },
+        "providers": [
+          {
+            "provider_id": "site-bmc-thermal",
+            "provider_kind": "ipmitool_sensor",
+            "outcome": "success",
+            "evidence_target": {
+              "target_kind": "host_id",
+              "host_id": "host.compute-01",
+              "collection_path": "out_of_band_bmc"
+            },
+            "observed_at": "2026-06-16T12:00:00Z"
+          }
+        ],
+        "readings": [
+          {
+            "sensor_id": "site-bmc-thermal:inlet-temp",
+            "sensor_role": "inlet",
+            "sensor_alias": "target_inlet",
+            "provider_id": "site-bmc-thermal",
+            "raw_label": "Inlet Temp",
+            "temperature_millidegrees_celsius": 27000,
+            "status": "ok",
+            "observed_at": "2026-06-16T12:00:00Z",
+            "evidence_target": {
+              "target_kind": "host_id",
+              "host_id": "host.compute-01",
+              "collection_path": "out_of_band_bmc"
+            },
+            "source": "ipmitool_sensor"
+          },
+          {
+            "sensor_id": "site-bmc-thermal:system-board-temp",
+            "sensor_role": "board",
+            "sensor_alias": "target_system_board",
+            "provider_id": "site-bmc-thermal",
+            "raw_label": "System Board Temp",
+            "temperature_millidegrees_celsius": 33000,
+            "status": "ok",
+            "observed_at": "2026-06-16T12:00:00Z",
+            "evidence_target": {
+              "target_kind": "host_id",
+              "host_id": "host.compute-01",
+              "collection_path": "out_of_band_bmc"
+            },
+            "source": "ipmitool_sensor"
+          }
+        ]
+      },
+      "boundaries": {
+        "cgroup_version": {
+          "state": "observed",
+          "value": "v2"
+        },
+        "available_cgroup_controllers": {
+          "state": "unknown",
+          "value": null
+        },
+        "cpuset_cpu_logical_cores": {
+          "state": "observed",
+          "value": 12
+        },
+        "cpu_quota_logical_cores": {
+          "state": "unknown",
+          "value": null
+        },
+        "memory_limit_bytes": {
+          "state": "unknown",
+          "value": null
+        },
+        "memory_current_bytes": {
+          "state": "unknown",
+          "value": null
+        }
+      },
+      "topology": {
+        "visible_numa_nodes": {
+          "state": "observed",
+          "value": 1
+        }
+      },
+      "operability": {
+        "degraded_capability_classes": []
+      }
+    },
+    "extension_state": {}
+  }
+}

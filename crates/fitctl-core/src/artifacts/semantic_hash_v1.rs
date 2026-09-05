@@ -33,14 +33,15 @@ use crate::artifacts::state_v1::{
     HostStateV1, StateCollectionModeV1, StateSectionMetadataV1,
 };
 use crate::artifacts::survey_v1::HostSurveyV1;
+use crate::artifacts::thermal_evidence_v1::ThermalEvidenceV1;
 use crate::artifacts::validation_report_v1::{
     ValidationBasisV1, ValidationReportPayloadV1, ValidationReportV1,
 };
 use crate::artifacts::validation_v1::{
     validate_batch_classification_report, validate_config_bundle, validate_decision_bundle,
     validate_host_contract, validate_host_state, validate_host_survey,
-    validate_recommendation_report, validate_service_profile, validate_validation_report,
-    ArtifactValidationError,
+    validate_recommendation_report, validate_service_profile, validate_thermal_evidence,
+    validate_validation_report, ArtifactValidationError,
 };
 use crate::config::ResolvedConfigV1;
 use crate::policy::PolicyDocumentV1;
@@ -146,6 +147,30 @@ pub fn semantic_bytes_for_state(state: &HostStateV1) -> Result<Vec<u8>, Artifact
     validate_host_state(state)?;
 
     let projection = StateSemanticProjection::from(state);
+    canonical_cbor_bytes(&projection)
+}
+
+pub fn semantic_hash_hex_for_thermal_evidence(
+    artifact: &ThermalEvidenceV1,
+) -> Result<String, ArtifactValidationError> {
+    validate_thermal_evidence(artifact)?;
+
+    let projection = ThermalEvidenceSemanticProjection::from(artifact);
+    canonical_cbor_sha256_hex(&projection)
+}
+
+pub fn semantic_cbor_bytes_for_thermal_evidence(
+    artifact: &ThermalEvidenceV1,
+) -> Result<Vec<u8>, ArtifactValidationError> {
+    semantic_bytes_for_thermal_evidence(artifact)
+}
+
+pub fn semantic_bytes_for_thermal_evidence(
+    artifact: &ThermalEvidenceV1,
+) -> Result<Vec<u8>, ArtifactValidationError> {
+    validate_thermal_evidence(artifact)?;
+
+    let projection = ThermalEvidenceSemanticProjection::from(artifact);
     canonical_cbor_bytes(&projection)
 }
 
@@ -320,6 +345,19 @@ pub fn semantic_content_json_for_state(
 ) -> Result<Value, ArtifactValidationError> {
     validate_host_state(state)?;
     semantic_projection_json_value(&StateSemanticProjection::from(state))
+}
+
+pub fn semantic_projection_json_for_thermal_evidence(
+    artifact: &ThermalEvidenceV1,
+) -> Result<Value, ArtifactValidationError> {
+    semantic_content_json_for_thermal_evidence(artifact)
+}
+
+pub fn semantic_content_json_for_thermal_evidence(
+    artifact: &ThermalEvidenceV1,
+) -> Result<Value, ArtifactValidationError> {
+    validate_thermal_evidence(artifact)?;
+    semantic_projection_json_value(&ThermalEvidenceSemanticProjection::from(artifact))
 }
 
 pub fn semantic_projection_json_for_validation_report(
@@ -538,6 +576,9 @@ struct StateCoreSemanticProjection {
     freshness: StateFreshnessSemanticProjection,
     resources: HostRuntimeResourcesV1,
     path_resources: HostStatePathResourcesV1,
+    thermal_resources: Option<StateThermalResourcesSemanticProjection>,
+    memory_reliability: Option<StateMemoryReliabilitySemanticProjection>,
+    gpu_reliability: Option<StateGpuReliabilitySemanticProjection>,
     boundaries: HostStateExecutionBoundariesV1,
     topology: HostStateTopologyV1,
     operability: HostStateOperabilityV1,
@@ -551,9 +592,192 @@ impl From<&crate::artifacts::state_v1::HostStateCoreV1> for StateCoreSemanticPro
             freshness: StateFreshnessSemanticProjection::from(&state.freshness),
             resources: state.resources.clone(),
             path_resources: state.path_resources.clone(),
+            thermal_resources: state
+                .thermal_resources
+                .as_ref()
+                .map(StateThermalResourcesSemanticProjection::from),
+            memory_reliability: state
+                .memory_reliability
+                .as_ref()
+                .map(StateMemoryReliabilitySemanticProjection::from),
+            gpu_reliability: state
+                .gpu_reliability
+                .as_ref()
+                .map(StateGpuReliabilitySemanticProjection::from),
             boundaries: state.boundaries.clone(),
             topology: state.topology.clone(),
             operability: state.operability.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateThermalResourcesSemanticProjection {
+    collector_host: crate::artifacts::state_v1::HostStateThermalCollectorHostV1,
+    providers: Vec<StateThermalProviderSemanticProjection>,
+    readings: Vec<StateThermalReadingSemanticProjection>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateThermalResourcesV1>
+    for StateThermalResourcesSemanticProjection
+{
+    fn from(thermal: &crate::artifacts::state_v1::HostStateThermalResourcesV1) -> Self {
+        Self {
+            collector_host: thermal.collector_host.clone(),
+            providers: thermal
+                .providers
+                .iter()
+                .map(StateThermalProviderSemanticProjection::from)
+                .collect(),
+            readings: thermal
+                .readings
+                .iter()
+                .map(StateThermalReadingSemanticProjection::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateThermalProviderSemanticProjection {
+    provider_id: String,
+    provider_kind: crate::artifacts::state_v1::ThermalProviderKindV1,
+    outcome: crate::artifacts::state_v1::ThermalProviderOutcomeV1,
+    evidence_target: crate::artifacts::state_v1::HostStateThermalEvidenceTargetV1,
+    error_code: Option<String>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateThermalProviderV1>
+    for StateThermalProviderSemanticProjection
+{
+    fn from(provider: &crate::artifacts::state_v1::HostStateThermalProviderV1) -> Self {
+        Self {
+            provider_id: provider.provider_id.clone(),
+            provider_kind: provider.provider_kind,
+            outcome: provider.outcome,
+            evidence_target: provider.evidence_target.clone(),
+            error_code: provider.error_code.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateThermalReadingSemanticProjection {
+    sensor_id: String,
+    sensor_role: crate::artifacts::state_v1::ThermalSensorRoleV1,
+    provider_id: String,
+    raw_label: String,
+    temperature_millidegrees_celsius: i64,
+    status: crate::artifacts::state_v1::ThermalReadingStatusV1,
+    evidence_target: crate::artifacts::state_v1::HostStateThermalEvidenceTargetV1,
+    source: Option<String>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateThermalReadingV1>
+    for StateThermalReadingSemanticProjection
+{
+    fn from(reading: &crate::artifacts::state_v1::HostStateThermalReadingV1) -> Self {
+        Self {
+            sensor_id: reading.sensor_id.clone(),
+            sensor_role: reading.sensor_role,
+            provider_id: reading.provider_id.clone(),
+            raw_label: reading.raw_label.clone(),
+            temperature_millidegrees_celsius: reading.temperature_millidegrees_celsius,
+            status: reading.status,
+            evidence_target: reading.evidence_target.clone(),
+            source: reading.source.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateMemoryReliabilitySemanticProjection {
+    providers: Vec<StateMemoryReliabilityProviderSemanticProjection>,
+    controller_count: crate::artifacts::state_v1::StateFieldV1<u32>,
+    dimm_count: crate::artifacts::state_v1::StateFieldV1<u32>,
+    corrected_error_count: crate::artifacts::state_v1::StateFieldV1<u64>,
+    uncorrected_error_count: crate::artifacts::state_v1::StateFieldV1<u64>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateMemoryReliabilityV1>
+    for StateMemoryReliabilitySemanticProjection
+{
+    fn from(memory: &crate::artifacts::state_v1::HostStateMemoryReliabilityV1) -> Self {
+        Self {
+            providers: memory
+                .providers
+                .iter()
+                .map(StateMemoryReliabilityProviderSemanticProjection::from)
+                .collect(),
+            controller_count: memory.controller_count.clone(),
+            dimm_count: memory.dimm_count.clone(),
+            corrected_error_count: memory.corrected_error_count.clone(),
+            uncorrected_error_count: memory.uncorrected_error_count.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateMemoryReliabilityProviderSemanticProjection {
+    provider_id: String,
+    provider_kind: crate::artifacts::state_v1::MemoryReliabilityProviderKindV1,
+    outcome: crate::artifacts::state_v1::StateEvidenceProviderOutcomeV1,
+    source: Option<String>,
+    error_code: Option<String>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateMemoryReliabilityProviderV1>
+    for StateMemoryReliabilityProviderSemanticProjection
+{
+    fn from(provider: &crate::artifacts::state_v1::HostStateMemoryReliabilityProviderV1) -> Self {
+        Self {
+            provider_id: provider.provider_id.clone(),
+            provider_kind: provider.provider_kind,
+            outcome: provider.outcome,
+            source: provider.source.clone(),
+            error_code: provider.error_code.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateGpuReliabilitySemanticProjection {
+    providers: Vec<StateGpuReliabilityProviderSemanticProjection>,
+    devices: Vec<crate::artifacts::state_v1::HostStateGpuReliabilityDeviceV1>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateGpuReliabilityV1>
+    for StateGpuReliabilitySemanticProjection
+{
+    fn from(gpu: &crate::artifacts::state_v1::HostStateGpuReliabilityV1) -> Self {
+        Self {
+            providers: gpu
+                .providers
+                .iter()
+                .map(StateGpuReliabilityProviderSemanticProjection::from)
+                .collect(),
+            devices: gpu.devices.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct StateGpuReliabilityProviderSemanticProjection {
+    provider_id: String,
+    provider_kind: crate::artifacts::state_v1::GpuReliabilityProviderKindV1,
+    outcome: crate::artifacts::state_v1::StateEvidenceProviderOutcomeV1,
+    error_code: Option<String>,
+}
+
+impl From<&crate::artifacts::state_v1::HostStateGpuReliabilityProviderV1>
+    for StateGpuReliabilityProviderSemanticProjection
+{
+    fn from(provider: &crate::artifacts::state_v1::HostStateGpuReliabilityProviderV1) -> Self {
+        Self {
+            provider_id: provider.provider_id.clone(),
+            provider_kind: provider.provider_kind,
+            outcome: provider.outcome,
+            error_code: provider.error_code.clone(),
         }
     }
 }
@@ -569,6 +793,25 @@ impl From<&crate::artifacts::state_v1::StateFreshnessV1> for StateFreshnessSeman
     fn from(freshness: &crate::artifacts::state_v1::StateFreshnessV1) -> Self {
         Self {
             freshness_state: freshness.freshness_state,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ThermalEvidenceSemanticProjection {
+    schema_id: String,
+    schema_version: u32,
+    thermal_evidence: StateThermalResourcesSemanticProjection,
+}
+
+impl From<&ThermalEvidenceV1> for ThermalEvidenceSemanticProjection {
+    fn from(artifact: &ThermalEvidenceV1) -> Self {
+        Self {
+            schema_id: artifact.envelope.schema_id.clone(),
+            schema_version: artifact.envelope.schema_version,
+            thermal_evidence: StateThermalResourcesSemanticProjection::from(
+                &artifact.thermal_evidence,
+            ),
         }
     }
 }
@@ -899,7 +1142,13 @@ impl From<&HostContractV1> for ContractSemanticProjection {
                     .get("core_contract")
                     .unwrap_or(&Value::Null),
             ),
-            extension_contract: if contract.contract_basis.extension_basis.is_some() {
+            extension_contract: if contract.contract_basis.extension_basis.is_some()
+                || contract
+                    .contract
+                    .get("extension_contract")
+                    .and_then(Value::as_object)
+                    .is_some_and(|value| !value.is_empty())
+            {
                 Some(CanonicalJsonValue::from(
                     contract
                         .contract

@@ -259,6 +259,7 @@ pub fn classify_batch_v1(
                 host_state: matched_states_for_validation
                     .get(contract_ref.artifact_id.as_str())
                     .cloned(),
+                thermal_evidence: vec![],
                 mode: request.validation_mode,
                 validated_at: request.validated_at.clone(),
                 notes: Some("batch-classification".to_string()),
@@ -1078,6 +1079,7 @@ fn map_validation_error(error: ValidationError) -> BatchClassificationError {
         | ValidationErrorCode::ContractArtifactInvalid
         | ValidationErrorCode::ServiceProfileArtifactInvalid
         | ValidationErrorCode::StateArtifactInvalid
+        | ValidationErrorCode::ThermalEvidenceArtifactInvalid
         | ValidationErrorCode::ValidationModeUnsupported => {
             BatchClassificationErrorCode::BatchInputInvalid
         }

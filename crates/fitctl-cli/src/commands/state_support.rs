@@ -16,6 +16,43 @@ use fitctl_core::extensions::{
     CUDA_RUNTIME_NAMESPACE,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StateCollectFeatureV1 {
+    Thermal,
+    MemoryReliability,
+    GpuReliability,
+    CudaRuntime,
+}
+
+pub fn parse_state_collect_feature_v1(value: &str) -> Result<StateCollectFeatureV1, String> {
+    match value {
+        "thermal" => Ok(StateCollectFeatureV1::Thermal),
+        "memory-reliability" => Ok(StateCollectFeatureV1::MemoryReliability),
+        "gpu-reliability" => Ok(StateCollectFeatureV1::GpuReliability),
+        "cuda-runtime" => Ok(StateCollectFeatureV1::CudaRuntime),
+        _ => Err(format!(
+            "unknown --collect feature {value}; expected thermal, memory-reliability, gpu-reliability, or cuda-runtime"
+        )),
+    }
+}
+
+pub fn push_state_collect_feature_v1(
+    features: &mut Vec<StateCollectFeatureV1>,
+    feature: StateCollectFeatureV1,
+) {
+    if !features.contains(&feature) {
+        features.push(feature);
+    }
+}
+
+pub fn collect_feature_extension_namespaces_v1(features: &[StateCollectFeatureV1]) -> Vec<String> {
+    let mut namespaces = Vec::new();
+    if features.contains(&StateCollectFeatureV1::CudaRuntime) {
+        namespaces.push(CUDA_RUNTIME_NAMESPACE.to_string());
+    }
+    namespaces
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StateExtensionSelectionV1 {
     requested_extension_namespaces: Vec<String>,

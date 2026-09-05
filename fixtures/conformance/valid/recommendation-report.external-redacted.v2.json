@@ -1,0 +1,45 @@
+{
+  "envelope": {
+    "schema_id": "fitctl.recommendation-report.v2",
+    "schema_version": 2,
+    "artifact_id": "recommendation-report-redacted-external-v1",
+    "provenance": {
+      "source": "redacted:external:source",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "redacted:external:fitctl_version",
+      "command_name": "redacted:external:command_name",
+      "correlation_id": "recommendation-report-redacted-external-v1"
+    },
+    "redaction": {
+      "profile_id": "external",
+      "redacted_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "recommendation_basis": {
+    "validation_report_artifact_id": "validation-report-redacted-external-v1",
+    "validation_report_semantic_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "validation_verdict": "fit",
+    "recommendation_pack_id": "redacted:external:recommendation_pack",
+    "recommendation_pack_version": "redacted:external:recommendation_pack_version",
+    "recommendation_engine_id": "redacted:external:recommendation_engine",
+    "recommendation_engine_version": "redacted:external:recommendation_engine_version",
+    "state_artifact_id": "state-redacted-external-v1",
+    "state_semantic_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "report": {
+    "recommendation_class": "redacted:external:recommendation_class",
+    "expected_operating_mode": "redacted:external:expected_operating_mode",
+    "processing_time_band": "redacted:external:processing_time_band",
+    "throughput_band": "redacted:external:throughput_band",
+    "confidence": "high",
+    "freshness": {
+      "observed_at": "2025-04-21T14:37:19Z",
+      "freshness_state": "fresh"
+    },
+    "advisory_reason_ids": [
+      "redacted:external:advisory_reason:00000000"
+    ],
+    "summary": "redacted:external:recommendation_summary"
+  }
+}

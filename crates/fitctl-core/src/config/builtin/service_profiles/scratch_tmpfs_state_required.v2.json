@@ -1,0 +1,46 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-scratch-tmpfs-state-required-v1",
+    "provenance": {
+      "source": "config:service_profiles/scratch_tmpfs_state_required.v2.json",
+      "collected_at": "2026-06-15T12:00:00Z"
+    },
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "scratch_tmpfs_state_required_v1",
+    "display_name": "Scratch tmpfs runtime gate",
+    "short_display_name": "Scratch tmpfs",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like",
+        "container_restricted"
+      ],
+      "required_paths": [
+        {
+          "path_id": "scratch",
+          "min_available_bytes": 1073741824,
+          "accepted_media_classes": [
+            "tmpfs"
+          ],
+          "accepted_durability_classes": [
+            "ephemeral"
+          ]
+        }
+      ]
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

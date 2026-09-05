@@ -97,6 +97,77 @@ When a decision depends on live runtime conditions, collect `state` and pass `--
 `fitctl validate`. This is typically required for accelerator visibility, allocatable memory,
 checked path capacity, and other runtime-only detail.
 
+## Collect runtime health evidence
+
+Runtime health collectors are opt-in. This example selects every `0.6.0` runtime evidence class;
+omit collectors and probes the workload does not need:
+
+```bash
+fitctl state --live \
+  --collect thermal \
+  --collect memory-reliability \
+  --collect gpu-reliability \
+  --collect cuda-runtime \
+  --path-check model-cache=/var/lib/model-cache \
+  --probe-path-health model-cache \
+  --thermal-provider-config site-thermal-providers.json \
+  > host.state.json
+
+fitctl inspect --input host.state.json
+```
+
+The resulting state can carry normalized thermal readings, memory and GPU reliability evidence,
+CUDA runtime state, and storage health for checked paths. Service profiles can require these facts
+during validation.
+
+For an out-of-band collector, produce target-bound thermal evidence without treating the collector
+host as the evidence target:
+
+```bash
+fitctl thermal collect \
+  --thermal-provider-config site-thermal-providers.json \
+  --require-target-host-id host.compute-01 \
+  --out host.thermal.json
+
+fitctl thermal profile init \
+  --thermal-evidence host.thermal.json \
+  --profile-id thermal_safe_v1 \
+  --margin-mc 10000 \
+  --out thermal-safe.profile.json
+```
+
+The generated profile is a reviewable starting point. Confirm its thresholds before using it as an
+admission gate.
+
+## Share a redacted artifact
+
+Create a validated redacted view without changing the artifact schema:
+
+```bash
+fitctl redact --profile external --input host.state.json > host.external.json
+```
+
+For `auditor` and `external`, fitctl redacts supported typed extension payloads and rejects an
+artifact when a populated extension section has no registered redactor. This fail-closed behavior
+prevents unknown extension JSON from bypassing the sharing boundary. Host-contract extension-basis
+namespaces must match their semantic-hash keys; populated payload namespaces must be a subset of
+that basis, and retained extension semantic hashes must be canonical lowercase SHA-256 values.
+Recommendation-pack ids and versions are replaced together. Imported auxiliary reports must carry
+a valid collection timestamp; custom command and non-release version provenance is replaced.
+Those profiles also replace core claim provenance, free-form labels and notes, path and workload
+identifiers, storage identities, and accelerator PCI/device-node topology. Redacted identity
+summaries use the explicit `redacted` identity class rather than claiming to be pseudonyms. State
+local-identity metadata is omitted, and flexible engine provenance is replaced, in `auditor` and
+`external`; imported closed categories are validated before a sharing view can be emitted.
+
+Prefer narrow survey, state, or validation artifacts when reporting a host issue. Configuration and
+decision bundles retain configuration, trust, signer, evidence-lineage, and semantic-hash data by
+design; their redacted forms are structurally valid retained disclosure artifacts, not an anonymity
+boundary or a generally safe publication package. Semantic hashes remain linkable fingerprints in
+redacted output. Diagnostic software and runtime versions can retain custom prerelease or build
+suffixes.
+Inspect every output before sharing it.
+
 ## Use Installed Config
 
 Installed binaries include bundled configuration files. Export them when you are not working from a
@@ -122,6 +193,7 @@ The exported files keep the same `configs/...` paths used in the examples.
 | `fitctl survey` | `host-survey.v2` | Observed local host facts |
 | `fitctl contract` | `host-contract.v2` | Policy-shaped host claim |
 | `fitctl state` | `host-state.v2` | Current runtime-sensitive facts |
+| `fitctl thermal collect` | `fitctl.thermal-evidence.v1` | Target-bound thermal evidence |
 | `fitctl validate` | `validation-report.v2` | Verdict, posture, and reason codes |
 | `fitctl classify` | `fitctl.batch-classification-report.v3` | Batch comparison |
 | `fitctl config` | configuration files | Bundled config list and export |
@@ -194,7 +266,7 @@ cargo install --path crates/fitctl-cli --locked
 * [Contracts](./docs/contracts.md) — contract derivation from survey evidence and policy
 * [Validation](./docs/validation.md) — validation, batch comparison, and fit decisions
 * [Accelerators](./docs/accelerators.md) — accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
-* [Artifacts](./docs/artifacts.md) — survey, contract, state, and validation-report artifacts
+* [Artifacts](./docs/artifacts.md) — survey, contract, state, thermal evidence, and validation-report artifacts
 * [Installed Configuration](./docs/installed-config.md) — bundled config listing and export
 * [Workload Reports](./docs/workload-reports.md) — attaching fit artifacts to workload-run reports
 

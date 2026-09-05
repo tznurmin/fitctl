@@ -87,6 +87,10 @@ Accelerators
   CUDA device GPU-2222...22222222: 18.00 GiB allocatable (24.00 GiB total)
 ```
 
+Verbose CUDA runtime state can also carry per-device compute capability and MIG mode when the
+underlying `nvidia-smi` query exposes them. Missing or unsupported values remain typed unknown or
+missing evidence, not inferred capability.
+
 ## Validation
 
 Use the contract alone when a decision depends only on accelerator inventory or on runtime

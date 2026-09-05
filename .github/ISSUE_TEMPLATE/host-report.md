@@ -30,7 +30,8 @@ jq -r '.report.primary_reason_code' validation.json
 
 ## Redacted artifacts
 
-Do not attach raw host artifacts by default. Prefer inspect output or redacted artifacts.
+Do not attach raw host artifacts by default. Prefer inspect output or the narrowest useful redacted
+host artifact.
 
 ```bash
 fitctl redact --profile external --input host.survey.json > host.survey.redacted.json
@@ -38,7 +39,14 @@ fitctl redact --profile external --input host.state.json > host.state.redacted.j
 fitctl redact --profile external --input validation.json > validation.redacted.json
 ```
 
-Attach only the redacted files needed to explain the problem.
+`auditor` and `external` fail closed when an extension section has no registered typed redactor.
+They also replace core provenance strings, path/profile identifiers, and accelerator topology.
+Review the complete output before attaching it: semantic hashes and coarse capability facts remain
+intentionally visible and linkable.
+
+Attach only the redacted survey, state, or validation files needed to explain the problem. Do not
+attach a configuration or decision bundle by default: those bundle views deliberately retain
+configuration, trust, signer, and evidence-lineage identities.
 
 ## Host context
 

@@ -41,8 +41,13 @@ use crate::artifacts::schema_ids_v1::{
 use crate::artifacts::service_profile_v1::{
     AssurancePredicateV1, DegradationTierV1, ServiceProfileV1,
 };
-use crate::artifacts::state_v1::{HostRuntimeResourcesV1, HostStateV1, StateFieldV1};
+use crate::artifacts::state_v1::{
+    HostRuntimeResourcesV1, HostStateGpuReliabilityV1, HostStateMemoryReliabilityV1,
+    HostStateThermalEvidenceTargetV1, HostStateThermalProviderV1, HostStateThermalReadingV1,
+    HostStateV1, StateFieldV1,
+};
 use crate::artifacts::survey_v1::{decode_host_survey_payload, HostSurveyV1};
+use crate::artifacts::thermal_evidence_v1::ThermalEvidenceV1;
 use crate::artifacts::validation_report_v1::ValidationReportV1;
 use crate::classify::{
     load_batch_classification_report_from_path, load_batch_classification_report_from_value,
@@ -804,6 +809,10 @@ fn render_core_inspect_summary_view(
             render_state_summary(output, artifact, options)?;
             Ok(Some(artifact.state.core_state.collectors.clone()))
         }
+        ArtifactRecordV1::ThermalEvidence(artifact) => {
+            render_thermal_evidence_summary(output, artifact, options)?;
+            Ok(None)
+        }
         ArtifactRecordV1::ValidationReport(artifact) => {
             render_validation_report_summary(output, artifact, options)?;
             Ok(None)
@@ -1203,6 +1212,21 @@ fn render_state_coverage(
         output,
         "Path resources",
         format_presence_coverage(!artifact.state.core_state.path_resources.paths.is_empty()),
+    )?;
+    push_summary_group_line(
+        output,
+        "Thermal resources",
+        format_presence_coverage(artifact.state.core_state.thermal_resources.is_some()),
+    )?;
+    push_summary_group_line(
+        output,
+        "Memory reliability",
+        format_presence_coverage(artifact.state.core_state.memory_reliability.is_some()),
+    )?;
+    push_summary_group_line(
+        output,
+        "GPU reliability",
+        format_presence_coverage(artifact.state.core_state.gpu_reliability.is_some()),
     )?;
     push_summary_group_line(
         output,
@@ -2436,6 +2460,26 @@ fn render_state_summary(
             },
         )?;
     }
+    if options.verbose {
+        push_state_summary_field_line(
+            output,
+            "Available cgroup controllers",
+            &artifact
+                .state
+                .core_state
+                .boundaries
+                .available_cgroup_controllers,
+            options,
+            StateSummaryCompactFieldPolicyV1::HidePlainUnknown,
+            |value| {
+                if value.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    value.join(", ")
+                }
+            },
+        )?;
+    }
     if !artifact.state.core_state.path_resources.paths.is_empty() {
         push_summary_group_separator(output)?;
         push_summary_group_header(output, "Paths")?;
@@ -2447,6 +2491,54 @@ fn render_state_summary(
                 format_state_path_resource_for_inspect(path, options),
             )?;
         }
+        for pair in &artifact.state.core_state.path_resources.link_pairs {
+            let label = format!("Path link pair {}", pair.pair_id);
+            push_summary_group_line(
+                output,
+                &label,
+                format_state_path_link_pair_for_inspect(pair, options),
+            )?;
+        }
+    }
+    if let Some(thermal) = artifact.state.core_state.thermal_resources.as_ref() {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "Thermal")?;
+        push_summary_group_line(
+            output,
+            "Observed at",
+            format_timestamp_for_inspect(&thermal.observed_at, options),
+        )?;
+        if options.verbose || options.show_identifiers {
+            push_summary_group_line(
+                output,
+                "Collector host",
+                format_thermal_collector_host_for_inspect(thermal, options),
+            )?;
+        }
+        for provider in &thermal.providers {
+            push_summary_group_line(
+                output,
+                &format!("Provider {}", provider.provider_id),
+                format_thermal_provider_for_inspect(provider, options),
+            )?;
+        }
+        for reading in &thermal.readings {
+            push_summary_group_line(
+                output,
+                &format!("Reading {}", reading.sensor_id),
+                format_thermal_reading_for_inspect(reading, options),
+            )?;
+        }
+    }
+    if let Some(memory) = artifact.state.core_state.memory_reliability.as_ref() {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "Memory Reliability")?;
+        render_memory_reliability_summary(output, memory, options)?;
+    }
+    if let Some(gpu) = artifact.state.core_state.gpu_reliability.as_ref() {
+        push_summary_group_separator(output)?;
+        push_summary_group_header(output, "GPU Reliability")?;
+        render_gpu_reliability_summary(output, gpu, options)?;
     }
     if artifact
         .state
@@ -2488,6 +2580,42 @@ fn render_state_summary(
         options,
         StateSummaryCompactListPolicyV1::HideWhenEmpty,
     )?;
+
+    Ok(())
+}
+
+fn render_thermal_evidence_summary(
+    output: &mut String,
+    artifact: &ThermalEvidenceV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    let thermal = &artifact.thermal_evidence;
+
+    push_summary_group_header(output, "Thermal")?;
+    push_summary_group_line(
+        output,
+        "Observed at",
+        format_timestamp_for_inspect(&thermal.observed_at, options),
+    )?;
+    push_summary_group_line(
+        output,
+        "Collector host",
+        format_thermal_collector_host_for_inspect(thermal, options),
+    )?;
+    for provider in &thermal.providers {
+        push_summary_group_line(
+            output,
+            &format!("Provider {}", provider.provider_id),
+            format_thermal_provider_for_inspect(provider, options),
+        )?;
+    }
+    for reading in &thermal.readings {
+        push_summary_group_line(
+            output,
+            &format!("Reading {}", reading.sensor_id),
+            format_thermal_reading_for_inspect(reading, options),
+        )?;
+    }
 
     Ok(())
 }
@@ -2625,11 +2753,346 @@ fn format_state_path_resource_for_inspect(
     } else {
         format_state_field_compact(&path.exists, |value| value.to_string())
     };
+    let media_class =
+        format_state_field_compact(&path.media_class, |value| value.as_str().to_string());
+    let filesystem_type =
+        format_state_field_compact(&path.filesystem_type, std::string::ToString::to_string);
+    let mount_point = format_state_field_compact(
+        &path.containing_mount_point,
+        std::string::ToString::to_string,
+    );
+    let durability =
+        format_state_field_compact(&path.durability_class, |value| value.as_str().to_string());
 
-    format!(
+    let mut parts = vec![format!(
         "{}; exists {}; available {}; total {}",
         path.path, exists, available, total
-    )
+    )];
+
+    if options.verbose {
+        parts.push(format!("mount {mount_point}"));
+        parts.push(format!("filesystem {filesystem_type}"));
+        parts.push(format!("media {media_class}"));
+        parts.push(format!("durability {durability}"));
+        if let Some(link_capabilities) = path.link_capabilities.as_ref() {
+            parts.push(format!(
+                "links hardlink {}; reflink {}; symlink {}; copy {}",
+                format_state_field_compact(&link_capabilities.hardlink_supported, |value| value
+                    .to_string()),
+                format_state_field_compact(&link_capabilities.reflink_supported, |value| value
+                    .to_string()),
+                format_state_field_compact(&link_capabilities.symlink_supported, |value| value
+                    .to_string()),
+                format_state_field_compact(&link_capabilities.copy_possible, |value| value
+                    .to_string())
+            ));
+        }
+        if let Some(storage_health) = path.storage_health.as_ref() {
+            parts.push(format!(
+                "Storage health {}; temperature {}; used {}; spare {}",
+                format_state_field_compact(&storage_health.health_state, |value| value
+                    .as_str()
+                    .to_string()),
+                format_state_field_compact(&storage_health.temperature_celsius, |value| format!(
+                    "{value} C"
+                )),
+                format_state_field_compact(&storage_health.percentage_used, |value| format!(
+                    "{value}%"
+                )),
+                format_state_field_compact(&storage_health.available_spare_percent, |value| {
+                    format!("{value}%")
+                })
+            ));
+        }
+    }
+    if !options.verbose {
+        if let Some(storage_health) = path.storage_health.as_ref() {
+            parts.push(format!(
+                "Storage health {}",
+                format_state_field_compact(&storage_health.health_state, |value| value
+                    .as_str()
+                    .to_string())
+            ));
+        }
+    }
+
+    if options.verbose || options.show_identifiers {
+        parts.push(format!(
+            "device {}",
+            format_state_field_compact(
+                &path.mount_device_major_minor,
+                std::string::ToString::to_string,
+            )
+        ));
+        parts.push(format!(
+            "fs uuid {}",
+            format_state_field_compact(&path.filesystem_uuid, std::string::ToString::to_string)
+        ));
+        parts.push(format!(
+            "partition uuid {}",
+            format_state_field_compact(&path.partition_uuid, std::string::ToString::to_string)
+        ));
+        parts.push(format!(
+            "persistent links {}",
+            format_state_field_compact(&path.persistent_device_links, |values| values.join(","))
+        ));
+    } else if !matches!(
+        path.media_class.value,
+        None | Some(crate::state::StateStorageMediaClassV1::Unknown)
+    ) {
+        parts.push(format!("media {media_class}"));
+    }
+
+    parts.join("; ")
+}
+
+fn format_state_path_link_pair_for_inspect(
+    pair: &crate::state::HostStatePathLinkPairV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let mut parts = vec![format!(
+        "{} -> {}; same filesystem {}; hardlink {}; reflink {}; symlink {}; copy {}",
+        pair.from_path_id,
+        pair.to_path_id,
+        format_state_field_compact(&pair.same_filesystem, |value| value.to_string()),
+        format_state_field_compact(&pair.hardlink_supported, |value| value.to_string()),
+        format_state_field_compact(&pair.reflink_supported, |value| value.to_string()),
+        format_state_field_compact(&pair.symlink_supported, |value| value.to_string()),
+        format_state_field_compact(&pair.copy_possible, |value| value.to_string()),
+    )];
+    if options.verbose {
+        if let Some(method) = pair.probe_method.as_ref() {
+            parts.push(format!("probe method {method}"));
+        }
+        if let Some(error) = pair.probe_error.as_ref() {
+            parts.push(format!("probe error {error}"));
+        }
+    }
+    parts.join("; ")
+}
+
+fn render_memory_reliability_summary(
+    output: &mut String,
+    memory: &HostStateMemoryReliabilityV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    push_summary_group_line(
+        output,
+        "Observed at",
+        format_timestamp_for_inspect(&memory.observed_at, options),
+    )?;
+    for provider in &memory.providers {
+        let mut parts = vec![
+            provider.provider_kind.as_str().to_string(),
+            provider.outcome.as_str().to_string(),
+        ];
+        if options.verbose {
+            if let Some(error_code) = provider.error_code.as_ref() {
+                parts.push(format!("error {error_code}"));
+            }
+            if let Some(diagnostics) = provider.diagnostics.as_ref() {
+                parts.push(format!("diagnostics {diagnostics}"));
+            }
+        }
+        push_summary_group_line(
+            output,
+            &format!("Provider {}", provider.provider_id),
+            parts.join("; "),
+        )?;
+    }
+    push_state_summary_field_line(
+        output,
+        "Controllers",
+        &memory.controller_count,
+        options,
+        StateSummaryCompactFieldPolicyV1::Always,
+        |value| value.to_string(),
+    )?;
+    push_state_summary_field_line(
+        output,
+        "DIMMs",
+        &memory.dimm_count,
+        options,
+        StateSummaryCompactFieldPolicyV1::Always,
+        |value| value.to_string(),
+    )?;
+    push_state_summary_field_line(
+        output,
+        "Corrected errors",
+        &memory.corrected_error_count,
+        options,
+        StateSummaryCompactFieldPolicyV1::Always,
+        |value| value.to_string(),
+    )?;
+    push_state_summary_field_line(
+        output,
+        "Uncorrected errors",
+        &memory.uncorrected_error_count,
+        options,
+        StateSummaryCompactFieldPolicyV1::Always,
+        |value| value.to_string(),
+    )?;
+    Ok(())
+}
+
+fn render_gpu_reliability_summary(
+    output: &mut String,
+    gpu: &HostStateGpuReliabilityV1,
+    options: InspectRenderOptionsV1,
+) -> Result<(), InspectError> {
+    push_summary_group_line(
+        output,
+        "Observed at",
+        format_timestamp_for_inspect(&gpu.observed_at, options),
+    )?;
+    for provider in &gpu.providers {
+        let mut parts = vec![
+            provider.provider_kind.as_str().to_string(),
+            provider.outcome.as_str().to_string(),
+        ];
+        if options.verbose {
+            if let Some(error_code) = provider.error_code.as_ref() {
+                parts.push(format!("error {error_code}"));
+            }
+            if let Some(diagnostics) = provider.diagnostics.as_ref() {
+                parts.push(format!("diagnostics {diagnostics}"));
+            }
+        }
+        push_summary_group_line(
+            output,
+            &format!("Provider {}", provider.provider_id),
+            parts.join("; "),
+        )?;
+    }
+    for (index, device) in gpu.devices.iter().enumerate() {
+        let label = device
+            .gpu_uuid
+            .value
+            .as_deref()
+            .filter(|value| options.show_identifiers || options.verbose || value.is_empty())
+            .unwrap_or("device");
+        push_summary_group_line(
+            output,
+            &format!("GPU reliability {}", index + 1),
+            format!(
+                "{}; ECC {}; corrected {}; uncorrected {}; retired-pages-pending {}; row-remapper-pending {}",
+                label,
+                format_state_field_compact(&device.ecc_mode_current, Clone::clone),
+                format_state_field_compact(&device.volatile_corrected_ecc_error_count, |value| value.to_string()),
+                format_state_field_compact(&device.volatile_uncorrected_ecc_error_count, |value| value.to_string()),
+                format_state_field_compact(&device.retired_pages_pending, |value| value.to_string()),
+                format_state_field_compact(&device.row_remapper_pending, |value| value.to_string()),
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+fn format_thermal_collector_host_for_inspect(
+    thermal: &crate::state::HostStateThermalResourcesV1,
+    _options: InspectRenderOptionsV1,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(host_alias) = thermal.collector_host.host_alias.as_ref() {
+        parts.push(format!("host alias {host_alias}"));
+    }
+    if let Some(local_stable_id) = thermal.collector_host.local_stable_id.as_ref() {
+        parts.push(format!("local stable id {local_stable_id}"));
+    }
+    if parts.is_empty() {
+        "unknown".to_string()
+    } else {
+        parts.join("; ")
+    }
+}
+
+fn format_thermal_provider_for_inspect(
+    provider: &HostStateThermalProviderV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let mut parts = vec![
+        provider.provider_kind.as_str().to_string(),
+        provider.outcome.as_str().to_string(),
+        format!(
+            "target {}",
+            format_thermal_evidence_target_for_inspect(&provider.evidence_target)
+        ),
+    ];
+    if options.verbose {
+        parts.push(format!(
+            "observed at {}",
+            format_timestamp_for_inspect(&provider.observed_at, options)
+        ));
+        if let Some(error_code) = provider.error_code.as_ref() {
+            parts.push(format!("error {error_code}"));
+        }
+        if let Some(diagnostics) = provider.diagnostics.as_ref() {
+            parts.push(format!("diagnostics {diagnostics}"));
+        }
+    }
+    parts.join("; ")
+}
+
+fn format_thermal_reading_for_inspect(
+    reading: &HostStateThermalReadingV1,
+    options: InspectRenderOptionsV1,
+) -> String {
+    let mut parts = vec![
+        format!("{} {}", reading.raw_label, reading.sensor_role.as_str()),
+        format!(
+            "{} C",
+            format_temperature_millidegrees_celsius_for_inspect(
+                reading.temperature_millidegrees_celsius
+            )
+        ),
+        format!("status {}", reading.status.as_str()),
+        format!("provider {}", reading.provider_id),
+    ];
+    if let Some(alias) = reading.sensor_alias.as_ref() {
+        parts.push(format!("alias {alias}"));
+    }
+    if options.verbose || options.show_identifiers {
+        parts.push(format!(
+            "target {}",
+            format_thermal_evidence_target_for_inspect(&reading.evidence_target)
+        ));
+        if let Some(source) = reading.source.as_ref() {
+            parts.push(format!("source {source}"));
+        }
+    }
+    if options.verbose {
+        parts.push(format!(
+            "observed at {}",
+            format_timestamp_for_inspect(&reading.observed_at, options)
+        ));
+    }
+    parts.join("; ")
+}
+
+fn format_thermal_evidence_target_for_inspect(target: &HostStateThermalEvidenceTargetV1) -> String {
+    match target.host_id.as_ref() {
+        Some(host_id) => format!(
+            "{} {}; via {}",
+            target.target_kind.as_str(),
+            host_id,
+            target.collection_path.as_str()
+        ),
+        None => format!(
+            "{}; via {}",
+            target.target_kind.as_str(),
+            target.collection_path.as_str()
+        ),
+    }
+}
+
+fn format_temperature_millidegrees_celsius_for_inspect(value: i64) -> String {
+    let whole = value / 1000;
+    let fractional = (value % 1000).abs();
+    if fractional == 0 {
+        whole.to_string()
+    } else {
+        format!("{whole}.{fractional:03}")
+    }
 }
 
 fn should_render_state_summary_field_line<T>(
@@ -3380,13 +3843,15 @@ fn format_cuda_installed_toolkit_entry_for_inspect(entry: &CudaInstalledToolkitV
 
 fn format_cuda_runtime_device_state_for_inspect(device: &CudaRuntimeDeviceStateV1) -> String {
     format!(
-        "{}; total {}; used {}; allocatable {}",
+        "{}; total {}; used {}; allocatable {}; compute capability {}; MIG mode {}",
         device.device_uuid,
         format_state_field(&device.total_memory_bytes, |value| format_bytes(*value)),
         format_state_field(&device.used_memory_bytes, |value| format_bytes(*value)),
         format_state_field(&device.allocatable_memory_bytes, |value| format_bytes(
             *value
-        ))
+        )),
+        format_state_field(&device.compute_capability, |value| value.clone()),
+        format_state_field(&device.mig_mode, |value| value.clone())
     )
 }
 
@@ -3577,6 +4042,20 @@ fn render_validation_report_summary(
     {
         push_line(output, "Extension diagnostics", extension_diagnostics)?;
     }
+    if !artifact.report.path_diagnostics.is_empty() {
+        push_line(
+            output,
+            "Path diagnostics",
+            join_or_placeholder(
+                &artifact
+                    .report
+                    .path_diagnostics
+                    .iter()
+                    .map(format_validation_path_diagnostic_for_inspect)
+                    .collect::<Vec<_>>(),
+            ),
+        )?;
+    }
     push_line(
         output,
         "Explanations",
@@ -3648,6 +4127,43 @@ fn render_validation_report_summary(
     }
 
     Ok(())
+}
+
+fn format_validation_path_diagnostic_for_inspect(
+    diagnostic: &crate::artifacts::validation_report_v1::ValidationPathDiagnosticV1,
+) -> String {
+    let paths = if diagnostic.path_ids.is_empty() {
+        "<none>".to_string()
+    } else {
+        diagnostic.path_ids.join(",")
+    };
+    format!(
+        "{}: {} {} on {} ({})",
+        diagnostic.diagnostic_id,
+        format_validation_path_diagnostic_status(diagnostic.status),
+        diagnostic.reason_code,
+        paths,
+        diagnostic.check_id
+    )
+}
+
+fn format_validation_path_diagnostic_status(
+    status: crate::artifacts::validation_report_v1::ValidationPathDiagnosticStatusV1,
+) -> &'static str {
+    match status {
+        crate::artifacts::validation_report_v1::ValidationPathDiagnosticStatusV1::Satisfied => {
+            "satisfied"
+        }
+        crate::artifacts::validation_report_v1::ValidationPathDiagnosticStatusV1::Failed => {
+            "failed"
+        }
+        crate::artifacts::validation_report_v1::ValidationPathDiagnosticStatusV1::Missing => {
+            "missing"
+        }
+        crate::artifacts::validation_report_v1::ValidationPathDiagnosticStatusV1::NotApplicable => {
+            "not_applicable"
+        }
+    }
 }
 
 fn format_validation_extension_diagnostics_for_inspect(
@@ -4451,6 +4967,16 @@ mod tests {
                 value: Some(26_843_545_600),
             },
             used_memory_bytes: StateFieldV1 {
+                state: ObservationStateV1::Missing,
+                limitation_reason: None,
+                value: None,
+            },
+            compute_capability: StateFieldV1 {
+                state: ObservationStateV1::Missing,
+                limitation_reason: None,
+                value: None,
+            },
+            mig_mode: StateFieldV1 {
                 state: ObservationStateV1::Missing,
                 limitation_reason: None,
                 value: None,

@@ -94,6 +94,60 @@ When a decision depends on live runtime conditions, collect `state` and pass `--
 `fitctl validate`. This is typically required for accelerator visibility, allocatable memory,
 checked path capacity, and other runtime-only detail.
 
+## Collect runtime health evidence
+
+Runtime health collectors are opt-in. This example selects every `0.6.0` runtime evidence class;
+omit collectors and probes the workload does not need:
+
+```bash
+fitctl state --live \
+  --collect thermal \
+  --collect memory-reliability \
+  --collect gpu-reliability \
+  --collect cuda-runtime \
+  --path-check model-cache=/var/lib/model-cache \
+  --probe-path-health model-cache \
+  --thermal-provider-config site-thermal-providers.json \
+  > host.state.json
+
+fitctl inspect --input host.state.json
+```
+
+The resulting state can carry normalized thermal readings, memory and GPU reliability evidence,
+CUDA runtime state, and storage health for checked paths. Service profiles can require these facts
+during validation.
+
+For an out-of-band collector, produce target-bound thermal evidence without treating the collector
+host as the evidence target:
+
+```bash
+fitctl thermal collect \
+  --thermal-provider-config site-thermal-providers.json \
+  --require-target-host-id host.compute-01 \
+  --out host.thermal.json
+
+fitctl thermal profile init \
+  --thermal-evidence host.thermal.json \
+  --profile-id thermal_safe_v1 \
+  --margin-mc 10000 \
+  --out thermal-safe.profile.json
+```
+
+The generated profile is a reviewable starting point. Confirm its thresholds before using it as an
+admission gate.
+
+## Share a redacted artifact
+
+```bash
+fitctl redact --profile external --input host.state.json > host.external.json
+```
+
+`auditor` and `external` apply typed redaction to core provenance and supported extension data;
+unknown populated extension sections and invalid closed categories fail closed. State-local
+identity metadata is omitted and flexible engine provenance is replaced. Inspect every result
+before sharing it. Semantic hashes remain linkable, and redacted configuration or decision bundles
+remain retained disclosures rather than anonymity boundaries.
+
 ## Use Installed Config
 
 Installed binaries include bundled configuration files. Export them when you are not working from a
@@ -112,6 +166,7 @@ The exported files keep the same `configs/...` paths used in the examples.
 | `fitctl survey` | `host-survey.v2` | Observed local host facts |
 | `fitctl contract` | `host-contract.v2` | Policy-shaped host claim |
 | `fitctl state` | `host-state.v2` | Current runtime-sensitive facts |
+| `fitctl thermal collect` | `fitctl.thermal-evidence.v1` | Target-bound thermal evidence |
 | `fitctl validate` | `validation-report.v2` | Verdict, posture, and reason codes |
 | `fitctl classify` | `fitctl.batch-classification-report.v3` | Batch comparison |
 | `fitctl config` | configuration files | Bundled config list and export |
@@ -180,16 +235,16 @@ cargo install --path crates/fitctl-cli --locked
 
 ## Documentation
 
-- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/configuration.md) - policies and service profiles
-- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/contracts.md) - contract derivation from survey evidence and policy
-- [Validation](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/validation.md) - validation, batch comparison, and fit decisions
-- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
-- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/artifacts.md) - survey, contract, state, and validation-report artifacts
-- [Installed Configuration](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/installed-config.md) - bundled config listing and export
-- [Workload Reports](https://github.com/tznurmin/fitctl/blob/v0.5.0/docs/workload-reports.md) - attaching fit artifacts to workload-run reports
+- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/configuration.md) - policies and service profiles
+- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/contracts.md) - contract derivation from survey evidence and policy
+- [Validation](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/validation.md) - validation, batch comparison, and fit decisions
+- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
+- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/artifacts.md) - survey, contract, state, thermal evidence, and validation-report artifacts
+- [Installed Configuration](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/installed-config.md) - bundled config listing and export
+- [Workload Reports](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/workload-reports.md) - attaching fit artifacts to workload-run reports
 
 Version history and release notes: [GitHub Releases](https://github.com/tznurmin/fitctl/releases)
 
 ## License
 
-[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.5.0/LICENSE)
+[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.6.0/LICENSE)

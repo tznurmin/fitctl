@@ -172,6 +172,11 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "require_accelerator_locality_known",
             "max_accelerator_numa_nodes",
             "required_paths",
+            "path_relationships",
+            "required_path_link_pairs",
+            "required_thermal_sensors",
+            "required_memory_reliability",
+            "required_gpu_reliability",
         ],
     )?;
     reject_explicit_nulls(
@@ -191,6 +196,11 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
             "require_accelerator_locality_known",
             "max_accelerator_numa_nodes",
             "required_paths",
+            "path_relationships",
+            "required_path_link_pairs",
+            "required_thermal_sensors",
+            "required_memory_reliability",
+            "required_gpu_reliability",
         ],
         "service profile requirement field",
     )?;
@@ -212,11 +222,291 @@ fn validate_service_profile_json(raw: &Value) -> Result<(), ServiceProfileError>
                     ),
                 )
             })?;
-            reject_unknown_keys(path, &["path_id", "min_available_bytes"])?;
+            reject_unknown_keys(
+                path,
+                &[
+                    "path_id",
+                    "min_available_bytes",
+                    "accepted_media_classes",
+                    "accepted_durability_classes",
+                    "required_filesystem_types",
+                    "accepted_filesystem_uuids",
+                    "accepted_partition_uuids",
+                    "accepted_persistent_device_links",
+                    "require_hardlink",
+                    "require_reflink",
+                    "require_symlink",
+                    "require_copy",
+                    "storage_health",
+                ],
+            )?;
             reject_explicit_nulls(
                 path,
-                &["path_id", "min_available_bytes"],
+                &[
+                    "path_id",
+                    "min_available_bytes",
+                    "accepted_media_classes",
+                    "accepted_durability_classes",
+                    "required_filesystem_types",
+                    "accepted_filesystem_uuids",
+                    "accepted_partition_uuids",
+                    "accepted_persistent_device_links",
+                    "require_hardlink",
+                    "require_reflink",
+                    "require_symlink",
+                    "require_copy",
+                    "storage_health",
+                ],
                 "service profile required_paths field",
+            )?;
+            if let Some(storage_health) = path.get("storage_health") {
+                let storage_health = storage_health.as_object().ok_or_else(|| {
+                    ServiceProfileError::new(
+                        ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                        "profile_decode",
+                        format!(
+                            "service profile required_paths entry at index {index} storage_health must be an object"
+                        ),
+                    )
+                })?;
+                reject_unknown_keys(
+                    storage_health,
+                    &[
+                        "accepted_health_states",
+                        "max_temperature_celsius",
+                        "max_percentage_used",
+                        "min_available_spare_percent",
+                    ],
+                )?;
+                reject_explicit_nulls(
+                    storage_health,
+                    &[
+                        "accepted_health_states",
+                        "max_temperature_celsius",
+                        "max_percentage_used",
+                        "min_available_spare_percent",
+                    ],
+                    "service profile path storage_health field",
+                )?;
+                validate_positive_i64_json(
+                    storage_health.get("max_temperature_celsius"),
+                    "required path storage_health max_temperature_celsius",
+                )?;
+                validate_u32_percent_json(
+                    storage_health.get("max_percentage_used"),
+                    "required path storage_health max_percentage_used",
+                )?;
+                validate_u32_percent_json(
+                    storage_health.get("min_available_spare_percent"),
+                    "required path storage_health min_available_spare_percent",
+                )?;
+            }
+        }
+    }
+    if let Some(memory_reliability) = requirements.get("required_memory_reliability") {
+        let memory_reliability = memory_reliability.as_object().ok_or_else(|| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                "profile_decode",
+                "service profile required_memory_reliability must be an object",
+            )
+        })?;
+        reject_unknown_keys(
+            memory_reliability,
+            &[
+                "require_provider_success",
+                "max_corrected_error_count",
+                "max_uncorrected_error_count",
+            ],
+        )?;
+        reject_explicit_nulls(
+            memory_reliability,
+            &[
+                "require_provider_success",
+                "max_corrected_error_count",
+                "max_uncorrected_error_count",
+            ],
+            "service profile required_memory_reliability field",
+        )?;
+        validate_u64_json(
+            memory_reliability.get("max_corrected_error_count"),
+            "required memory reliability max_corrected_error_count",
+        )?;
+        validate_u64_json(
+            memory_reliability.get("max_uncorrected_error_count"),
+            "required memory reliability max_uncorrected_error_count",
+        )?;
+    }
+    if let Some(gpu_reliability) = requirements.get("required_gpu_reliability") {
+        let gpu_reliability = gpu_reliability.as_object().ok_or_else(|| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                "profile_decode",
+                "service profile required_gpu_reliability must be an object",
+            )
+        })?;
+        reject_unknown_keys(
+            gpu_reliability,
+            &[
+                "require_provider_success",
+                "require_ecc_mode_current",
+                "max_volatile_corrected_ecc_error_count",
+                "max_volatile_uncorrected_ecc_error_count",
+                "require_no_retired_pages_pending",
+                "require_no_row_remapper_pending",
+            ],
+        )?;
+        reject_explicit_nulls(
+            gpu_reliability,
+            &[
+                "require_provider_success",
+                "require_ecc_mode_current",
+                "max_volatile_corrected_ecc_error_count",
+                "max_volatile_uncorrected_ecc_error_count",
+                "require_no_retired_pages_pending",
+                "require_no_row_remapper_pending",
+            ],
+            "service profile required_gpu_reliability field",
+        )?;
+        validate_non_blank_string_json(
+            gpu_reliability.get("require_ecc_mode_current"),
+            "required GPU reliability require_ecc_mode_current",
+        )?;
+        validate_u64_json(
+            gpu_reliability.get("max_volatile_corrected_ecc_error_count"),
+            "required GPU reliability max_volatile_corrected_ecc_error_count",
+        )?;
+        validate_u64_json(
+            gpu_reliability.get("max_volatile_uncorrected_ecc_error_count"),
+            "required GPU reliability max_volatile_uncorrected_ecc_error_count",
+        )?;
+    }
+    if let Some(path_relationships) = requirements.get("path_relationships") {
+        let path_relationships = path_relationships.as_array().ok_or_else(|| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                "profile_decode",
+                "service profile path_relationships must be an array",
+            )
+        })?;
+        for (index, relationship) in path_relationships.iter().enumerate() {
+            let relationship = relationship.as_object().ok_or_else(|| {
+                ServiceProfileError::new(
+                    ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                    "profile_decode",
+                    format!(
+                        "service profile path_relationships entry at index {index} must be an object"
+                    ),
+                )
+            })?;
+            reject_unknown_keys(
+                relationship,
+                &[
+                    "relationship_id",
+                    "left_path_id",
+                    "right_path_id",
+                    "must_not_share",
+                ],
+            )?;
+            reject_explicit_nulls(
+                relationship,
+                &[
+                    "relationship_id",
+                    "left_path_id",
+                    "right_path_id",
+                    "must_not_share",
+                ],
+                "service profile path_relationships field",
+            )?;
+        }
+    }
+    if let Some(required_path_link_pairs) = requirements.get("required_path_link_pairs") {
+        let required_path_link_pairs = required_path_link_pairs.as_array().ok_or_else(|| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                "profile_decode",
+                "service profile required_path_link_pairs must be an array",
+            )
+        })?;
+        for (index, pair) in required_path_link_pairs.iter().enumerate() {
+            let pair = pair.as_object().ok_or_else(|| {
+                ServiceProfileError::new(
+                    ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                    "profile_decode",
+                    format!(
+                        "service profile required_path_link_pairs entry at index {index} must be an object"
+                    ),
+                )
+            })?;
+            reject_unknown_keys(
+                pair,
+                &[
+                    "pair_id",
+                    "from_path_id",
+                    "to_path_id",
+                    "require_hardlink",
+                    "require_reflink",
+                    "require_symlink",
+                    "require_copy",
+                ],
+            )?;
+            reject_explicit_nulls(
+                pair,
+                &[
+                    "pair_id",
+                    "from_path_id",
+                    "to_path_id",
+                    "require_hardlink",
+                    "require_reflink",
+                    "require_symlink",
+                    "require_copy",
+                ],
+                "service profile required_path_link_pairs field",
+            )?;
+        }
+    }
+    if let Some(required_thermal_sensors) = requirements.get("required_thermal_sensors") {
+        let required_thermal_sensors = required_thermal_sensors.as_array().ok_or_else(|| {
+            ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                "profile_decode",
+                "service profile required_thermal_sensors must be an array",
+            )
+        })?;
+        for (index, requirement) in required_thermal_sensors.iter().enumerate() {
+            let requirement = requirement.as_object().ok_or_else(|| {
+                ServiceProfileError::new(
+                    ServiceProfileErrorCode::ServiceProfileDocumentInvalid,
+                    "profile_decode",
+                    format!(
+                        "service profile required_thermal_sensors entry at index {index} must be an object"
+                    ),
+                )
+            })?;
+            reject_unknown_keys(
+                requirement,
+                &[
+                    "requirement_id",
+                    "provider_id",
+                    "sensor_id",
+                    "sensor_alias",
+                    "sensor_role",
+                    "max_temperature_millidegrees_celsius",
+                    "require_provider_success",
+                ],
+            )?;
+            reject_explicit_nulls(
+                requirement,
+                &[
+                    "requirement_id",
+                    "provider_id",
+                    "sensor_id",
+                    "sensor_alias",
+                    "sensor_role",
+                    "max_temperature_millidegrees_celsius",
+                    "require_provider_success",
+                ],
+                "service profile required_thermal_sensors field",
             )?;
         }
     }
@@ -503,6 +793,134 @@ fn validate_service_profile_semantics(
                 "required path minimum available bytes must be positive when present",
             ));
         }
+        validate_unique_non_blank_strings(
+            &path.accepted_persistent_device_links,
+            "required path accepted persistent device links",
+        )?;
+    }
+    let mut relationship_ids = BTreeSet::new();
+    for relationship in &payload.core_requirements.path_relationships {
+        if is_blank(&relationship.relationship_id)
+            || is_blank(&relationship.left_path_id)
+            || is_blank(&relationship.right_path_id)
+            || relationship.left_path_id == relationship.right_path_id
+        {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "path relationship ids and distinct path ids must be non-empty",
+            ));
+        }
+        if !relationship_ids.insert(relationship.relationship_id.clone()) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "path relationship ids must be unique",
+            ));
+        }
+        if relationship.must_not_share.is_empty() {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "path relationships must declare at least one must_not_share identity",
+            ));
+        }
+        let mut identity_fields = BTreeSet::new();
+        for identity in &relationship.must_not_share {
+            if !identity_fields.insert(identity.as_str()) {
+                return Err(ServiceProfileError::new(
+                    ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                    "profile_validate",
+                    "path relationship must_not_share identities must be unique",
+                ));
+            }
+        }
+    }
+    let mut link_pair_ids = BTreeSet::new();
+    for pair in &payload.core_requirements.required_path_link_pairs {
+        if is_blank(&pair.pair_id)
+            || is_blank(&pair.from_path_id)
+            || is_blank(&pair.to_path_id)
+            || pair.from_path_id == pair.to_path_id
+        {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required path link-pair ids and distinct path ids must be non-empty",
+            ));
+        }
+        if !link_pair_ids.insert(pair.pair_id.clone()) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required path link-pair ids must be unique",
+            ));
+        }
+        if !matches!(pair.require_hardlink, Some(true))
+            && !matches!(pair.require_reflink, Some(true))
+            && !matches!(pair.require_symlink, Some(true))
+            && !matches!(pair.require_copy, Some(true))
+        {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required path link-pair entries must require at least one positive capability",
+            ));
+        }
+    }
+    let mut thermal_requirement_ids = BTreeSet::new();
+    for requirement in &payload.core_requirements.required_thermal_sensors {
+        if is_blank(&requirement.requirement_id) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required thermal sensor requirement ids must be non-empty",
+            ));
+        }
+        if !thermal_requirement_ids.insert(requirement.requirement_id.clone()) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required thermal sensor requirement ids must be unique",
+            ));
+        }
+        if requirement
+            .provider_id
+            .as_ref()
+            .is_some_and(|value| is_blank(value))
+            || requirement
+                .sensor_id
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+            || requirement
+                .sensor_alias
+                .as_ref()
+                .is_some_and(|value| is_blank(value))
+        {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required thermal sensor selectors must be non-empty when present",
+            ));
+        }
+        if requirement.provider_id.is_none()
+            && requirement.sensor_id.is_none()
+            && requirement.sensor_alias.is_none()
+            && requirement.sensor_role.is_none()
+        {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required thermal sensors must declare at least one selector",
+            ));
+        }
+        if requirement.max_temperature_millidegrees_celsius <= 0 {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                "required thermal sensor maximum temperature must be positive",
+            ));
+        }
     }
 
     if let (Some(min_numa_nodes), Some(max_numa_nodes)) = (
@@ -744,8 +1162,97 @@ fn reject_explicit_nulls(
     Ok(())
 }
 
+fn validate_positive_i64_json(
+    value: Option<&Value>,
+    label: &str,
+) -> Result<(), ServiceProfileError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    match value.as_i64() {
+        Some(number) if number > 0 => Ok(()),
+        _ => Err(ServiceProfileError::new(
+            ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+            "profile_validate",
+            format!("{label} must be a positive integer"),
+        )),
+    }
+}
+
+fn validate_u64_json(value: Option<&Value>, label: &str) -> Result<(), ServiceProfileError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.as_u64().is_some() {
+        return Ok(());
+    }
+    Err(ServiceProfileError::new(
+        ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+        "profile_validate",
+        format!("{label} must be an unsigned integer"),
+    ))
+}
+
+fn validate_u32_percent_json(
+    value: Option<&Value>,
+    label: &str,
+) -> Result<(), ServiceProfileError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    match value.as_u64() {
+        Some(number) if number <= 100 => Ok(()),
+        _ => Err(ServiceProfileError::new(
+            ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+            "profile_validate",
+            format!("{label} must be an integer percentage from 0 to 100"),
+        )),
+    }
+}
+
+fn validate_non_blank_string_json(
+    value: Option<&Value>,
+    label: &str,
+) -> Result<(), ServiceProfileError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    match value.as_str() {
+        Some(text) if !is_blank(text) => Ok(()),
+        _ => Err(ServiceProfileError::new(
+            ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+            "profile_validate",
+            format!("{label} must be a non-empty string"),
+        )),
+    }
+}
+
 fn is_blank(value: &str) -> bool {
     value.trim().is_empty()
+}
+
+fn validate_unique_non_blank_strings(
+    values: &[String],
+    label: &str,
+) -> Result<(), ServiceProfileError> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        if is_blank(value) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                format!("{label} must be non-empty"),
+            ));
+        }
+        if !seen.insert(value) {
+            return Err(ServiceProfileError::new(
+                ServiceProfileErrorCode::ServiceProfileRequirementInvalid,
+                "profile_validate",
+                format!("{label} must be unique"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn visibility_scope_key(scope: &crate::survey::VisibilityScopeV1) -> &'static str {

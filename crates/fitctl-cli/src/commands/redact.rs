@@ -8,8 +8,8 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fitctl_core::redact::{
-    load_artifact_record_for_redaction, parse_builtin_redaction_profile_v1, redact_artifact_v1,
-    RedactionRequestV1,
+    load_redactable_artifact_for_redaction, parse_builtin_redaction_profile_v1,
+    redact_supported_artifact_v1, RedactableArtifactRequestV1,
 };
 
 pub fn run(args: &[String]) -> ExitCode {
@@ -63,7 +63,7 @@ pub fn run(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let artifact = match load_artifact_record_for_redaction(&input_path) {
+    let artifact = match load_redactable_artifact_for_redaction(&input_path) {
         Ok(artifact) => artifact,
         Err(error) => {
             eprintln!("fitctl redact: {error}");
@@ -71,7 +71,7 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     };
 
-    match redact_artifact_v1(RedactionRequestV1 {
+    match redact_supported_artifact_v1(RedactableArtifactRequestV1 {
         artifact,
         profile,
         redacted_at: current_epoch_marker(),

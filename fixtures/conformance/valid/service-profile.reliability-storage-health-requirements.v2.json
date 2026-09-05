@@ -1,0 +1,65 @@
+{
+  "envelope": {
+    "schema_id": "service-profile.v2",
+    "schema_version": 2,
+    "artifact_id": "service-profile-reliability-storage-health-v1",
+    "provenance": {
+      "source": "fixture:reliability-storage-health-requirements",
+      "collected_at": "2026-06-17T12:00:00Z"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "profile": {
+    "profile_id": "reliability_storage_health_v1",
+    "display_name": "Reliability and storage health",
+    "short_display_name": "Reliability",
+    "core_requirements": {
+      "primary_capability_class": "general_compute",
+      "allowed_visibility_scopes": [
+        "bare_metal_like",
+        "vm_like"
+      ],
+      "required_paths": [
+        {
+          "path_id": "scratch",
+          "min_available_bytes": 1073741824,
+          "accepted_media_classes": [
+            "nvme",
+            "tmpfs"
+          ],
+          "storage_health": {
+            "accepted_health_states": [
+              "ok"
+            ],
+            "max_temperature_celsius": 76,
+            "max_percentage_used": 90,
+            "min_available_spare_percent": 10
+          }
+        }
+      ],
+      "required_memory_reliability": {
+        "require_provider_success": true,
+        "max_corrected_error_count": 0,
+        "max_uncorrected_error_count": 0
+      },
+      "required_gpu_reliability": {
+        "require_provider_success": true,
+        "require_ecc_mode_current": "Enabled",
+        "max_volatile_corrected_ecc_error_count": 0,
+        "max_volatile_uncorrected_ecc_error_count": 0,
+        "require_no_retired_pages_pending": true,
+        "require_no_row_remapper_pending": true
+      }
+    },
+    "extension_requirements": {},
+    "preferences": {
+      "preferred_visibility_scope": "bare_metal_like"
+    },
+    "exclusions": {
+      "forbidden_capability_classes": []
+    },
+    "degradation_ladder": [],
+    "assurance_predicates": []
+  }
+}

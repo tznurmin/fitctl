@@ -7,19 +7,19 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fitctl_core::artifacts::validation_v1::validate_host_contract;
 use fitctl_core::config::{
-    add_missing_built_in_extension_packs_v1, build_extension_basis_v1,
-    load_extension_pack_from_path, load_invocation_context_from_path, resolve_configuration_v1,
+    load_extension_pack_from_path, load_invocation_context_from_path,
     resolve_invocation_selected_policy_id_v1, resolve_policy_from_pack_path,
-    resolve_policy_from_pack_with_lock_path, InvocationContextV1, ResolveConfigurationRequestV1,
+    resolve_policy_from_pack_with_lock_path,
 };
 use fitctl_core::config_bundle::load_config_bundle_from_path_v1;
 use fitctl_core::contract::{
-    derive_host_contract_v1, load_host_survey_artifact_from_path, ContractDerivationRequestV1,
-    DerivationContextV1,
+    derive_host_contract_v1, derive_host_contract_with_extensions_v1,
+    load_host_survey_artifact_from_path, ContractDerivationRequestV1, DerivationContextV1,
 };
 use fitctl_core::policy::load_policy_document_from_path;
+
+use super::contract_extension_activation::resolve_contract_extension_basis_v1;
 
 pub fn run(args: &[String]) -> ExitCode {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -286,9 +286,23 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     }
 
+    let extension_basis = match resolve_contract_extension_basis_v1(
+        config_bundle.as_ref(),
+        policy.clone(),
+        extension_packs,
+        invocation_context.as_ref(),
+        enabled_extension_namespaces,
+    ) {
+        Ok(basis) => basis,
+        Err(error) => {
+            eprintln!("fitctl contract: {error}");
+            return ExitCode::from(2);
+        }
+    };
+
     let request = ContractDerivationRequestV1 {
         survey,
-        policy: policy.clone(),
+        policy,
         live_state: None,
         derivation_context: DerivationContextV1 {
             derived_at: derived_at.unwrap_or_else(current_epoch_marker),
@@ -296,113 +310,21 @@ pub fn run(args: &[String]) -> ExitCode {
         },
     };
 
-    match derive_host_contract_v1(request) {
-        Ok(mut contract) => {
-            let extension_basis = if let Some(bundle) = config_bundle.as_ref() {
-                if !bundle
-                    .config_bundle
-                    .resolved_config
-                    .configured_extension_pack_ids
-                    .is_empty()
-                    || !bundle
-                        .config_bundle
-                        .resolved_config
-                        .enabled_extension_namespaces
-                        .is_empty()
-                {
-                    eprintln!(
-                        "fitctl contract: config bundle extension selections are not supported in the first config-bundle contract flow"
-                    );
-                    return ExitCode::from(2);
-                }
-                None
-            } else if extension_packs.is_empty()
-                && invocation_context.is_none()
-                && enabled_extension_namespaces.is_empty()
-            {
-                None
-            } else {
-                let mut requested_extension_namespaces = invocation_context
-                    .as_ref()
-                    .map(|context| context.enabled_extension_namespaces.clone())
-                    .unwrap_or_default();
-                requested_extension_namespaces.extend(enabled_extension_namespaces);
-                requested_extension_namespaces.sort();
-                requested_extension_namespaces.dedup();
-                add_missing_built_in_extension_packs_v1(
-                    &mut extension_packs,
-                    &requested_extension_namespaces,
-                );
-                if requested_extension_namespaces
-                    .iter()
-                    .any(|namespace| namespace.trim().is_empty())
-                {
-                    eprintln!("fitctl contract: enabled extension namespaces must be non-empty");
-                    return ExitCode::from(2);
-                }
-
-                let resolved = match resolve_configuration_v1(ResolveConfigurationRequestV1 {
-                    policy,
-                    trust_policy: None,
-                    extension_packs: extension_packs.clone(),
-                    recommendation_packs: vec![],
-                    invocation_context: Some(InvocationContextV1 {
-                        schema_id: "fitctl.invocation-context.v1".to_string(),
-                        schema_version: 1,
-                        invocation_id: invocation_context
-                            .as_ref()
-                            .map(|context| context.invocation_id.clone())
-                            .unwrap_or_else(|| "contract-extension-activation-v1".to_string()),
-                        selected_policy_id: None,
-                        selected_service_profile_id: None,
-                        enabled_extension_namespaces: requested_extension_namespaces,
-                        selected_recommendation_pack_ids: vec![],
-                        enabled_simulation_layer_ids: vec![],
-                        validation_mode: None,
-                        max_state_age_seconds: None,
-                    }),
-                    selected_policy_pack_id: None,
-                    selected_policy_entry_id: None,
-                    selected_policy_entry_source: None,
-                    selected_policy_pack_lock_id: None,
-                    selected_policy_pack_lock_signed: None,
-                    selected_service_profile_catalogue_id: None,
-                    selected_service_profile_entry_id: None,
-                    selected_service_profile_entry_source: None,
-                }) {
-                    Ok(resolved) => resolved,
-                    Err(error) => {
-                        eprintln!("fitctl contract: {error}");
-                        return ExitCode::from(2);
-                    }
-                };
-
-                match build_extension_basis_v1(&resolved, &extension_packs) {
-                    Ok(extension_basis) => extension_basis,
-                    Err(error) => {
-                        eprintln!("fitctl contract: {error}");
-                        return ExitCode::from(2);
-                    }
-                }
-            };
-
-            contract.contract_basis.extension_basis = extension_basis;
-            if let Err(error) = validate_host_contract(&contract) {
-                eprintln!("fitctl contract: {}", error.message);
-                return ExitCode::from(2);
+    let derivation = match extension_basis {
+        Some(basis) => derive_host_contract_with_extensions_v1(request, basis),
+        None => derive_host_contract_v1(request),
+    };
+    match derivation {
+        Ok(contract) => match serde_json::to_string_pretty(&contract) {
+            Ok(text) => {
+                println!("{text}");
+                ExitCode::SUCCESS
             }
-
-            match serde_json::to_string_pretty(&contract) {
-                Ok(text) => {
-                    println!("{text}");
-                    ExitCode::SUCCESS
-                }
-                Err(error) => {
-                    eprintln!("fitctl contract: failed to encode host contract: {error}");
-                    ExitCode::from(2)
-                }
+            Err(error) => {
+                eprintln!("fitctl contract: failed to encode host contract: {error}");
+                ExitCode::from(2)
             }
-        }
+        },
         Err(error) => {
             eprintln!("fitctl contract: {error}");
             ExitCode::from(2)

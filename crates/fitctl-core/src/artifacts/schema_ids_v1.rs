@@ -16,18 +16,20 @@ pub const LEGACY_BATCH_CLASSIFICATION_REPORT_SCHEMA_ID: &str =
 pub const BATCH_CLASSIFICATION_REPORT_SCHEMA_ID: &str = "fitctl.batch-classification-report.v3";
 pub const CONFIG_BUNDLE_SCHEMA_ID: &str = "fitctl.config-bundle.v2";
 pub const DECISION_BUNDLE_SCHEMA_ID: &str = "fitctl.decision-bundle.v2";
+pub const THERMAL_EVIDENCE_SCHEMA_ID: &str = "fitctl.thermal-evidence.v1";
 
 pub const BATCH_CLASSIFICATION_REPORT_SCHEMA_IDS: [&str; 2] = [
     LEGACY_BATCH_CLASSIFICATION_REPORT_SCHEMA_ID,
     BATCH_CLASSIFICATION_REPORT_SCHEMA_ID,
 ];
 
-pub const CORE_TOP_LEVEL_SCHEMA_IDS: [&str; 5] = [
+pub const CORE_TOP_LEVEL_SCHEMA_IDS: [&str; 6] = [
     HOST_SURVEY_SCHEMA_ID,
     HOST_CONTRACT_SCHEMA_ID,
     HOST_STATE_SCHEMA_ID,
     SERVICE_PROFILE_SCHEMA_ID,
     VALIDATION_REPORT_SCHEMA_ID,
+    THERMAL_EVIDENCE_SCHEMA_ID,
 ];
 
 pub fn is_supported_core_schema_id(schema_id: &str) -> bool {

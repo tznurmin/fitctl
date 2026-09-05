@@ -94,7 +94,12 @@ const STATE_OPTIONS: &[&str] = &[
     "--live",
     "--fixture",
     "--fixtures-root",
+    "--collect",
     "--path-check",
+    "--probe-path-links",
+    "--probe-path-link-pair",
+    "--probe-path-health",
+    "--thermal-provider-config",
     "--extension-pack",
     "--invocation-context",
     "--enable-extension",
@@ -119,10 +124,18 @@ const VALIDATE_OPTIONS: &[&str] = &[
     "--validation-mode",
     "--mode",
     "--state",
+    "--thermal-evidence",
     "--live-state",
+    "--collect",
     "--path-check",
+    "--probe-path-links",
+    "--probe-path-link-pair",
+    "--probe-path-health",
+    "--thermal-provider-config",
     "--extension-pack",
     "--enable-extension",
+    "--state-out",
+    "--validation-out",
     "--max-state-age",
     "--validated-at",
     "--note",
@@ -155,6 +168,44 @@ const CONFIG_OPTIONS: &[&str] = &[];
 const CONFIG_ROOT_COMPLETIONS: &[&str] = &["list", "export", "--help", "-h"];
 const CONFIG_LIST_OPTIONS: &[&str] = &["--help", "-h"];
 const CONFIG_EXPORT_OPTIONS: &[&str] = &["--out-dir", "--help", "-h"];
+const STORAGE_OPTIONS: &[&str] = &[];
+const STORAGE_ROOT_COMPLETIONS: &[&str] = &["profile", "--help", "-h"];
+const STORAGE_PROFILE_COMPLETIONS: &[&str] = &["init", "--help", "-h"];
+const STORAGE_PROFILE_INIT_OPTIONS: &[&str] = &[
+    "--path",
+    "--probe-path-links",
+    "--probe-path-link-pair",
+    "--min-available-bytes",
+    "--profile-id",
+    "--display-name",
+    "--short-display-name",
+    "--primary-capability-class",
+    "--out",
+    "--help",
+    "-h",
+];
+const THERMAL_OPTIONS: &[&str] = &[];
+const THERMAL_ROOT_COMPLETIONS: &[&str] = &["collect", "profile", "--help", "-h"];
+const THERMAL_COLLECT_OPTIONS: &[&str] = &[
+    "--thermal-provider-config",
+    "--require-target-host-id",
+    "--out",
+    "--help",
+    "-h",
+];
+const THERMAL_PROFILE_COMPLETIONS: &[&str] = &["init", "--help", "-h"];
+const THERMAL_PROFILE_INIT_OPTIONS: &[&str] = &[
+    "--state",
+    "--thermal-evidence",
+    "--profile-id",
+    "--display-name",
+    "--short-display-name",
+    "--primary-capability-class",
+    "--margin-mc",
+    "--out",
+    "--help",
+    "-h",
+];
 const INSPECT_OPTIONS: &[&str] = &[
     "--input",
     "--verbose",
@@ -255,6 +306,14 @@ const COMMAND_OPTIONS: &[CompletionOptionsV1] = &[
         options: CONFIG_OPTIONS,
     },
     CompletionOptionsV1 {
+        command: "storage",
+        options: STORAGE_OPTIONS,
+    },
+    CompletionOptionsV1 {
+        command: "thermal",
+        options: THERMAL_OPTIONS,
+    },
+    CompletionOptionsV1 {
         command: "inspect",
         options: INSPECT_OPTIONS,
     },
@@ -290,6 +349,12 @@ const CLASSIFY_EXPORT_VIEW_VALUES: &[&str] = &[
     "service_profile_summary_csv",
 ];
 const REDACT_PROFILE_VALUES: &[&str] = &["local", "fleet", "auditor", "external"];
+const STATE_COLLECT_FEATURE_VALUES: &[&str] = &[
+    "thermal",
+    "memory-reliability",
+    "gpu-reliability",
+    "cuda-runtime",
+];
 
 const VALUE_COMPLETIONS: &[CompletionValuesV1] = &[
     CompletionValuesV1 {
@@ -321,6 +386,16 @@ const VALUE_COMPLETIONS: &[CompletionValuesV1] = &[
         command: "validate",
         previous: "--mode",
         values: LEGACY_MODE_VALUES,
+    },
+    CompletionValuesV1 {
+        command: "state",
+        previous: "--collect",
+        values: STATE_COLLECT_FEATURE_VALUES,
+    },
+    CompletionValuesV1 {
+        command: "validate",
+        previous: "--collect",
+        values: STATE_COLLECT_FEATURE_VALUES,
     },
     CompletionValuesV1 {
         command: "diff",
@@ -440,9 +515,16 @@ fn render_bash_completion() -> String {
     let config_root_completions = CONFIG_ROOT_COMPLETIONS.join(" ");
     let config_list_options = CONFIG_LIST_OPTIONS.join(" ");
     let config_export_options = CONFIG_EXPORT_OPTIONS.join(" ");
+    let storage_root_completions = STORAGE_ROOT_COMPLETIONS.join(" ");
+    let storage_profile_completions = STORAGE_PROFILE_COMPLETIONS.join(" ");
+    let storage_profile_init_options = STORAGE_PROFILE_INIT_OPTIONS.join(" ");
+    let thermal_root_completions = THERMAL_ROOT_COMPLETIONS.join(" ");
+    let thermal_collect_options = THERMAL_COLLECT_OPTIONS.join(" ");
+    let thermal_profile_completions = THERMAL_PROFILE_COMPLETIONS.join(" ");
+    let thermal_profile_init_options = THERMAL_PROFILE_INIT_OPTIONS.join(" ");
 
     format!(
-        "_fitctl_completion() {{\n  local cur prev cmd\n  cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n  prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n\n  if [[ $COMP_CWORD -eq 1 ]]; then\n    COMPREPLY=( $(compgen -W \"{command_list}\" -- \"$cur\") )\n    return 0\n  fi\n\n  cmd=\"${{COMP_WORDS[1]}}\"\n  case \"$cmd\" in\n{alias_cases}  esac\n\n  if [[ \"$cmd\" == \"config\" ]]; then\n    if [[ $COMP_CWORD -eq 2 ]]; then\n      COMPREPLY=( $(compgen -W \"{config_root_completions}\" -- \"$cur\") )\n      return 0\n    fi\n    case \"${{COMP_WORDS[2]}}\" in\n      list)\n        COMPREPLY=( $(compgen -W \"{config_list_options}\" -- \"$cur\") )\n        return 0\n        ;;\n      export)\n        if [[ \"$prev\" == \"--out-dir\" ]]; then return 0; fi\n        COMPREPLY=( $(compgen -W \"{config_export_options}\" -- \"$cur\") )\n        return 0\n        ;;\n    esac\n  fi\n\n  case \"$prev\" in\n{value_cases}  esac\n\n  case \"$cmd\" in\n{option_cases}  esac\n}}\n\ncomplete -F _fitctl_completion fitctl\n"
+        "_fitctl_completion() {{\n  local cur prev cmd\n  cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n  prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n\n  if [[ $COMP_CWORD -eq 1 ]]; then\n    COMPREPLY=( $(compgen -W \"{command_list}\" -- \"$cur\") )\n    return 0\n  fi\n\n  cmd=\"${{COMP_WORDS[1]}}\"\n  case \"$cmd\" in\n{alias_cases}  esac\n\n  if [[ \"$cmd\" == \"config\" ]]; then\n    if [[ $COMP_CWORD -eq 2 ]]; then\n      COMPREPLY=( $(compgen -W \"{config_root_completions}\" -- \"$cur\") )\n      return 0\n    fi\n    case \"${{COMP_WORDS[2]}}\" in\n      list)\n        COMPREPLY=( $(compgen -W \"{config_list_options}\" -- \"$cur\") )\n        return 0\n        ;;\n      export)\n        if [[ \"$prev\" == \"--out-dir\" ]]; then return 0; fi\n        COMPREPLY=( $(compgen -W \"{config_export_options}\" -- \"$cur\") )\n        return 0\n        ;;\n    esac\n  fi\n\n  if [[ \"$cmd\" == \"storage\" ]]; then\n    if [[ $COMP_CWORD -eq 2 ]]; then\n      COMPREPLY=( $(compgen -W \"{storage_root_completions}\" -- \"$cur\") )\n      return 0\n    fi\n    if [[ \"${{COMP_WORDS[2]}}\" == \"profile\" ]]; then\n      if [[ $COMP_CWORD -eq 3 ]]; then\n        COMPREPLY=( $(compgen -W \"{storage_profile_completions}\" -- \"$cur\") )\n        return 0\n      fi\n      if [[ \"${{COMP_WORDS[3]}}\" == \"init\" ]]; then\n        COMPREPLY=( $(compgen -W \"{storage_profile_init_options}\" -- \"$cur\") )\n        return 0\n      fi\n    fi\n  fi\n\n  if [[ \"$cmd\" == \"thermal\" ]]; then\n    if [[ $COMP_CWORD -eq 2 ]]; then\n      COMPREPLY=( $(compgen -W \"{thermal_root_completions}\" -- \"$cur\") )\n      return 0\n    fi\n    if [[ \"${{COMP_WORDS[2]}}\" == \"collect\" ]]; then\n      COMPREPLY=( $(compgen -W \"{thermal_collect_options}\" -- \"$cur\") )\n      return 0\n    fi\n    if [[ \"${{COMP_WORDS[2]}}\" == \"profile\" ]]; then\n      if [[ $COMP_CWORD -eq 3 ]]; then\n        COMPREPLY=( $(compgen -W \"{thermal_profile_completions}\" -- \"$cur\") )\n        return 0\n      fi\n      if [[ \"${{COMP_WORDS[3]}}\" == \"init\" ]]; then\n        COMPREPLY=( $(compgen -W \"{thermal_profile_init_options}\" -- \"$cur\") )\n        return 0\n      fi\n    fi\n  fi\n\n  case \"$prev\" in\n{value_cases}  esac\n\n  case \"$cmd\" in\n{option_cases}  esac\n}}\n\ncomplete -F _fitctl_completion fitctl\n"
     )
 }
 
@@ -481,9 +563,16 @@ fn render_zsh_completion() -> String {
     let config_root_completions = CONFIG_ROOT_COMPLETIONS.join(" ");
     let config_list_options = CONFIG_LIST_OPTIONS.join(" ");
     let config_export_options = CONFIG_EXPORT_OPTIONS.join(" ");
+    let storage_root_completions = STORAGE_ROOT_COMPLETIONS.join(" ");
+    let storage_profile_completions = STORAGE_PROFILE_COMPLETIONS.join(" ");
+    let storage_profile_init_options = STORAGE_PROFILE_INIT_OPTIONS.join(" ");
+    let thermal_root_completions = THERMAL_ROOT_COMPLETIONS.join(" ");
+    let thermal_collect_options = THERMAL_COLLECT_OPTIONS.join(" ");
+    let thermal_profile_completions = THERMAL_PROFILE_COMPLETIONS.join(" ");
+    let thermal_profile_init_options = THERMAL_PROFILE_INIT_OPTIONS.join(" ");
 
     format!(
-        "#compdef fitctl\n\n_fitctl_completion() {{\n  local cmd prev\n  if (( CURRENT == 2 )); then\n    compadd -- {command_list}\n    return\n  fi\n\n  cmd=\"${{words[2]}}\"\n  case \"$cmd\" in\n{alias_cases}  esac\n  prev=\"${{words[CURRENT-1]}}\"\n\n  if [[ \"$cmd\" == \"config\" ]]; then\n    if (( CURRENT == 3 )); then\n      compadd -- {config_root_completions}\n      return\n    fi\n    case \"${{words[3]}}\" in\n      list)\n        compadd -- {config_list_options}\n        return\n        ;;\n      export)\n        if [[ \"$prev\" == \"--out-dir\" ]]; then return; fi\n        compadd -- {config_export_options}\n        return\n        ;;\n    esac\n  fi\n\n  case \"$prev\" in\n{value_cases}  esac\n\n  case \"$cmd\" in\n{option_cases}  esac\n}}\n\ncompdef _fitctl_completion fitctl\n"
+        "#compdef fitctl\n\n_fitctl_completion() {{\n  local cmd prev\n  if (( CURRENT == 2 )); then\n    compadd -- {command_list}\n    return\n  fi\n\n  cmd=\"${{words[2]}}\"\n  case \"$cmd\" in\n{alias_cases}  esac\n  prev=\"${{words[CURRENT-1]}}\"\n\n  if [[ \"$cmd\" == \"config\" ]]; then\n    if (( CURRENT == 3 )); then\n      compadd -- {config_root_completions}\n      return\n    fi\n    case \"${{words[3]}}\" in\n      list)\n        compadd -- {config_list_options}\n        return\n        ;;\n      export)\n        if [[ \"$prev\" == \"--out-dir\" ]]; then return; fi\n        compadd -- {config_export_options}\n        return\n        ;;\n    esac\n  fi\n\n  if [[ \"$cmd\" == \"storage\" ]]; then\n    if (( CURRENT == 3 )); then\n      compadd -- {storage_root_completions}\n      return\n    fi\n    if [[ \"${{words[3]}}\" == \"profile\" ]]; then\n      if (( CURRENT == 4 )); then\n        compadd -- {storage_profile_completions}\n        return\n      fi\n      if [[ \"${{words[4]}}\" == \"init\" ]]; then\n        compadd -- {storage_profile_init_options}\n        return\n      fi\n    fi\n  fi\n\n  if [[ \"$cmd\" == \"thermal\" ]]; then\n    if (( CURRENT == 3 )); then\n      compadd -- {thermal_root_completions}\n      return\n    fi\n    if [[ \"${{words[3]}}\" == \"collect\" ]]; then\n      compadd -- {thermal_collect_options}\n      return\n    fi\n    if [[ \"${{words[3]}}\" == \"profile\" ]]; then\n      if (( CURRENT == 4 )); then\n        compadd -- {thermal_profile_completions}\n        return\n      fi\n      if [[ \"${{words[4]}}\" == \"init\" ]]; then\n        compadd -- {thermal_profile_init_options}\n        return\n      fi\n    fi\n  fi\n\n  case \"$prev\" in\n{value_cases}  esac\n\n  case \"$cmd\" in\n{option_cases}  esac\n}}\n\ncompdef _fitctl_completion fitctl\n"
     )
 }
 
@@ -497,6 +586,8 @@ fn render_fish_completion() -> String {
     }
 
     lines.extend(fish_config_completion_lines());
+    lines.extend(fish_storage_completion_lines());
+    lines.extend(fish_thermal_completion_lines());
 
     for entry in COMMAND_OPTIONS {
         for option in entry.options {
@@ -530,6 +621,54 @@ fn fish_config_completion_lines() -> Vec<String> {
         "complete -c fitctl -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from export' -l out-dir".to_string(),
         "complete -c fitctl -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from export' -l help".to_string(),
         "complete -c fitctl -n '__fish_seen_subcommand_from config; and __fish_seen_subcommand_from export' -s h".to_string(),
+    ]
+}
+
+fn fish_storage_completion_lines() -> Vec<String> {
+    vec![
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and not __fish_seen_subcommand_from profile' -a 'profile'".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and not __fish_seen_subcommand_from profile' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and not __fish_seen_subcommand_from profile' -s h".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from init' -a 'init'".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from init' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from init' -s h".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l path".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l probe-path-links".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l probe-path-link-pair".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l min-available-bytes".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l profile-id".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l display-name".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l short-display-name".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l primary-capability-class".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l out".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from storage; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -s h".to_string(),
+    ]
+}
+
+fn fish_thermal_completion_lines() -> Vec<String> {
+    vec![
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and not __fish_seen_subcommand_from collect profile' -a 'collect profile'".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and not __fish_seen_subcommand_from collect profile' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and not __fish_seen_subcommand_from collect profile' -s h".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -l thermal-provider-config".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -l require-target-host-id".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -l out".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -s h".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from init' -a 'init'".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from init' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from init' -s h".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l state".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l thermal-evidence".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l profile-id".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l display-name".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l short-display-name".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l primary-capability-class".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l margin-mc".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l out".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l help".to_string(),
+        "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -s h".to_string(),
     ]
 }
 
@@ -579,6 +718,24 @@ mod tests {
             completion_values_for("redact", "--profile"),
             ["local", "fleet", "auditor", "external"]
         );
+        assert_eq!(
+            completion_values_for("state", "--collect"),
+            [
+                "thermal",
+                "memory-reliability",
+                "gpu-reliability",
+                "cuda-runtime",
+            ]
+        );
+        assert_eq!(
+            completion_values_for("validate", "--collect"),
+            [
+                "thermal",
+                "memory-reliability",
+                "gpu-reliability",
+                "cuda-runtime",
+            ]
+        );
     }
 
     #[test]
@@ -601,5 +758,31 @@ mod tests {
         ));
         assert!(!output
             .contains("complete -c fitctl -n '__fish_seen_subcommand_from config' -l out-dir"));
+    }
+
+    #[test]
+    fn fish_completion_models_thermal_as_nested_command() {
+        let output = render_fish_completion();
+
+        assert!(output.contains(
+            "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and not __fish_seen_subcommand_from collect profile' -a 'collect profile'"
+        ));
+        assert!(output.contains(
+            "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -l thermal-provider-config"
+        ));
+        assert!(output.contains(
+            "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from collect' -l require-target-host-id"
+        ));
+        assert!(output.contains(
+            "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l state"
+        ));
+        assert!(output.contains(
+            "complete -c fitctl -n '__fish_seen_subcommand_from thermal; and __fish_seen_subcommand_from profile; and __fish_seen_subcommand_from init' -l thermal-evidence"
+        ));
+        assert!(!output
+            .contains("complete -c fitctl -n '__fish_seen_subcommand_from thermal' -l state"));
+        assert!(!output.contains(
+            "complete -c fitctl -n '__fish_seen_subcommand_from thermal' -l thermal-provider-config"
+        ));
     }
 }

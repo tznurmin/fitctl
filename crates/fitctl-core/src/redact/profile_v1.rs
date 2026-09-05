@@ -51,6 +51,22 @@ impl BuiltInRedactionProfileV1 {
         format!("redacted:{}:block_device", self.as_str())
     }
 
+    pub(crate) fn storage_identity_placeholder(self) -> String {
+        format!("redacted:{}:storage_identity", self.as_str())
+    }
+
+    pub(crate) fn storage_health_source_placeholder(self) -> String {
+        format!("redacted:{}:storage_health_source", self.as_str())
+    }
+
+    pub(crate) fn thermal_provider_placeholder(self) -> String {
+        format!("redacted:{}:thermal_provider", self.as_str())
+    }
+
+    pub(crate) fn thermal_sensor_placeholder(self) -> String {
+        format!("redacted:{}:thermal_sensor", self.as_str())
+    }
+
     pub(crate) fn mount_path_placeholder(self) -> String {
         format!("redacted:{}:mount_path", self.as_str())
     }
@@ -79,8 +95,24 @@ impl BuiltInRedactionProfileV1 {
         format!("redacted:{}:provenance_fingerprint", self.as_str())
     }
 
+    pub(crate) fn composition_digest_placeholder(self) -> String {
+        format!("redacted:{}:composition_digest", self.as_str())
+    }
+
+    pub(crate) fn provenance_source_placeholder(self) -> String {
+        format!("redacted:{}:source", self.as_str())
+    }
+
     pub(crate) fn artifact_id_placeholder(self, schema_family: &str) -> String {
         format!("{schema_family}-redacted-{}-v1", self.as_str())
+    }
+
+    pub(crate) fn indexed_placeholder(self, class: &str, index: usize) -> String {
+        format!("redacted:{}:{class}:{index:08}", self.as_str())
+    }
+
+    pub(crate) fn absolute_path_placeholder(self, class: &str, index: usize) -> String {
+        format!("/redacted/{}/{class}/{index:08}", self.as_str())
     }
 }
 

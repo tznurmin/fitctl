@@ -50,6 +50,8 @@ mod decision_bundle_rejects_conflicting_config_bundle_and_resolved_config_inputs
 mod decision_bundle_rejects_contract_lineage_mismatch;
 #[path = "integration/e2e/workload_preflight_examples/examples_and_feedback_paths_match_runtime.rs"]
 mod examples_and_feedback_paths_match_runtime;
+#[path = "integration/redaction/imported_core_provenance_cli.rs"]
+mod imported_core_provenance_cli;
 #[path = "integration/config/inspect_config_reports_selection_provenance.rs"]
 mod inspect_config_reports_selection_provenance;
 #[path = "integration/config/invocation_context_selects_pack_and_catalogue_entries.rs"]
@@ -70,8 +72,18 @@ mod recommendation_pack_selection_accepts_cli_and_invocation_ids;
 mod renders_host_survey_summary;
 #[path = "integration/classification/same_survey_multi_policy_contracts_classify_cleanly.rs"]
 mod same_survey_multi_policy_contracts_classify_cleanly;
+#[path = "integration/redaction/standalone_auxiliary_reports_accept_redaction.rs"]
+mod standalone_auxiliary_reports_accept_redaction;
 #[path = "integration/e2e/deployment_gating/state_required_gate_respects_freshness_and_drives_machine_decision.rs"]
 mod state_required_gate_respects_freshness_and_drives_machine_decision;
+#[path = "integration/e2e/storage_path_suitability/storage_profile_init_generates_service_profile.rs"]
+mod storage_profile_init_generates_service_profile;
+#[path = "integration/e2e/thermal_evidence/thermal_collect_and_validate.rs"]
+mod thermal_collect_and_validate;
+#[path = "integration/e2e/thermal_provider/thermal_provider_state_evidence.rs"]
+mod thermal_provider_state_evidence;
+#[path = "integration/redaction/unknown_extensions_fail_closed.rs"]
+mod unknown_extensions_fail_closed;
 #[path = "integration/config/validate_config_bundle_rejects_missing_profile_section.rs"]
 mod validate_config_bundle_rejects_missing_profile_section;
 #[path = "integration/e2e/deployment_gating/validate_gate_flags_drive_process_exit.rs"]

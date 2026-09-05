@@ -95,6 +95,238 @@ fitctl state \
 Service profiles can require matching path ids through `core_requirements.required_paths`.
 Validation checks existence and available bytes from `state.core_state.path_resources`.
 
+Path requirements may also constrain storage evidence:
+
+- `accepted_media_classes`
+- `accepted_durability_classes`
+- `required_filesystem_types`
+- `accepted_filesystem_uuids`
+- `accepted_partition_uuids`
+- `accepted_persistent_device_links`
+- `require_hardlink`
+- `require_reflink`
+- `require_symlink`
+- `require_copy`
+
+Media class values are `tmpfs`, `nvme`, `ssd`, `hdd`, `network`, and `unknown`. Service-profile
+requirements must not accept `unknown`; unknown evidence remains explicit so downstream gates can
+fail closed when they require a concrete storage class.
+
+Storage identity requirements use evidence from the checked path. fitctl verifies that the current
+mount matches an accepted filesystem UUID, partition UUID, or persistent device link. It does not
+assign workload roles such as scratch, cache, output, or durable data to those identities.
+
+Link capability checks are opt-in because they create temporary probe files under the checked path:
+
+```bash
+fitctl state \
+  --path-check dvc-cache=/var/lib/dvc/cache \
+  --probe-path-links dvc-cache \
+  > host.state.json
+```
+
+Pairwise link checks are separate from per-path checks. Use them when the question is whether one
+checked path can link or copy into another checked path, such as a cache path and a workspace path:
+
+```bash
+fitctl state \
+  --path-check dvc-cache=/var/lib/dvc/cache \
+  --path-check workspace=/work/project \
+  --probe-path-link-pair dvc-cache:workspace \
+  > host.state.json
+```
+
+Service profiles may use `path_relationships` to require that two path ids do not share a storage
+identity, such as filesystem UUID or partition UUID. They may use `required_path_link_pairs` to
+require a pairwise hardlink, reflink, symlink, or copy capability observed with
+`--probe-path-link-pair`.
+
+When `fitctl validate --live-state` is used, `--state-out <path>` writes the exact state artifact
+that validation consumed and `--validation-out <path>` writes the validation report before
+`--fail-on-unfit` or `--require-fit` changes the process exit code.
+
+Link probe evidence is low-level filesystem evidence. It is not a DVC policy decision.
+
+Storage health probes are also opt-in and evidence-only:
+
+```bash
+fitctl state \
+  --path-check scratch=/scratch/workload \
+  --probe-path-health scratch \
+  > host.state.json
+```
+
+When available, health evidence may include source, probe method, temperature, used percentage,
+available spare percentage, and a health state. fitctl records the evidence but does not reject a
+host from health data alone.
+
+Service profiles can require path health evidence through `required_paths[].storage_health`:
+
+```json
+{
+  "path_id": "scratch",
+  "storage_health": {
+    "accepted_health_states": ["ok"],
+    "max_temperature_celsius": 76,
+    "max_percentage_used": 90,
+    "min_available_spare_percent": 10
+  }
+}
+```
+
+Missing or unknown required health evidence is `indeterminate`. Observed health evidence outside
+the declared threshold is `unfit`.
+
+## Reliability evidence requirements
+
+Memory and GPU reliability collection is opt-in:
+
+```bash
+fitctl state \
+  --collect memory-reliability \
+  --collect gpu-reliability \
+  > host.state.json
+```
+
+Service profiles can require memory-reliability evidence:
+
+```json
+{
+  "required_memory_reliability": {
+    "require_provider_success": true,
+    "max_corrected_error_count": 0,
+    "max_uncorrected_error_count": 0
+  }
+}
+```
+
+Service profiles can also require GPU-reliability evidence:
+
+```json
+{
+  "required_gpu_reliability": {
+    "require_provider_success": true,
+    "require_ecc_mode_current": "Enabled",
+    "max_volatile_corrected_ecc_error_count": 0,
+    "max_volatile_uncorrected_ecc_error_count": 0,
+    "require_no_retired_pages_pending": true,
+    "require_no_row_remapper_pending": true
+  }
+}
+```
+
+Provider failure, missing evidence, or unknown required values are `indeterminate`. Observed error
+counts or pending reliability flags outside the declared policy are `unfit`. fitctl does not enable
+ECC, change GPU settings, repair storage, or clear memory/GPU errors.
+
+## Thermal provider evidence
+
+Thermal evidence is opt-in and collected from exact-argv provider configs:
+
+```bash
+fitctl state \
+  --thermal-provider-config site-thermal-providers.json \
+  > host.state.json
+```
+
+If you need only target-bound thermal evidence, collect a standalone thermal artifact instead:
+
+```bash
+fitctl thermal collect \
+  --thermal-provider-config site-thermal-providers.json \
+  --out host.thermal.json
+```
+
+Use that artifact during validation with `--thermal-evidence`:
+
+```bash
+fitctl validate \
+  --contract host.contract.json \
+  --profile thermal-safe.profile.json \
+  --thermal-evidence host.thermal.json \
+  --validation-mode state_required \
+  --validated-at <timestamp> \
+  --max-state-age <duration> \
+  > validation.json
+```
+
+Standalone thermal evidence can satisfy `required_thermal_sensors`. It does not satisfy other
+state-required checks such as allocatable memory, checked path capacity, topology, or CUDA runtime
+state; use `--state` or `--live-state` for those.
+
+The provider config schema is `fitctl.thermal-provider-config.v1`. It declares provider id, provider
+kind, exact command argv, optional timeout, and the evidence target. Supported provider kinds are
+`lm_sensors_json`, `nvidia_smi_query`, and `ipmitool_sensor`.
+
+Example provider config:
+
+```json
+{
+  "schema_id": "fitctl.thermal-provider-config.v1",
+  "schema_version": 1,
+  "providers": [
+    {
+      "provider_id": "site-bmc-sensors",
+      "provider_kind": "ipmitool_sensor",
+      "command": ["site-thermal-sensors"],
+      "timeout_seconds": 5,
+      "evidence_target": {
+        "target_kind": "host_id",
+        "host_id": "host.compute-01",
+        "collection_path": "out_of_band_bmc"
+      },
+      "sensor_mappings": [
+        {
+          "raw_label": "VR_P1_TEMP",
+          "sensor_role": "vrm",
+          "sensor_alias": "cpu_vr_1"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`command` is an exact argv vector. Shell command strings such as `sh -c ...` are rejected. Site-local
+wrappers may handle credentials, but credentials must not be present in fitctl artifacts.
+
+`collector_host` describes the host that ran the provider command. `evidence_target` describes the
+host the provider evidence is about. This matters for out-of-band BMC/IPMI evidence where a
+collector host can observe another machine.
+
+Provider output can contain board-specific labels. `sensor_mappings` is the site-local place to map
+raw labels to stable roles and aliases. fitctl preserves the raw label, normalized role, and optional
+alias in `state.core_state.thermal_resources.readings[]`.
+
+Service profiles can require thermal evidence through
+`core_requirements.required_thermal_sensors`. A requirement declares a stable `requirement_id`, one
+or more selectors such as `provider_id`, `sensor_id`, `sensor_alias`, or `sensor_role`, and
+`max_temperature_millidegrees_celsius`. Required thermal evidence fails closed when the state is
+missing, stale, provider evidence is not successful, no sensor matches, or the observed temperature
+exceeds the limit.
+
+Use `fitctl thermal profile init` to generate a reviewable service-profile skeleton from an existing
+state artifact or standalone thermal-evidence artifact:
+
+```bash
+fitctl thermal profile init \
+  --state host.state.json \
+  --profile-id thermal_safe_v1 \
+  --margin-mc 10000 \
+  --out thermal-safe.profile.json
+```
+
+```bash
+fitctl thermal profile init \
+  --thermal-evidence host.thermal.json \
+  --profile-id thermal_safe_v1 \
+  --margin-mc 10000 \
+  --out thermal-safe.profile.json
+```
+
+The generated profile uses observed thermal readings and sets each maximum to observed temperature
+plus the supplied margin. Review the generated thresholds before committing them.
+
 Inline live validation can collect the same evidence:
 
 ```bash
@@ -104,10 +336,32 @@ fitctl validate \
   --live-state \
   --path-check model-cache=/var/lib/local-model-cache \
   --path-check output=/var/tmp/image-output \
+  --probe-path-links model-cache \
+  --probe-path-health model-cache \
+  --thermal-provider-config site-thermal-providers.json \
   --validation-mode state_required \
   --require-fit \
   > validation.json
 ```
+
+## Storage profile skeletons
+
+Use `fitctl storage profile init` to turn observed path evidence into a reviewable service-profile
+skeleton:
+
+```bash
+fitctl storage profile init \
+  --path scratch=/scratch/workload \
+  --path dvc-cache=/data/dvc-cache \
+  --probe-path-links scratch \
+  --probe-path-link-pair dvc-cache:scratch \
+  --min-available-bytes scratch=107374182400 \
+  --out workload-storage.profile.json
+```
+
+The generated profile may include observed filesystem types, media classes, durability classes,
+filesystem UUIDs, partition UUIDs, persistent device links, and link-capability requirements. It is
+a starting point for operator review, not an automatic policy decision.
 
 ## Default flow
 

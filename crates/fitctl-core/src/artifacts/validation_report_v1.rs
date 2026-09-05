@@ -48,6 +48,12 @@ pub struct ValidationBasisV1 {
     /// Optional freshness window that was applied when deciding whether the provided host-state
     /// was still current enough to use.
     pub max_state_age_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Thermal evidence artifact ids supplied as external target-bound evidence.
+    pub thermal_evidence_artifact_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Semantic hashes for supplied external target-bound thermal evidence artifacts.
+    pub thermal_evidence_semantic_hashes: Vec<String>,
     pub validation_engine_id: String,
     pub validation_engine_version: String,
 }
@@ -57,7 +63,7 @@ pub struct ValidationBasisV1 {
 /// Machine-readable decision body.
 ///
 /// The payload records the outcome and the evidence needed to explain it, not a full execution
-/// trace of every internal check.
+/// trace of every validation check.
 pub struct ValidationReportPayloadV1 {
     pub verdict: ValidationVerdictV1,
     pub primary_reason_code: ValidationReasonCodeV1,
@@ -76,6 +82,8 @@ pub struct ValidationReportPayloadV1 {
     pub warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extension_diagnostics: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path_diagnostics: Vec<ValidationPathDiagnosticV1>,
     #[serde(default)]
     pub explanations: Vec<ValidationExplanationV1>,
     #[serde(default)]
@@ -130,11 +138,40 @@ impl Default for ValidationReportPayloadV1 {
             selected_degradation_tier: None,
             warnings: vec![],
             extension_diagnostics: BTreeMap::new(),
+            path_diagnostics: vec![],
             explanations: vec![],
             remediation_hints: vec![],
             summary: String::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Structured path-local validation diagnostic for machine consumers.
+pub struct ValidationPathDiagnosticV1 {
+    pub diagnostic_id: String,
+    pub requirement_key: String,
+    #[serde(default)]
+    pub path_ids: Vec<String>,
+    pub check_id: String,
+    pub status: ValidationPathDiagnosticStatusV1,
+    pub reason_code: String,
+    #[serde(default)]
+    pub expected: BTreeMap<String, String>,
+    #[serde(default)]
+    pub observed: BTreeMap<String, String>,
+    #[serde(default)]
+    pub evidence_refs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationPathDiagnosticStatusV1 {
+    Satisfied,
+    Failed,
+    Missing,
+    NotApplicable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

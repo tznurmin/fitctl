@@ -1,0 +1,78 @@
+{
+  "envelope": {
+    "schema_id": "fitctl.batch-classification-report.v3",
+    "schema_version": 2,
+    "artifact_id": "batch-classification-report-redacted-external-v1",
+    "provenance": {
+      "source": "redacted:external:source",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "redacted:external:fitctl_version",
+      "command_name": "redacted:external:command_name",
+      "correlation_id": "batch-classification-report-redacted-external-v1"
+    },
+    "redaction": {
+      "profile_id": "external",
+      "redacted_at": "2025-04-21T14:37:19Z"
+    },
+    "signatures": []
+  },
+  "classification_basis": {
+    "validation_mode": "contract_only",
+    "validated_at": "2025-04-21T14:37:19Z",
+    "validation_engine_id": "redacted:external:validation_engine",
+    "validation_engine_version": "redacted:external:validation_engine_version",
+    "ordered_contracts": [
+      {
+        "artifact_id": "redacted:external:contract:00000000",
+        "semantic_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "host_alias": "redacted:external:host:00000000",
+        "display_name": "redacted:external:contract_label:00000000",
+        "short_display_name": "redacted:external:contract_short_label:00000000"
+      }
+    ],
+    "ordered_service_profiles": [
+      {
+        "artifact_id": "redacted:external:service_profile:00000000",
+        "semantic_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "display_name": "redacted:external:service_profile_label:00000000",
+        "short_display_name": "redacted:external:service_profile_short_label:00000000"
+      }
+    ]
+  },
+  "report": {
+    "rows": [
+      {
+        "row_id": "redacted:external:row:00000000",
+        "contract_artifact_id": "redacted:external:contract:00000000",
+        "contract_semantic_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "service_profile_artifact_id": "redacted:external:service_profile:00000000",
+        "service_profile_semantic_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "verdict": "fit",
+        "primary_reason_code": "requirements_satisfied",
+        "summary": "redacted:external:row_summary:00000000"
+      }
+    ],
+    "contract_summaries": [
+      {
+        "contract_artifact_id": "redacted:external:contract:00000000",
+        "fit_profile_ids": [
+          "redacted:external:service_profile:00000000"
+        ],
+        "degraded_profile_ids": [],
+        "unfit_profile_ids": [],
+        "indeterminate_profile_ids": []
+      }
+    ],
+    "service_profile_summaries": [
+      {
+        "service_profile_artifact_id": "redacted:external:service_profile:00000000",
+        "fit_contract_ids": [
+          "redacted:external:contract:00000000"
+        ],
+        "degraded_contract_ids": [],
+        "unfit_contract_ids": [],
+        "indeterminate_contract_ids": []
+      }
+    ]
+  }
+}

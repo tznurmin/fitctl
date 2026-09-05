@@ -158,6 +158,42 @@ pub const BUILT_IN_CONFIG_ASSETS_V1: &[BuiltInConfigAssetV1] = &[
     ),
     asset(
         "service_profiles",
+        "cpu_small_state_required.v2.json",
+        "configs/service_profiles/cpu_small_state_required.v2.json",
+        include_str!("builtin/service_profiles/cpu_small_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "cpu_large_state_required.v2.json",
+        "configs/service_profiles/cpu_large_state_required.v2.json",
+        include_str!("builtin/service_profiles/cpu_large_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "scratch_tmpfs_state_required.v2.json",
+        "configs/service_profiles/scratch_tmpfs_state_required.v2.json",
+        include_str!("builtin/service_profiles/scratch_tmpfs_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "scratch_nvme_state_required.v2.json",
+        "configs/service_profiles/scratch_nvme_state_required.v2.json",
+        include_str!("builtin/service_profiles/scratch_nvme_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "cuda_24gb_state_required.v2.json",
+        "configs/service_profiles/cuda_24gb_state_required.v2.json",
+        include_str!("builtin/service_profiles/cuda_24gb_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
+        "cuda_48gb_state_required.v2.json",
+        "configs/service_profiles/cuda_48gb_state_required.v2.json",
+        include_str!("builtin/service_profiles/cuda_48gb_state_required.v2.json"),
+    ),
+    asset(
+        "service_profiles",
         "gpu_locality_single_numa_contract_only.v2.json",
         "configs/service_profiles/gpu_locality_single_numa_contract_only.v2.json",
         include_str!("builtin/service_profiles/gpu_locality_single_numa_contract_only.v2.json"),

@@ -33,5 +33,15 @@ Bundled configuration includes policies, service profiles, service-profile catal
 contexts, runtime extension packs, recommendation packs, trust policies, and CUDA environment
 selection examples.
 
+The bundled service profiles include generic local workload gates such as:
+
+- `cpu_small_state_required_v1`
+- `cpu_large_state_required_v1`
+- `local_model_high_memory_state_required_v1`
+- `scratch_tmpfs_state_required_v1`
+- `scratch_nvme_state_required_v1`
+- `cuda_24gb_state_required_v1`
+- `cuda_48gb_state_required_v1`
+
 The exported files are examples and starting points. Edit or replace them when a workload has
 different policy or service-profile requirements.

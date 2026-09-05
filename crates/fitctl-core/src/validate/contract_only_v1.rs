@@ -6,7 +6,7 @@
 //! Validation consumes a derived host contract rather than raw survey evidence so policy-shaped
 //! host promises are frozen before workload requirements are compared against them.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -18,20 +18,30 @@ use crate::artifacts::schema_ids_v1::{
 };
 use crate::artifacts::semantic_hash_v1::{
     semantic_hash_hex_for_contract, semantic_hash_hex_for_service_profile,
-    semantic_hash_hex_for_state,
+    semantic_hash_hex_for_state, semantic_hash_hex_for_thermal_evidence,
 };
 use crate::artifacts::service_profile_v1::{
-    AssurancePredicateV1, ExplicitAssuranceRequirementV1, ServiceProfileV1,
+    AssurancePredicateV1, ExplicitAssuranceRequirementV1, ServiceGpuReliabilityRequirementV1,
+    ServiceMemoryReliabilityRequirementV1, ServicePathRelationshipIdentityV1,
+    ServicePathStorageHealthRequirementV1, ServiceProfileV1, ServiceThermalRequirementV1,
 };
-use crate::artifacts::state_v1::{FreshnessStateV1, HostStateV1, StateFieldV1};
+use crate::artifacts::state_v1::{
+    FreshnessStateV1, HostStateGpuReliabilityDeviceV1, HostStateGpuReliabilityV1,
+    HostStateMemoryReliabilityV1, HostStatePathResourceV1, HostStatePathStorageHealthV1,
+    HostStateThermalEvidenceTargetV1, HostStateThermalReadingV1, HostStateThermalResourcesV1,
+    HostStateV1, StateEvidenceProviderOutcomeV1, StateFieldV1, ThermalEvidenceTargetKindV1,
+    ThermalProviderOutcomeV1,
+};
+use crate::artifacts::thermal_evidence_v1::ThermalEvidenceV1;
 use crate::artifacts::validation_report_v1::{
-    ValidationBasisV1, ValidationExplanationV1, ValidationModeV1, ValidationReasonCodeV1,
-    ValidationRemediationActionV1, ValidationRemediationHintV1, ValidationReportPayloadV1,
-    ValidationReportV1, ValidationVerdictV1,
+    ValidationBasisV1, ValidationExplanationV1, ValidationModeV1, ValidationPathDiagnosticStatusV1,
+    ValidationPathDiagnosticV1, ValidationReasonCodeV1, ValidationRemediationActionV1,
+    ValidationRemediationHintV1, ValidationReportPayloadV1, ValidationReportV1,
+    ValidationVerdictV1,
 };
 use crate::artifacts::validation_v1::{
     validate_host_contract, validate_host_state, validate_service_profile,
-    validate_validation_report,
+    validate_thermal_evidence, validate_validation_report,
 };
 use crate::contract::{load_host_contract_artifact_from_path, HostContractPayloadV1};
 use crate::extensions::{
@@ -47,6 +57,7 @@ use crate::policy::capability_classes_v1::DerivedCapabilityClaimV1;
 use crate::service_profile::load_service_profile_from_path;
 use crate::state::load_host_state_from_path;
 use crate::survey::{ObservationStateV1, VisibilityScopeV1};
+use crate::thermal_evidence::load_thermal_evidence_from_path_v1;
 use crate::validate::{ValidationError, ValidationErrorCode};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,11 +65,19 @@ pub struct ValidationRequestV1 {
     pub contract: HostContractV1,
     pub service_profile: ServiceProfileV1,
     pub host_state: Option<HostStateV1>,
+    pub thermal_evidence: Vec<ThermalEvidenceV1>,
     pub mode: ValidationModeV1,
     pub validated_at: String,
     pub notes: Option<String>,
     pub max_state_age_seconds: Option<u64>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ThermalTargetBindingV1 {
+    host_alias: Option<String>,
+}
+
+type RuntimeRequirementResult = Result<(), Box<ValidationReportPayloadV1>>;
 
 pub fn validate_request_v1(
     request: ValidationRequestV1,
@@ -72,6 +91,13 @@ pub fn validate_request_v1(
                     ValidationErrorCode::ValidationInputInvalid,
                     "validation_contract_only",
                     "host-state input is not allowed in contract_only mode",
+                ));
+            }
+            if !request.thermal_evidence.is_empty() {
+                return Err(ValidationError::new(
+                    ValidationErrorCode::ValidationInputInvalid,
+                    "validation_contract_only",
+                    "thermal evidence input is not allowed in contract_only mode",
                 ));
             }
             if request.max_state_age_seconds.is_some() {
@@ -90,13 +116,23 @@ pub fn validate_request_v1(
                     "validation mode state_aware requires a host-state artifact",
                 ));
             }
+            if !request.thermal_evidence.is_empty() {
+                return Err(ValidationError::new(
+                    ValidationErrorCode::ValidationInputInvalid,
+                    "validation_state_aware",
+                    "thermal evidence input is not supported in legacy state_aware mode",
+                ));
+            }
         }
         ValidationModeV1::StateAdvisory | ValidationModeV1::StateRequired => {
-            if request.max_state_age_seconds.is_some() && request.host_state.is_none() {
+            if request.max_state_age_seconds.is_some()
+                && request.host_state.is_none()
+                && request.thermal_evidence.is_empty()
+            {
                 return Err(ValidationError::new(
                     ValidationErrorCode::ValidationInputInvalid,
                     "validation_state_input",
-                    "max-state-age requires a host-state artifact",
+                    "max-state-age requires host-state or thermal evidence input",
                 ));
             }
         }
@@ -121,6 +157,15 @@ pub fn validate_request_v1(
             ValidationError::new(
                 ValidationErrorCode::StateArtifactInvalid,
                 "state_load",
+                error.message,
+            )
+        })?;
+    }
+    for artifact in &request.thermal_evidence {
+        validate_thermal_evidence(artifact).map_err(|error| {
+            ValidationError::new(
+                ValidationErrorCode::ThermalEvidenceArtifactInvalid,
+                "thermal_evidence_load",
                 error.message,
             )
         })?;
@@ -206,6 +251,24 @@ pub fn validate_request_v1(
             })
         })
         .transpose()?;
+    let thermal_evidence_artifact_ids = request
+        .thermal_evidence
+        .iter()
+        .map(|artifact| artifact.envelope.artifact_id.clone())
+        .collect::<Vec<_>>();
+    let thermal_evidence_semantic_hashes = request
+        .thermal_evidence
+        .iter()
+        .map(|artifact| {
+            semantic_hash_hex_for_thermal_evidence(artifact).map_err(|error| {
+                ValidationError::new(
+                    ValidationErrorCode::ValidationExecutionFailed,
+                    "validation_thermal_evidence",
+                    error.message,
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     // First evaluate the core contract-versus-profile question for the selected mode, then apply
     // extension requirements and finally attach explanation/hint material.
@@ -220,6 +283,10 @@ pub fn validate_request_v1(
             ValidationModeV1::StateAware,
             request.max_state_age_seconds,
             &request.validated_at,
+            &ThermalTargetBindingV1 {
+                host_alias: request.contract.host_alias.clone(),
+            },
+            &request.thermal_evidence,
         ),
         ValidationModeV1::StateAdvisory => evaluate_with_optional_state(
             &contract_payload,
@@ -228,6 +295,10 @@ pub fn validate_request_v1(
             ValidationModeV1::StateAdvisory,
             request.max_state_age_seconds,
             &request.validated_at,
+            &ThermalTargetBindingV1 {
+                host_alias: request.contract.host_alias.clone(),
+            },
+            &request.thermal_evidence,
         ),
         ValidationModeV1::StateRequired => evaluate_with_optional_state(
             &contract_payload,
@@ -236,6 +307,10 @@ pub fn validate_request_v1(
             ValidationModeV1::StateRequired,
             request.max_state_age_seconds,
             &request.validated_at,
+            &ThermalTargetBindingV1 {
+                host_alias: request.contract.host_alias.clone(),
+            },
+            &request.thermal_evidence,
         ),
     };
     let report_payload = apply_extension_requirements_gate(
@@ -292,6 +367,8 @@ pub fn validate_request_v1(
                 .as_ref()
                 .map(|state| state.state.core_state.freshness.freshness_state),
             max_state_age_seconds: request.max_state_age_seconds,
+            thermal_evidence_artifact_ids,
+            thermal_evidence_semantic_hashes,
             validation_engine_id: "fitctl.validate.v1".to_string(),
             validation_engine_version: "1".to_string(),
         },
@@ -1370,6 +1447,18 @@ pub fn load_host_state_artifact_for_validation(
     })
 }
 
+pub fn load_thermal_evidence_artifact_for_validation(
+    path: &Path,
+) -> Result<ThermalEvidenceV1, ValidationError> {
+    load_thermal_evidence_from_path_v1(path).map_err(|error| {
+        ValidationError::new(
+            ValidationErrorCode::ThermalEvidenceArtifactInvalid,
+            "thermal_evidence_load",
+            error.message,
+        )
+    })
+}
+
 pub fn load_validation_report_from_path(
     path: &Path,
 ) -> Result<ValidationReportV1, ValidationError> {
@@ -1439,6 +1528,7 @@ fn evaluate_contract_only(
     evaluate_static_requirements(contract, service_profile, matched_requirements)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn evaluate_state_mode(
     contract: &HostContractPayloadV1,
     service_profile: &ServiceProfileV1,
@@ -1446,6 +1536,8 @@ fn evaluate_state_mode(
     mode: ValidationModeV1,
     max_state_age_seconds: Option<u64>,
     validated_at: &str,
+    thermal_target_binding: &ThermalTargetBindingV1,
+    thermal_evidence: &[ThermalEvidenceV1],
 ) -> ValidationReportPayloadV1 {
     evaluate_with_optional_state(
         contract,
@@ -1454,9 +1546,12 @@ fn evaluate_state_mode(
         mode,
         max_state_age_seconds,
         validated_at,
+        thermal_target_binding,
+        thermal_evidence,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn evaluate_with_optional_state(
     contract: &HostContractPayloadV1,
     service_profile: &ServiceProfileV1,
@@ -1464,6 +1559,8 @@ fn evaluate_with_optional_state(
     mode: ValidationModeV1,
     max_state_age_seconds: Option<u64>,
     validated_at: &str,
+    thermal_target_binding: &ThermalTargetBindingV1,
+    thermal_evidence: &[ThermalEvidenceV1],
 ) -> ValidationReportPayloadV1 {
     // State-aware validation only runs after the static contract path has already produced a fit
     // or degraded fit. Runtime state can narrow that result, but it never rescues a statically
@@ -1497,173 +1594,818 @@ fn evaluate_with_optional_state(
         return report;
     }
 
-    let Some(host_state) = host_state else {
-        return runtime_state_missing_or_stale_report(
-            report,
-            service_profile,
-            ValidationReasonCodeV1::StateMissing,
-            "host-state is required for runtime-threshold evaluation",
-        );
-    };
-
-    match is_state_stale(host_state, max_state_age_seconds, validated_at) {
-        Ok(true) => {
+    let mut matched_requirements = report.matched_requirements.clone();
+    let mut path_diagnostics = report.path_diagnostics.clone();
+    let host_state_for_runtime = match (
+        host_state,
+        non_thermal_runtime_thresholds_declared(service_profile),
+    ) {
+        (Some(state), _) => Some(state),
+        (None, true) => {
             return runtime_state_missing_or_stale_report(
                 report,
                 service_profile,
-                ValidationReasonCodeV1::StateStale,
-                match mode {
-                    ValidationModeV1::StateAdvisory => {
-                        "stale host-state remains explicit in state_advisory validation"
-                    }
-                    _ => "stale host-state blocks runtime-threshold evaluation",
-                },
+                ValidationReasonCodeV1::StateMissing,
+                "host-state is required for non-thermal runtime-threshold evaluation",
             );
         }
-        Ok(false) => {}
-        Err(message) => return freshness_parse_failed_report(message),
-    }
+        (None, false) => None,
+    };
 
-    if let Some(runtime_topology_report) =
-        evaluate_runtime_topology_requirements(service_profile, host_state, &report)
-    {
-        return runtime_topology_report;
-    }
-
-    if let Some(degraded_report) =
-        evaluate_runtime_operability(service_profile, host_state, report.clone())
-    {
-        return degraded_report;
-    }
-
-    let mut matched_requirements = report.matched_requirements.clone();
-    let mut failed_requirements = Vec::new();
-
-    if let Some(min_cpu) = profile.core_requirements.min_allocatable_cpu_logical_cores {
-        match scalar_state_value(
-            &host_state
-                .state
-                .core_state
-                .resources
-                .allocatable_cpu_logical_cores,
-            "core_requirements.min_allocatable_cpu_logical_cores",
-        ) {
-            Ok(value) => {
-                if value < min_cpu {
-                    return runtime_threshold_unsatisfied_report(
-                        report,
-                        vec!["core_requirements.min_allocatable_cpu_logical_cores".to_string()],
-                        format!(
-                            "allocatable CPU logical cores {} are below the required floor {}",
-                            value, min_cpu
-                        ),
-                    );
-                }
-                matched_requirements
-                    .push("core_requirements.min_allocatable_cpu_logical_cores".to_string());
-            }
-            Err(report_payload) => return runtime_missing_report(report, *report_payload),
-        }
-    }
-
-    if let Some(min_memory) = profile.core_requirements.min_allocatable_memory_bytes {
-        match scalar_state_value(
-            &host_state
-                .state
-                .core_state
-                .resources
-                .allocatable_memory_bytes,
-            "core_requirements.min_allocatable_memory_bytes",
-        ) {
-            Ok(value) => {
-                if value < min_memory {
-                    failed_requirements
-                        .push("core_requirements.min_allocatable_memory_bytes".to_string());
-                    return runtime_threshold_unsatisfied_report(
-                        report,
-                        failed_requirements,
-                        format!(
-                            "allocatable memory {} is below the required floor {}",
-                            value, min_memory
-                        ),
-                    );
-                }
-                matched_requirements
-                    .push("core_requirements.min_allocatable_memory_bytes".to_string());
-            }
-            Err(report_payload) => return runtime_missing_report(report, *report_payload),
-        }
-    }
-
-    for path_requirement in &profile.core_requirements.required_paths {
-        let requirement_key = path_requirement_key(&path_requirement.path_id);
-        let Some(path_state) = host_state
-            .state
-            .core_state
-            .path_resources
-            .paths
-            .iter()
-            .find(|path| path.path_id == path_requirement.path_id)
-        else {
-            return runtime_missing_report(
-                report,
-                ValidationReportPayloadV1 {
-                    verdict: ValidationVerdictV1::Indeterminate,
-                    primary_reason_code: ValidationReasonCodeV1::StateMissing,
-                    matched_requirements: vec![],
-                    failed_requirements: vec![requirement_key],
-                    evidence_refs: runtime_evidence_refs(),
-                    policy_refs: vec![],
-                    assurance_mismatches: vec![],
-                    selected_degradation_tier: None,
-                    warnings: vec![
-                        "state-aware validation requires matching path state for required paths"
-                            .to_string(),
-                    ],
-                    summary: "required path state is missing".to_string(),
-                    ..ValidationReportPayloadV1::default()
-                },
-            );
-        };
-
-        match scalar_state_value(&path_state.exists, &requirement_key) {
-            Ok(true) => {}
-            Ok(false) => {
-                return runtime_threshold_unsatisfied_report(
+    if let Some(host_state) = host_state_for_runtime {
+        match is_state_stale(host_state, max_state_age_seconds, validated_at) {
+            Ok(true) => {
+                return runtime_state_missing_or_stale_report(
                     report,
-                    vec![requirement_key],
-                    format!("required path {} does not exist", path_requirement.path_id),
+                    service_profile,
+                    ValidationReasonCodeV1::StateStale,
+                    match mode {
+                        ValidationModeV1::StateAdvisory => {
+                            "stale host-state remains explicit in state_advisory validation"
+                        }
+                        _ => "stale host-state blocks runtime-threshold evaluation",
+                    },
                 );
             }
-            Err(report_payload) => return runtime_missing_report(report, *report_payload),
+            Ok(false) => {}
+            Err(message) => return freshness_parse_failed_report(message),
         }
 
-        if let Some(min_available_bytes) = path_requirement.min_available_bytes {
+        if let Some(runtime_topology_report) =
+            evaluate_runtime_topology_requirements(service_profile, host_state, &report)
+        {
+            return runtime_topology_report;
+        }
+
+        if let Some(degraded_report) =
+            evaluate_runtime_operability(service_profile, host_state, report.clone())
+        {
+            return degraded_report;
+        }
+
+        let mut failed_requirements = Vec::new();
+
+        if let Some(min_cpu) = profile.core_requirements.min_allocatable_cpu_logical_cores {
             match scalar_state_value(
-                &path_state.filesystem_available_bytes,
-                &path_requirement_key(&path_requirement.path_id),
+                &host_state
+                    .state
+                    .core_state
+                    .resources
+                    .allocatable_cpu_logical_cores,
+                "core_requirements.min_allocatable_cpu_logical_cores",
             ) {
                 Ok(value) => {
-                    if value < min_available_bytes {
+                    if value < min_cpu {
                         return runtime_threshold_unsatisfied_report(
                             report,
-                            vec![path_requirement_key(&path_requirement.path_id)],
+                            vec!["core_requirements.min_allocatable_cpu_logical_cores".to_string()],
                             format!(
-                                "path {} available space {} is below the required floor {}",
-                                path_requirement.path_id,
-                                format_bytes(value),
-                                format_bytes(min_available_bytes)
+                                "allocatable CPU logical cores {} are below the required floor {}",
+                                value, min_cpu
                             ),
                         );
                     }
+                    matched_requirements
+                        .push("core_requirements.min_allocatable_cpu_logical_cores".to_string());
                 }
                 Err(report_payload) => return runtime_missing_report(report, *report_payload),
             }
         }
-        matched_requirements.push(path_requirement_key(&path_requirement.path_id));
+
+        if let Some(min_memory) = profile.core_requirements.min_allocatable_memory_bytes {
+            match scalar_state_value(
+                &host_state
+                    .state
+                    .core_state
+                    .resources
+                    .allocatable_memory_bytes,
+                "core_requirements.min_allocatable_memory_bytes",
+            ) {
+                Ok(value) => {
+                    if value < min_memory {
+                        failed_requirements
+                            .push("core_requirements.min_allocatable_memory_bytes".to_string());
+                        return runtime_threshold_unsatisfied_report(
+                            report,
+                            failed_requirements,
+                            format!(
+                                "allocatable memory {} is below the required floor {}",
+                                value, min_memory
+                            ),
+                        );
+                    }
+                    matched_requirements
+                        .push("core_requirements.min_allocatable_memory_bytes".to_string());
+                }
+                Err(report_payload) => return runtime_missing_report(report, *report_payload),
+            }
+        }
+
+        for path_requirement in &profile.core_requirements.required_paths {
+            let requirement_key = path_requirement_key(&path_requirement.path_id);
+            let Some(path_state) = host_state
+                .state
+                .core_state
+                .path_resources
+                .paths
+                .iter()
+                .find(|path| path.path_id == path_requirement.path_id)
+            else {
+                return runtime_missing_report(
+                    report,
+                    ValidationReportPayloadV1 {
+                        verdict: ValidationVerdictV1::Indeterminate,
+                        primary_reason_code: ValidationReasonCodeV1::StateMissing,
+                        matched_requirements: vec![],
+                        failed_requirements: vec![requirement_key],
+                        evidence_refs: runtime_evidence_refs(),
+                        policy_refs: vec![],
+                        assurance_mismatches: vec![],
+                        selected_degradation_tier: None,
+                        warnings: vec![
+                        "state-aware validation requires matching path state for required paths"
+                            .to_string(),
+                    ],
+                        summary: "required path state is missing".to_string(),
+                        ..ValidationReportPayloadV1::default()
+                    },
+                );
+            };
+
+            match scalar_state_value(&path_state.exists, &requirement_key) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return runtime_threshold_unsatisfied_report(
+                        report,
+                        vec![requirement_key],
+                        format!("required path {} does not exist", path_requirement.path_id),
+                    );
+                }
+                Err(report_payload) => return runtime_missing_report(report, *report_payload),
+            }
+
+            if let Some(min_available_bytes) = path_requirement.min_available_bytes {
+                match scalar_state_value(
+                    &path_state.filesystem_available_bytes,
+                    &path_requirement_key(&path_requirement.path_id),
+                ) {
+                    Ok(value) => {
+                        if value < min_available_bytes {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![path_requirement_key(&path_requirement.path_id)],
+                                format!(
+                                    "path {} available space {} is below the required floor {}",
+                                    path_requirement.path_id,
+                                    format_bytes(value),
+                                    format_bytes(min_available_bytes)
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            if !path_requirement.accepted_media_classes.is_empty() {
+                match cloned_state_value(&path_state.media_class, &requirement_key) {
+                    Ok(value) => {
+                        if !path_requirement.accepted_media_classes.contains(&value) {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} media class {} is not accepted",
+                                    path_requirement.path_id,
+                                    value.as_str()
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            if !path_requirement.accepted_durability_classes.is_empty() {
+                match cloned_state_value(&path_state.durability_class, &requirement_key) {
+                    Ok(value) => {
+                        if !path_requirement
+                            .accepted_durability_classes
+                            .contains(&value)
+                        {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} durability class {} is not accepted",
+                                    path_requirement.path_id,
+                                    value.as_str()
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            if !path_requirement.required_filesystem_types.is_empty() {
+                match cloned_state_value(&path_state.filesystem_type, &requirement_key) {
+                    Ok(value) => {
+                        if !path_requirement
+                            .required_filesystem_types
+                            .iter()
+                            .any(|required| required == &value)
+                        {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} filesystem type {} is not accepted",
+                                    path_requirement.path_id, value
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            if !path_requirement.accepted_filesystem_uuids.is_empty() {
+                match cloned_state_value(&path_state.filesystem_uuid, &requirement_key) {
+                    Ok(value) => {
+                        if !path_requirement
+                            .accepted_filesystem_uuids
+                            .iter()
+                            .any(|accepted| accepted == &value)
+                        {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} filesystem UUID is not accepted",
+                                    path_requirement.path_id
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            if !path_requirement.accepted_partition_uuids.is_empty() {
+                match cloned_state_value(&path_state.partition_uuid, &requirement_key) {
+                    Ok(value) => {
+                        if !path_requirement
+                            .accepted_partition_uuids
+                            .iter()
+                            .any(|accepted| accepted == &value)
+                        {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} partition UUID is not accepted",
+                                    path_requirement.path_id
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            if !path_requirement.accepted_persistent_device_links.is_empty() {
+                match cloned_state_value(&path_state.persistent_device_links, &requirement_key) {
+                    Ok(values) => {
+                        if !values.iter().any(|value| {
+                            path_requirement
+                                .accepted_persistent_device_links
+                                .iter()
+                                .any(|accepted| accepted == value)
+                        }) {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} persistent device link is not accepted",
+                                    path_requirement.path_id
+                                ),
+                            );
+                        }
+                    }
+                    Err(report_payload) => return runtime_missing_report(report, *report_payload),
+                }
+            }
+            for (label, required, observed) in [
+                (
+                    "hardlink",
+                    path_requirement.require_hardlink,
+                    path_state
+                        .link_capabilities
+                        .as_ref()
+                        .map(|link| &link.hardlink_supported),
+                ),
+                (
+                    "reflink",
+                    path_requirement.require_reflink,
+                    path_state
+                        .link_capabilities
+                        .as_ref()
+                        .map(|link| &link.reflink_supported),
+                ),
+                (
+                    "symlink",
+                    path_requirement.require_symlink,
+                    path_state
+                        .link_capabilities
+                        .as_ref()
+                        .map(|link| &link.symlink_supported),
+                ),
+                (
+                    "copy",
+                    path_requirement.require_copy,
+                    path_state
+                        .link_capabilities
+                        .as_ref()
+                        .map(|link| &link.copy_possible),
+                ),
+            ] {
+                if required == Some(true) {
+                    let Some(observed) = observed else {
+                        return runtime_missing_report(
+                        report,
+                        ValidationReportPayloadV1 {
+                            verdict: ValidationVerdictV1::Indeterminate,
+                            primary_reason_code: ValidationReasonCodeV1::StateMissing,
+                            matched_requirements: vec![],
+                            failed_requirements: vec![requirement_key],
+                            evidence_refs: runtime_evidence_refs(),
+                            policy_refs: vec![],
+                            assurance_mismatches: vec![],
+                            selected_degradation_tier: None,
+                            warnings: vec![
+                                "state-aware validation requires link probe evidence for required path link capabilities"
+                                    .to_string(),
+                            ],
+                            summary: "required path link capability evidence is missing"
+                                .to_string(),
+                            ..ValidationReportPayloadV1::default()
+                        },
+                    );
+                    };
+                    match scalar_state_value(observed, &requirement_key) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                    "path {} does not satisfy required {label} capability",
+                                    path_requirement.path_id
+                                ),
+                            );
+                        }
+                        Err(report_payload) => {
+                            return runtime_missing_report(report, *report_payload)
+                        }
+                    }
+                }
+            }
+            if let Some(storage_health_requirement) = path_requirement.storage_health.as_ref() {
+                if let Err(report_payload) = evaluate_path_storage_health_requirement(
+                    &report,
+                    &path_requirement.path_id,
+                    storage_health_requirement,
+                    path_state.storage_health.as_ref(),
+                ) {
+                    return *report_payload;
+                }
+                matched_requirements.push(path_storage_health_requirement_key(
+                    &path_requirement.path_id,
+                ));
+            }
+            matched_requirements.push(path_requirement_key(&path_requirement.path_id));
+        }
+
+        for relationship in &profile.core_requirements.path_relationships {
+            let requirement_key = path_relationship_requirement_key(&relationship.relationship_id);
+            let Some(left_path) = find_path_state(host_state, &relationship.left_path_id) else {
+                path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                    diagnostic_id: format!(
+                        "path_relationship:{}:path_state",
+                        relationship.relationship_id
+                    ),
+                    requirement_key: requirement_key.clone(),
+                    path_ids: vec![
+                        relationship.left_path_id.clone(),
+                        relationship.right_path_id.clone(),
+                    ],
+                    check_id: "path_relationship",
+                    status: ValidationPathDiagnosticStatusV1::Missing,
+                    reason_code: "path_state_missing",
+                    expected: [("relationship_id", relationship.relationship_id.as_str())],
+                    observed: [("missing_path_id", relationship.left_path_id.as_str())],
+                    evidence_refs: vec!["$.state.core_state.path_resources.paths[]".to_string()],
+                }));
+                report.path_diagnostics = path_diagnostics;
+                return runtime_missing_report(
+                    report,
+                    missing_path_relationship_report(
+                        requirement_key,
+                        relationship.relationship_id.as_str(),
+                    ),
+                );
+            };
+            let Some(right_path) = find_path_state(host_state, &relationship.right_path_id) else {
+                path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                    diagnostic_id: format!(
+                        "path_relationship:{}:path_state",
+                        relationship.relationship_id
+                    ),
+                    requirement_key: requirement_key.clone(),
+                    path_ids: vec![
+                        relationship.left_path_id.clone(),
+                        relationship.right_path_id.clone(),
+                    ],
+                    check_id: "path_relationship",
+                    status: ValidationPathDiagnosticStatusV1::Missing,
+                    reason_code: "path_state_missing",
+                    expected: [("relationship_id", relationship.relationship_id.as_str())],
+                    observed: [("missing_path_id", relationship.right_path_id.as_str())],
+                    evidence_refs: vec!["$.state.core_state.path_resources.paths[]".to_string()],
+                }));
+                report.path_diagnostics = path_diagnostics;
+                return runtime_missing_report(
+                    report,
+                    missing_path_relationship_report(
+                        requirement_key,
+                        relationship.relationship_id.as_str(),
+                    ),
+                );
+            };
+
+            for identity in &relationship.must_not_share {
+                let check_id = identity.as_str();
+                let diagnostic_id = format!(
+                    "path_relationship:{}:{check_id}",
+                    relationship.relationship_id
+                );
+                let left_observed = relationship_identity_value(left_path, *identity);
+                let right_observed = relationship_identity_value(right_path, *identity);
+                if left_observed.is_none() || right_observed.is_none() {
+                    path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                    diagnostic_id,
+                    requirement_key: requirement_key.clone(),
+                    path_ids: vec![
+                        relationship.left_path_id.clone(),
+                        relationship.right_path_id.clone(),
+                    ],
+                    check_id,
+                    status: ValidationPathDiagnosticStatusV1::Missing,
+                    reason_code: "path_relationship_identity_missing",
+                    expected: [("must_not_share", check_id)],
+                    observed: [
+                        ("left", left_observed.as_deref().unwrap_or("unknown")),
+                        ("right", right_observed.as_deref().unwrap_or("unknown")),
+                    ],
+                    evidence_refs: vec!["$.state.core_state.path_resources.paths[]".to_string()],
+                }));
+                    report.path_diagnostics = path_diagnostics;
+                    return runtime_missing_report(
+                        report,
+                        missing_path_relationship_report(
+                            requirement_key,
+                            relationship.relationship_id.as_str(),
+                        ),
+                    );
+                }
+                let left_value = left_observed.expect("checked above");
+                let right_value = right_observed.expect("checked above");
+                if left_value == right_value {
+                    path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                    diagnostic_id,
+                    requirement_key: requirement_key.clone(),
+                    path_ids: vec![
+                        relationship.left_path_id.clone(),
+                        relationship.right_path_id.clone(),
+                    ],
+                    check_id,
+                    status: ValidationPathDiagnosticStatusV1::Failed,
+                    reason_code: "path_relationship_not_separated",
+                    expected: [("must_not_share", check_id)],
+                    observed: [
+                        ("left", left_value.as_str()),
+                        ("right", right_value.as_str()),
+                    ],
+                    evidence_refs: vec!["$.state.core_state.path_resources.paths[]".to_string()],
+                }));
+                    report.path_diagnostics = path_diagnostics;
+                    return runtime_threshold_unsatisfied_report(
+                        report,
+                        vec![requirement_key],
+                        format!(
+                            "path relationship {} requires distinct {check_id} values",
+                            relationship.relationship_id
+                        ),
+                    );
+                }
+                path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                    diagnostic_id,
+                    requirement_key: requirement_key.clone(),
+                    path_ids: vec![
+                        relationship.left_path_id.clone(),
+                        relationship.right_path_id.clone(),
+                    ],
+                    check_id,
+                    status: ValidationPathDiagnosticStatusV1::Satisfied,
+                    reason_code: "path_relationship_satisfied",
+                    expected: [("must_not_share", check_id)],
+                    observed: [
+                        ("left", left_value.as_str()),
+                        ("right", right_value.as_str()),
+                    ],
+                    evidence_refs: vec!["$.state.core_state.path_resources.paths[]".to_string()],
+                }));
+            }
+            matched_requirements.push(requirement_key);
+        }
+
+        for pair_requirement in &profile.core_requirements.required_path_link_pairs {
+            let requirement_key = path_link_pair_requirement_key(&pair_requirement.pair_id);
+            let Some(pair_state) = host_state
+                .state
+                .core_state
+                .path_resources
+                .link_pairs
+                .iter()
+                .find(|pair| {
+                    pair.pair_id == pair_requirement.pair_id
+                        && pair.from_path_id == pair_requirement.from_path_id
+                        && pair.to_path_id == pair_requirement.to_path_id
+                })
+            else {
+                path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                    diagnostic_id: format!(
+                        "path_link_pair:{}:pair_state",
+                        pair_requirement.pair_id
+                    ),
+                    requirement_key: requirement_key.clone(),
+                    path_ids: vec![
+                        pair_requirement.from_path_id.clone(),
+                        pair_requirement.to_path_id.clone(),
+                    ],
+                    check_id: "path_link_pair",
+                    status: ValidationPathDiagnosticStatusV1::Missing,
+                    reason_code: "path_link_pair_missing",
+                    expected: [("pair_id", pair_requirement.pair_id.as_str())],
+                    observed: [("observed", "missing")],
+                    evidence_refs: vec![
+                        "$.state.core_state.path_resources.link_pairs[]".to_string()
+                    ],
+                }));
+                report.path_diagnostics = path_diagnostics;
+                return runtime_missing_report(
+                    report,
+                    missing_path_link_pair_report(
+                        requirement_key,
+                        pair_requirement.pair_id.as_str(),
+                    ),
+                );
+            };
+
+            for (label, required, observed) in [
+                (
+                    "hardlink",
+                    pair_requirement.require_hardlink,
+                    &pair_state.hardlink_supported,
+                ),
+                (
+                    "reflink",
+                    pair_requirement.require_reflink,
+                    &pair_state.reflink_supported,
+                ),
+                (
+                    "symlink",
+                    pair_requirement.require_symlink,
+                    &pair_state.symlink_supported,
+                ),
+                (
+                    "copy",
+                    pair_requirement.require_copy,
+                    &pair_state.copy_possible,
+                ),
+            ] {
+                if required == Some(true) {
+                    let diagnostic_id =
+                        format!("path_link_pair:{}:{label}", pair_requirement.pair_id);
+                    match bool_state_value(observed) {
+                        Some(true) => {
+                            path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                                diagnostic_id,
+                                requirement_key: requirement_key.clone(),
+                                path_ids: vec![
+                                    pair_requirement.from_path_id.clone(),
+                                    pair_requirement.to_path_id.clone(),
+                                ],
+                                check_id: label,
+                                status: ValidationPathDiagnosticStatusV1::Satisfied,
+                                reason_code: "path_link_pair_satisfied",
+                                expected: [("required", "true")],
+                                observed: [("observed", "true")],
+                                evidence_refs: vec![
+                                    "$.state.core_state.path_resources.link_pairs[]".to_string(),
+                                ],
+                            }))
+                        }
+                        Some(false) => {
+                            path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                                diagnostic_id,
+                                requirement_key: requirement_key.clone(),
+                                path_ids: vec![
+                                    pair_requirement.from_path_id.clone(),
+                                    pair_requirement.to_path_id.clone(),
+                                ],
+                                check_id: label,
+                                status: ValidationPathDiagnosticStatusV1::Failed,
+                                reason_code: "path_link_pair_capability_unsatisfied",
+                                expected: [("required", "true")],
+                                observed: [("observed", "false")],
+                                evidence_refs: vec![
+                                    "$.state.core_state.path_resources.link_pairs[]".to_string(),
+                                ],
+                            }));
+                            report.path_diagnostics = path_diagnostics;
+                            return runtime_threshold_unsatisfied_report(
+                                report,
+                                vec![requirement_key],
+                                format!(
+                                "path link pair {} does not satisfy required {label} capability",
+                                pair_requirement.pair_id
+                            ),
+                            );
+                        }
+                        None => {
+                            path_diagnostics.push(path_diagnostic(PathDiagnosticInputV1 {
+                                diagnostic_id,
+                                requirement_key: requirement_key.clone(),
+                                path_ids: vec![
+                                    pair_requirement.from_path_id.clone(),
+                                    pair_requirement.to_path_id.clone(),
+                                ],
+                                check_id: label,
+                                status: ValidationPathDiagnosticStatusV1::Missing,
+                                reason_code: "path_link_pair_capability_missing",
+                                expected: [("required", "true")],
+                                observed: [("observed", "unknown")],
+                                evidence_refs: vec![
+                                    "$.state.core_state.path_resources.link_pairs[]".to_string(),
+                                ],
+                            }));
+                            report.path_diagnostics = path_diagnostics;
+                            return runtime_missing_report(
+                                report,
+                                missing_path_link_pair_report(
+                                    requirement_key,
+                                    pair_requirement.pair_id.as_str(),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+            matched_requirements.push(requirement_key);
+        }
+
+        if let Some(memory_requirement) = profile
+            .core_requirements
+            .required_memory_reliability
+            .as_ref()
+        {
+            if let Err(report_payload) = evaluate_memory_reliability_requirement(
+                &report,
+                memory_requirement,
+                host_state.state.core_state.memory_reliability.as_ref(),
+            ) {
+                return *report_payload;
+            }
+            matched_requirements.push(memory_reliability_requirement_key().to_string());
+        }
+
+        if let Some(gpu_requirement) = profile.core_requirements.required_gpu_reliability.as_ref() {
+            if let Err(report_payload) = evaluate_gpu_reliability_requirement(
+                &report,
+                gpu_requirement,
+                host_state.state.core_state.gpu_reliability.as_ref(),
+            ) {
+                return *report_payload;
+            }
+            matched_requirements.push(gpu_reliability_requirement_key().to_string());
+        }
+    }
+
+    for thermal_requirement in &profile.core_requirements.required_thermal_sensors {
+        let requirement_key = thermal_requirement_key(&thermal_requirement.requirement_id);
+        let thermal_sources = thermal_evidence_sources(host_state_for_runtime, thermal_evidence);
+        let mut saw_matching_reading = false;
+        let mut saw_matching_target = false;
+        let mut saw_fresh = false;
+        let mut saw_successful_provider = false;
+        let mut requirement_satisfied = false;
+
+        for source in thermal_sources {
+            let matching_readings = source
+                .resources
+                .readings
+                .iter()
+                .filter(|reading| thermal_reading_matches_requirement(reading, thermal_requirement))
+                .collect::<Vec<_>>();
+            if matching_readings.is_empty() {
+                continue;
+            }
+            saw_matching_reading = true;
+            match is_thermal_source_stale(source.resources, max_state_age_seconds, validated_at) {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(message) => return freshness_parse_failed_report(message),
+            }
+            saw_fresh = true;
+
+            for reading in matching_readings {
+                if !thermal_evidence_target_matches_binding(
+                    &reading.evidence_target,
+                    thermal_target_binding,
+                ) {
+                    continue;
+                }
+                saw_matching_target = true;
+
+                if thermal_requirement.require_provider_success {
+                    let provider_outcome = source
+                        .resources
+                        .providers
+                        .iter()
+                        .find(|provider| provider.provider_id == reading.provider_id)
+                        .map(|provider| provider.outcome);
+                    if provider_outcome != Some(ThermalProviderOutcomeV1::Success) {
+                        continue;
+                    }
+                    saw_successful_provider = true;
+                } else {
+                    saw_successful_provider = true;
+                }
+
+                if reading.temperature_millidegrees_celsius
+                    > thermal_requirement.max_temperature_millidegrees_celsius
+                {
+                    return runtime_threshold_unsatisfied_report(
+                        report,
+                        vec![requirement_key],
+                        format!(
+                            "thermal sensor {} temperature {} mC is above the required maximum {} mC",
+                            reading
+                                .sensor_alias
+                                .as_deref()
+                                .unwrap_or(reading.sensor_id.as_str()),
+                            reading.temperature_millidegrees_celsius,
+                            thermal_requirement.max_temperature_millidegrees_celsius
+                        ),
+                    );
+                }
+                requirement_satisfied = true;
+            }
+        }
+
+        if !requirement_satisfied {
+            let (reason_code, summary) = if !saw_matching_reading {
+                (
+                    ValidationReasonCodeV1::EvidenceIncomplete,
+                    "required thermal sensor evidence is missing",
+                )
+            } else if !saw_fresh {
+                (
+                    ValidationReasonCodeV1::StateStale,
+                    "required thermal evidence is stale",
+                )
+            } else if !saw_matching_target {
+                (
+                    ValidationReasonCodeV1::EvidenceIncomplete,
+                    "required thermal evidence target does not match the contract host",
+                )
+            } else if !saw_successful_provider {
+                (
+                    ValidationReasonCodeV1::EvidenceIncomplete,
+                    "required thermal provider did not complete successfully",
+                )
+            } else {
+                (
+                    ValidationReasonCodeV1::EvidenceIncomplete,
+                    "required thermal evidence is incomplete",
+                )
+            };
+            return runtime_missing_report(
+                report,
+                thermal_missing_report(requirement_key, summary, reason_code),
+            );
+        }
+        matched_requirements.push(requirement_key);
     }
 
     report.matched_requirements = matched_requirements;
+    report.path_diagnostics = path_diagnostics;
     report.evidence_refs.extend(runtime_evidence_refs());
     report.evidence_refs.sort();
     report.evidence_refs.dedup();
@@ -2100,6 +2842,22 @@ fn runtime_thresholds_declared(service_profile: &ServiceProfileV1) -> bool {
     requirements.min_allocatable_cpu_logical_cores.is_some()
         || requirements.min_allocatable_memory_bytes.is_some()
         || !requirements.required_paths.is_empty()
+        || !requirements.path_relationships.is_empty()
+        || !requirements.required_path_link_pairs.is_empty()
+        || !requirements.required_thermal_sensors.is_empty()
+        || requirements.required_memory_reliability.is_some()
+        || requirements.required_gpu_reliability.is_some()
+}
+
+fn non_thermal_runtime_thresholds_declared(service_profile: &ServiceProfileV1) -> bool {
+    let requirements = &service_profile.profile.core_requirements;
+    requirements.min_allocatable_cpu_logical_cores.is_some()
+        || requirements.min_allocatable_memory_bytes.is_some()
+        || !requirements.required_paths.is_empty()
+        || !requirements.path_relationships.is_empty()
+        || !requirements.required_path_link_pairs.is_empty()
+        || requirements.required_memory_reliability.is_some()
+        || requirements.required_gpu_reliability.is_some()
 }
 
 fn runtime_requirement_keys(service_profile: &ServiceProfileV1) -> Vec<String> {
@@ -2122,6 +2880,44 @@ fn runtime_requirement_keys(service_profile: &ServiceProfileV1) -> Vec<String> {
     }
     for path in &service_profile.profile.core_requirements.required_paths {
         keys.push(path_requirement_key(&path.path_id));
+        if path.storage_health.is_some() {
+            keys.push(path_storage_health_requirement_key(&path.path_id));
+        }
+    }
+    for relationship in &service_profile.profile.core_requirements.path_relationships {
+        keys.push(path_relationship_requirement_key(
+            &relationship.relationship_id,
+        ));
+    }
+    for pair in &service_profile
+        .profile
+        .core_requirements
+        .required_path_link_pairs
+    {
+        keys.push(path_link_pair_requirement_key(&pair.pair_id));
+    }
+    for requirement in &service_profile
+        .profile
+        .core_requirements
+        .required_thermal_sensors
+    {
+        keys.push(thermal_requirement_key(&requirement.requirement_id));
+    }
+    if service_profile
+        .profile
+        .core_requirements
+        .required_memory_reliability
+        .is_some()
+    {
+        keys.push(memory_reliability_requirement_key().to_string());
+    }
+    if service_profile
+        .profile
+        .core_requirements
+        .required_gpu_reliability
+        .is_some()
+    {
+        keys.push(gpu_reliability_requirement_key().to_string());
     }
     keys
 }
@@ -2130,12 +2926,670 @@ fn runtime_evidence_refs() -> Vec<String> {
     vec![
         "$.state.core_state.resources.allocatable_cpu_logical_cores".to_string(),
         "$.state.core_state.resources.allocatable_memory_bytes".to_string(),
+        "$.state.core_state.freshness".to_string(),
         "$.state.core_state.path_resources.paths[]".to_string(),
+        "$.state.core_state.path_resources.link_pairs[]".to_string(),
+        "$.state.core_state.thermal_resources".to_string(),
+        "$.state.core_state.memory_reliability".to_string(),
+        "$.state.core_state.gpu_reliability".to_string(),
     ]
 }
 
 fn path_requirement_key(path_id: &str) -> String {
     format!("core_requirements.required_paths[{path_id}]")
+}
+
+fn path_storage_health_requirement_key(path_id: &str) -> String {
+    format!("{}.storage_health", path_requirement_key(path_id))
+}
+
+fn path_relationship_requirement_key(relationship_id: &str) -> String {
+    format!("core_requirements.path_relationships[{relationship_id}]")
+}
+
+fn path_link_pair_requirement_key(pair_id: &str) -> String {
+    format!("core_requirements.required_path_link_pairs[{pair_id}]")
+}
+
+fn thermal_requirement_key(requirement_id: &str) -> String {
+    format!("core_requirements.required_thermal_sensors[{requirement_id}]")
+}
+
+fn memory_reliability_requirement_key() -> &'static str {
+    "core_requirements.required_memory_reliability"
+}
+
+fn gpu_reliability_requirement_key() -> &'static str {
+    "core_requirements.required_gpu_reliability"
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ThermalEvidenceSourceV1<'a> {
+    resources: &'a HostStateThermalResourcesV1,
+}
+
+fn thermal_evidence_sources<'a>(
+    host_state: Option<&'a HostStateV1>,
+    thermal_evidence: &'a [ThermalEvidenceV1],
+) -> Vec<ThermalEvidenceSourceV1<'a>> {
+    let mut sources = Vec::new();
+    if let Some(resources) =
+        host_state.and_then(|state| state.state.core_state.thermal_resources.as_ref())
+    {
+        sources.push(ThermalEvidenceSourceV1 { resources });
+    }
+    sources.extend(
+        thermal_evidence
+            .iter()
+            .map(|artifact| ThermalEvidenceSourceV1 {
+                resources: &artifact.thermal_evidence,
+            }),
+    );
+    sources
+}
+
+fn is_thermal_source_stale(
+    resources: &HostStateThermalResourcesV1,
+    max_state_age_seconds: Option<u64>,
+    validated_at: &str,
+) -> Result<bool, &'static str> {
+    let Some(max_state_age_seconds) = max_state_age_seconds else {
+        return Ok(false);
+    };
+    let validated_at_seconds = parse_timestamp_seconds(validated_at)
+        .ok_or("validation timestamp must be unix:<seconds> or UTC RFC3339")?;
+    let observed_at_seconds = parse_timestamp_seconds(&resources.observed_at)
+        .ok_or("thermal evidence timestamp must be unix:<seconds> or UTC RFC3339")?;
+
+    Ok(validated_at_seconds.saturating_sub(observed_at_seconds) > max_state_age_seconds)
+}
+
+fn thermal_missing_report(
+    requirement_key: String,
+    summary: &str,
+    reason_code: ValidationReasonCodeV1,
+) -> ValidationReportPayloadV1 {
+    ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Indeterminate,
+        primary_reason_code: reason_code,
+        matched_requirements: vec![],
+        failed_requirements: vec![requirement_key],
+        evidence_refs: vec!["$.state.core_state.thermal_resources".to_string()],
+        policy_refs: vec![],
+        assurance_mismatches: vec![],
+        selected_degradation_tier: None,
+        warnings: vec![summary.to_string()],
+        summary: summary.to_string(),
+        ..ValidationReportPayloadV1::default()
+    }
+}
+
+fn thermal_reading_matches_requirement(
+    reading: &HostStateThermalReadingV1,
+    requirement: &ServiceThermalRequirementV1,
+) -> bool {
+    requirement
+        .provider_id
+        .as_ref()
+        .is_none_or(|value| value == &reading.provider_id)
+        && requirement
+            .sensor_id
+            .as_ref()
+            .is_none_or(|value| value == &reading.sensor_id)
+        && requirement
+            .sensor_alias
+            .as_ref()
+            .is_none_or(|value| reading.sensor_alias.as_ref() == Some(value))
+        && requirement
+            .sensor_role
+            .is_none_or(|value| value == reading.sensor_role)
+}
+
+fn thermal_evidence_target_matches_binding(
+    target: &HostStateThermalEvidenceTargetV1,
+    binding: &ThermalTargetBindingV1,
+) -> bool {
+    match target.target_kind {
+        ThermalEvidenceTargetKindV1::CurrentHost => true,
+        ThermalEvidenceTargetKindV1::HostId => {
+            let Some(host_id) = target.host_id.as_deref().map(str::trim) else {
+                return false;
+            };
+            let Some(host_alias) = binding
+                .host_alias
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return false;
+            };
+            host_id == host_alias || host_id == format!("host.{host_alias}")
+        }
+    }
+}
+
+fn find_path_state<'a>(
+    host_state: &'a HostStateV1,
+    path_id: &str,
+) -> Option<&'a HostStatePathResourceV1> {
+    host_state
+        .state
+        .core_state
+        .path_resources
+        .paths
+        .iter()
+        .find(|path| path.path_id == path_id)
+}
+
+fn relationship_identity_value(
+    path: &HostStatePathResourceV1,
+    identity: ServicePathRelationshipIdentityV1,
+) -> Option<String> {
+    match identity {
+        ServicePathRelationshipIdentityV1::FilesystemUuid => {
+            observed_state_value(&path.filesystem_uuid)
+        }
+        ServicePathRelationshipIdentityV1::PartitionUuid => {
+            observed_state_value(&path.partition_uuid)
+        }
+        ServicePathRelationshipIdentityV1::MountDeviceMajorMinor => {
+            observed_state_value(&path.mount_device_major_minor)
+        }
+        ServicePathRelationshipIdentityV1::ContainingMountPoint => {
+            observed_state_value(&path.containing_mount_point)
+        }
+    }
+}
+
+fn observed_state_value<T: Clone>(field: &StateFieldV1<T>) -> Option<T> {
+    match (&field.state, &field.value) {
+        (ObservationStateV1::Observed, Some(value))
+        | (ObservationStateV1::PartiallyObserved, Some(value)) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn bool_state_value(field: &StateFieldV1<bool>) -> Option<bool> {
+    observed_state_value(field)
+}
+
+fn runtime_requirement_indeterminate_report(
+    requirement_key: String,
+    evidence_ref: &str,
+    reason_code: ValidationReasonCodeV1,
+    summary: &str,
+) -> ValidationReportPayloadV1 {
+    ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Indeterminate,
+        primary_reason_code: reason_code,
+        matched_requirements: vec![],
+        failed_requirements: vec![requirement_key],
+        evidence_refs: vec![evidence_ref.to_string()],
+        policy_refs: vec![],
+        assurance_mismatches: vec![],
+        selected_degradation_tier: None,
+        warnings: vec![summary.to_string()],
+        summary: summary.to_string(),
+        ..ValidationReportPayloadV1::default()
+    }
+}
+
+fn evaluate_path_storage_health_requirement(
+    report: &ValidationReportPayloadV1,
+    path_id: &str,
+    requirement: &ServicePathStorageHealthRequirementV1,
+    storage_health: Option<&HostStatePathStorageHealthV1>,
+) -> RuntimeRequirementResult {
+    let requirement_key = path_storage_health_requirement_key(path_id);
+    let Some(storage_health) = storage_health else {
+        return Err(Box::new(runtime_missing_report(
+            report.clone(),
+            runtime_requirement_indeterminate_report(
+                requirement_key,
+                "$.state.core_state.path_resources.paths[].storage_health",
+                ValidationReasonCodeV1::StateMissing,
+                "required path storage-health evidence is missing",
+            ),
+        )));
+    };
+
+    if !requirement.accepted_health_states.is_empty() {
+        match cloned_state_value(&storage_health.health_state, &requirement_key) {
+            Ok(value) => {
+                if !requirement.accepted_health_states.contains(&value) {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "path {path_id} storage health state {} is not accepted",
+                            value.as_str()
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if let Some(max_temperature_celsius) = requirement.max_temperature_celsius {
+        match scalar_state_value(&storage_health.temperature_celsius, &requirement_key) {
+            Ok(value) => {
+                if value > max_temperature_celsius {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "path {path_id} storage health temperature {value} C is above the required maximum {max_temperature_celsius} C"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if let Some(max_percentage_used) = requirement.max_percentage_used {
+        match scalar_state_value(&storage_health.percentage_used, &requirement_key) {
+            Ok(value) => {
+                if value > max_percentage_used {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "path {path_id} storage health percentage used {value}% is above the required maximum {max_percentage_used}%"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if let Some(min_available_spare_percent) = requirement.min_available_spare_percent {
+        match scalar_state_value(&storage_health.available_spare_percent, &requirement_key) {
+            Ok(value) => {
+                if value < min_available_spare_percent {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "path {path_id} storage health available spare {value}% is below the required floor {min_available_spare_percent}%"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn memory_reliability_providers_succeeded(memory: &HostStateMemoryReliabilityV1) -> bool {
+    !memory.providers.is_empty()
+        && memory
+            .providers
+            .iter()
+            .all(|provider| provider.outcome == StateEvidenceProviderOutcomeV1::Success)
+}
+
+fn evaluate_memory_reliability_requirement(
+    report: &ValidationReportPayloadV1,
+    requirement: &ServiceMemoryReliabilityRequirementV1,
+    memory: Option<&HostStateMemoryReliabilityV1>,
+) -> RuntimeRequirementResult {
+    let requirement_key = memory_reliability_requirement_key().to_string();
+    let Some(memory) = memory else {
+        return Err(Box::new(runtime_missing_report(
+            report.clone(),
+            runtime_requirement_indeterminate_report(
+                requirement_key,
+                "$.state.core_state.memory_reliability",
+                ValidationReasonCodeV1::StateMissing,
+                "required memory-reliability evidence is missing",
+            ),
+        )));
+    };
+
+    if requirement.require_provider_success && !memory_reliability_providers_succeeded(memory) {
+        return Err(Box::new(runtime_missing_report(
+            report.clone(),
+            runtime_requirement_indeterminate_report(
+                requirement_key,
+                "$.state.core_state.memory_reliability.providers[]",
+                ValidationReasonCodeV1::EvidenceIncomplete,
+                "required memory-reliability provider did not complete successfully",
+            ),
+        )));
+    }
+
+    if let Some(max_corrected_error_count) = requirement.max_corrected_error_count {
+        match scalar_state_value(&memory.corrected_error_count, &requirement_key) {
+            Ok(value) => {
+                if value > max_corrected_error_count {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "memory corrected error count {value} is above the required maximum {max_corrected_error_count}"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if let Some(max_uncorrected_error_count) = requirement.max_uncorrected_error_count {
+        match scalar_state_value(&memory.uncorrected_error_count, &requirement_key) {
+            Ok(value) => {
+                if value > max_uncorrected_error_count {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "memory uncorrected error count {value} is above the required maximum {max_uncorrected_error_count}"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn gpu_reliability_providers_succeeded(gpu: &HostStateGpuReliabilityV1) -> bool {
+    !gpu.providers.is_empty()
+        && gpu
+            .providers
+            .iter()
+            .all(|provider| provider.outcome == StateEvidenceProviderOutcomeV1::Success)
+}
+
+fn gpu_reliability_requires_devices(requirement: &ServiceGpuReliabilityRequirementV1) -> bool {
+    requirement.require_ecc_mode_current.is_some()
+        || requirement.max_volatile_corrected_ecc_error_count.is_some()
+        || requirement
+            .max_volatile_uncorrected_ecc_error_count
+            .is_some()
+        || requirement.require_no_retired_pages_pending
+        || requirement.require_no_row_remapper_pending
+}
+
+fn evaluate_gpu_reliability_device_requirement(
+    report: &ValidationReportPayloadV1,
+    requirement: &ServiceGpuReliabilityRequirementV1,
+    device: &HostStateGpuReliabilityDeviceV1,
+) -> RuntimeRequirementResult {
+    let requirement_key = gpu_reliability_requirement_key().to_string();
+
+    if let Some(required_ecc_mode) = requirement.require_ecc_mode_current.as_ref() {
+        match cloned_state_value(&device.ecc_mode_current, &requirement_key) {
+            Ok(value) => {
+                if value != *required_ecc_mode {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "GPU ECC mode {value} does not match required mode {required_ecc_mode}"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if let Some(max_corrected) = requirement.max_volatile_corrected_ecc_error_count {
+        match scalar_state_value(&device.volatile_corrected_ecc_error_count, &requirement_key) {
+            Ok(value) => {
+                if value > max_corrected {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "GPU volatile corrected ECC error count {value} is above the required maximum {max_corrected}"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if let Some(max_uncorrected) = requirement.max_volatile_uncorrected_ecc_error_count {
+        match scalar_state_value(
+            &device.volatile_uncorrected_ecc_error_count,
+            &requirement_key,
+        ) {
+            Ok(value) => {
+                if value > max_uncorrected {
+                    return Err(Box::new(runtime_threshold_unsatisfied_report(
+                        report.clone(),
+                        vec![requirement_key],
+                        format!(
+                            "GPU volatile uncorrected ECC error count {value} is above the required maximum {max_uncorrected}"
+                        ),
+                    )));
+                }
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if requirement.require_no_retired_pages_pending {
+        match scalar_state_value(&device.retired_pages_pending, &requirement_key) {
+            Ok(false) => {}
+            Ok(true) => {
+                return Err(Box::new(runtime_threshold_unsatisfied_report(
+                    report.clone(),
+                    vec![requirement_key],
+                    "GPU has retired pages pending".to_string(),
+                )));
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    if requirement.require_no_row_remapper_pending {
+        match scalar_state_value(&device.row_remapper_pending, &requirement_key) {
+            Ok(false) => {}
+            Ok(true) => {
+                return Err(Box::new(runtime_threshold_unsatisfied_report(
+                    report.clone(),
+                    vec![requirement_key],
+                    "GPU has row remapper activity pending".to_string(),
+                )));
+            }
+            Err(report_payload) => {
+                return Err(Box::new(runtime_missing_report(
+                    report.clone(),
+                    *report_payload,
+                )))
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn evaluate_gpu_reliability_requirement(
+    report: &ValidationReportPayloadV1,
+    requirement: &ServiceGpuReliabilityRequirementV1,
+    gpu: Option<&HostStateGpuReliabilityV1>,
+) -> RuntimeRequirementResult {
+    let requirement_key = gpu_reliability_requirement_key().to_string();
+    let Some(gpu) = gpu else {
+        return Err(Box::new(runtime_missing_report(
+            report.clone(),
+            runtime_requirement_indeterminate_report(
+                requirement_key,
+                "$.state.core_state.gpu_reliability",
+                ValidationReasonCodeV1::StateMissing,
+                "required GPU-reliability evidence is missing",
+            ),
+        )));
+    };
+
+    if requirement.require_provider_success && !gpu_reliability_providers_succeeded(gpu) {
+        return Err(Box::new(runtime_missing_report(
+            report.clone(),
+            runtime_requirement_indeterminate_report(
+                requirement_key,
+                "$.state.core_state.gpu_reliability.providers[]",
+                ValidationReasonCodeV1::EvidenceIncomplete,
+                "required GPU-reliability provider did not complete successfully",
+            ),
+        )));
+    }
+
+    if gpu_reliability_requires_devices(requirement) && gpu.devices.is_empty() {
+        return Err(Box::new(runtime_missing_report(
+            report.clone(),
+            runtime_requirement_indeterminate_report(
+                requirement_key,
+                "$.state.core_state.gpu_reliability.devices[]",
+                ValidationReasonCodeV1::StateMissing,
+                "required GPU-reliability device evidence is missing",
+            ),
+        )));
+    }
+
+    for device in &gpu.devices {
+        evaluate_gpu_reliability_device_requirement(report, requirement, device)?;
+    }
+
+    Ok(())
+}
+
+struct PathDiagnosticInputV1<'a, const EXPECTED: usize, const OBSERVED: usize> {
+    diagnostic_id: String,
+    requirement_key: String,
+    path_ids: Vec<String>,
+    check_id: &'a str,
+    status: ValidationPathDiagnosticStatusV1,
+    reason_code: &'a str,
+    expected: [(&'a str, &'a str); EXPECTED],
+    observed: [(&'a str, &'a str); OBSERVED],
+    evidence_refs: Vec<String>,
+}
+
+fn path_diagnostic<const EXPECTED: usize, const OBSERVED: usize>(
+    input: PathDiagnosticInputV1<'_, EXPECTED, OBSERVED>,
+) -> ValidationPathDiagnosticV1 {
+    ValidationPathDiagnosticV1 {
+        diagnostic_id: input.diagnostic_id,
+        requirement_key: input.requirement_key,
+        path_ids: input.path_ids,
+        check_id: input.check_id.to_string(),
+        status: input.status,
+        reason_code: input.reason_code.to_string(),
+        expected: input
+            .expected
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect::<BTreeMap<_, _>>(),
+        observed: input
+            .observed
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect::<BTreeMap<_, _>>(),
+        evidence_refs: input.evidence_refs,
+    }
+}
+
+fn missing_path_relationship_report(
+    requirement_key: String,
+    relationship_id: &str,
+) -> ValidationReportPayloadV1 {
+    ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Indeterminate,
+        primary_reason_code: ValidationReasonCodeV1::StateMissing,
+        matched_requirements: vec![],
+        failed_requirements: vec![requirement_key],
+        evidence_refs: runtime_evidence_refs(),
+        policy_refs: vec![],
+        assurance_mismatches: vec![],
+        selected_degradation_tier: None,
+        warnings: vec![format!(
+            "state-aware validation requires path identity evidence for relationship {relationship_id}"
+        )],
+        summary: "required path relationship evidence is missing".to_string(),
+        ..ValidationReportPayloadV1::default()
+    }
+}
+
+fn missing_path_link_pair_report(
+    requirement_key: String,
+    pair_id: &str,
+) -> ValidationReportPayloadV1 {
+    ValidationReportPayloadV1 {
+        verdict: ValidationVerdictV1::Indeterminate,
+        primary_reason_code: ValidationReasonCodeV1::StateMissing,
+        matched_requirements: vec![],
+        failed_requirements: vec![requirement_key],
+        evidence_refs: runtime_evidence_refs(),
+        policy_refs: vec![],
+        assurance_mismatches: vec![],
+        selected_degradation_tier: None,
+        warnings: vec![format!(
+            "state-aware validation requires path link-pair evidence for pair {pair_id}"
+        )],
+        summary: "required path link-pair evidence is missing".to_string(),
+        ..ValidationReportPayloadV1::default()
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -2676,6 +4130,32 @@ fn scalar_state_value<T: Copy>(
     }
 }
 
+fn cloned_state_value<T: Clone>(
+    field: &StateFieldV1<T>,
+    requirement_key: &str,
+) -> Result<T, Box<ValidationReportPayloadV1>> {
+    match (&field.state, &field.value) {
+        (ObservationStateV1::Observed, Some(value))
+        | (ObservationStateV1::PartiallyObserved, Some(value)) => Ok(value.clone()),
+        _ => Err(Box::new(ValidationReportPayloadV1 {
+            verdict: ValidationVerdictV1::Indeterminate,
+            primary_reason_code: ValidationReasonCodeV1::StateMissing,
+            matched_requirements: vec![],
+            failed_requirements: vec![requirement_key.to_string()],
+            evidence_refs: runtime_evidence_refs(),
+            policy_refs: vec![],
+            assurance_mismatches: vec![],
+            selected_degradation_tier: None,
+            warnings: vec![
+                "state-aware validation requires concrete host-state values for runtime thresholds"
+                    .to_string(),
+            ],
+            summary: "required runtime state is missing or unknown".to_string(),
+            ..ValidationReportPayloadV1::default()
+        })),
+    }
+}
+
 fn runtime_missing_report(
     base: ValidationReportPayloadV1,
     mut missing: ValidationReportPayloadV1,
@@ -2683,6 +4163,16 @@ fn runtime_missing_report(
     missing.matched_requirements = base.matched_requirements;
     missing.policy_refs = base.policy_refs;
     missing.assurance_mismatches = base.assurance_mismatches;
+    if !base.path_diagnostics.is_empty() {
+        let mut path_diagnostics = base.path_diagnostics;
+        path_diagnostics.extend(missing.path_diagnostics);
+        missing.path_diagnostics = path_diagnostics;
+    }
+    if !base.warnings.is_empty() {
+        let mut warnings = base.warnings;
+        warnings.extend(missing.warnings);
+        missing.warnings = warnings;
+    }
     missing
 }
 

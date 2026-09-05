@@ -9,12 +9,14 @@
 
 pub mod contract_basis_v1;
 pub mod derivation_v1;
+mod extension_derivation_v1;
 pub mod payload_v1;
 
 pub use contract_basis_v1::DerivationContextV1;
 pub use derivation_v1::{
-    derive_host_contract_v1, load_host_contract_artifact_from_path,
-    load_host_survey_artifact_from_path, ContractDerivationRequestV1,
+    derive_host_contract_v1, derive_host_contract_with_extensions_v1,
+    load_host_contract_artifact_from_path, load_host_survey_artifact_from_path,
+    ContractDerivationRequestV1,
 };
 pub use payload_v1::{ExecutionConstraintsV1, HostContractPayloadV1};
 

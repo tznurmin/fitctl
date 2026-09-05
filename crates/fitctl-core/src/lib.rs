@@ -30,7 +30,10 @@ pub mod redact;
 pub mod service_profile;
 pub mod sign;
 pub mod state;
+pub mod storage_profile;
 pub mod survey;
+pub mod thermal_evidence;
+pub mod thermal_profile;
 pub mod validate;
 pub mod verify;
 
@@ -61,7 +64,7 @@ pub const EXIT_CODE_POLICY_REJECTION: u8 = 1;
 /// Command-line usage or invocation shape was invalid.
 pub const EXIT_CODE_USAGE_ERROR: u8 = 2;
 
-pub const COMMANDS: [CommandSpec; 18] = [
+pub const COMMANDS: [CommandSpec; 20] = [
     CommandSpec {
         name: "survey",
         summary: "Collect raw host evidence",
@@ -131,6 +134,16 @@ pub const COMMANDS: [CommandSpec; 18] = [
         name: "config",
         summary: "List or export bundled configuration",
         tier: CommandTier::StableCore,
+    },
+    CommandSpec {
+        name: "storage",
+        summary: "Generate storage-oriented profile skeletons",
+        tier: CommandTier::Experimental,
+    },
+    CommandSpec {
+        name: "thermal",
+        summary: "Collect thermal evidence and generate thermal profiles",
+        tier: CommandTier::Experimental,
     },
     CommandSpec {
         name: "inspect",
