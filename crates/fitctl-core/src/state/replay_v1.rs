@@ -58,6 +58,9 @@ pub struct HostStateFixtureSnapshotV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thermal_resources: Option<HostStateThermalResourcesV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hardware_sensor_resources:
+        Option<crate::artifacts::hardware_sensor_resources_v1::HardwareSensorResourcesV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_reliability: Option<HostStateMemoryReliabilityV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpu_reliability: Option<HostStateGpuReliabilityV1>,
@@ -182,6 +185,7 @@ pub(crate) fn load_snapshot_from_corpus(
         resources: snapshot.resources.clone(),
         path_resources: snapshot.path_resources.clone(),
         thermal_resources: snapshot.thermal_resources.clone(),
+        hardware_sensor_resources: snapshot.hardware_sensor_resources.clone(),
         memory_reliability: snapshot.memory_reliability.clone(),
         gpu_reliability: snapshot.gpu_reliability.clone(),
         boundaries: snapshot.boundaries.clone(),

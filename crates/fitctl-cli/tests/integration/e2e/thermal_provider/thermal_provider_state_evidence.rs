@@ -3,7 +3,6 @@
 
 use serde_json::Value;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::{common, e2e};
@@ -186,17 +185,14 @@ fn state_collect_gpu_reliability_emits_section() {
 }
 
 fn write_lm_sensors_provider_config(root: &Path) -> PathBuf {
-    let provider_script = root.join("emit-lm-sensors-json");
-    fs::write(
-        &provider_script,
-        "#!/bin/sh\ncat <<'JSON'\n{\"nvme-pci-0100\":{\"Composite\":{\"temp1_input\":43.5}}}\nJSON\n",
+    let provider_script = common::fixture_command::write(
+        &common::repo_root(),
+        root,
+        "emit-lm-sensors-json",
+        "cat <<'JSON'\n{\"nvme-pci-0100\":{\"Composite\":{\"temp1_input\":43.5}}}\nJSON\n",
+        0o755,
     )
-    .expect("provider script should write");
-    let mut permissions = fs::metadata(&provider_script)
-        .expect("provider script metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_script, permissions).expect("provider script should chmod");
+    .expect("create provider fixture");
 
     let config_path = root.join("thermal-provider.json");
     fs::write(

@@ -20,6 +20,9 @@ pub(crate) fn redact_recommendation_report_artifact_v1(
     redacted_at: &str,
 ) -> Result<RecommendationReportV1, RedactionError> {
     validate_recommendation_report(&artifact).map_err(map_input_error)?;
+    if profile.applies_auditor_redactions() {
+        crate::redact::observation_times_v1::recommendation_time(&artifact)?;
+    }
     apply_recommendation_report_profile_v1(&mut artifact, profile);
     apply_auxiliary_redaction_metadata_v1(&mut artifact.envelope, profile, redacted_at)?;
     validate_recommendation_report(&artifact).map_err(map_output_error)?;
@@ -82,6 +85,9 @@ pub(crate) fn redact_batch_classification_report_artifact_v1(
     redacted_at: &str,
 ) -> Result<BatchClassificationReportV1, RedactionError> {
     validate_batch_classification_report(&artifact).map_err(map_input_error)?;
+    if profile.applies_auditor_redactions() {
+        crate::redact::observation_times_v1::batch_times(&artifact)?;
+    }
 
     let contract_ids = build_id_map(
         artifact

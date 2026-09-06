@@ -15,6 +15,7 @@ use serde_json::Value;
 
 mod field_diagnostic;
 mod format;
+mod hardware_sensors_v1;
 
 use self::field_diagnostic::*;
 use self::format::*;
@@ -2529,6 +2530,9 @@ fn render_state_summary(
                 format_thermal_reading_for_inspect(reading, options),
             )?;
         }
+    }
+    if let Some(sensors) = artifact.state.core_state.hardware_sensor_resources.as_ref() {
+        hardware_sensors_v1::render(output, sensors, options)?;
     }
     if let Some(memory) = artifact.state.core_state.memory_reliability.as_ref() {
         push_summary_group_separator(output)?;

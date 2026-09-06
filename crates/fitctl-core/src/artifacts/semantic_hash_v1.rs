@@ -577,6 +577,9 @@ struct StateCoreSemanticProjection {
     resources: HostRuntimeResourcesV1,
     path_resources: HostStatePathResourcesV1,
     thermal_resources: Option<StateThermalResourcesSemanticProjection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hardware_sensor_resources:
+        Option<super::hardware_sensor_resources_v1::HardwareSensorResourcesV1>,
     memory_reliability: Option<StateMemoryReliabilitySemanticProjection>,
     gpu_reliability: Option<StateGpuReliabilitySemanticProjection>,
     boundaries: HostStateExecutionBoundariesV1,
@@ -596,6 +599,10 @@ impl From<&crate::artifacts::state_v1::HostStateCoreV1> for StateCoreSemanticPro
                 .thermal_resources
                 .as_ref()
                 .map(StateThermalResourcesSemanticProjection::from),
+            hardware_sensor_resources: state
+                .hardware_sensor_resources
+                .as_ref()
+                .map(super::hardware_sensor_semantic_v1::projection),
             memory_reliability: state
                 .memory_reliability
                 .as_ref()

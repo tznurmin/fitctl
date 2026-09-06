@@ -4,7 +4,6 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -18,6 +17,25 @@ use fitctl_core::state::thermal_v1::{collect_thermal_resources_v1, ThermalProvid
 use crate::common;
 
 const READING: &str = "GPU-fixture, Fixture GPU, 42\n";
+
+#[test]
+fn thermal_provider_fixture_body_writer_does_not_block_execution() {
+    let fixture = ProviderFixture::new(&format!("printf '{READING}'\n"));
+    // Reproduce a writable descriptor surviving in a concurrently spawned test process.
+    let writer = fs::OpenOptions::new()
+        .write(true)
+        .open(fixture.body_path())
+        .expect("retain fixture body writer");
+    let resources = fixture.collect(3);
+    drop(writer);
+    assert_eq!(
+        resources.providers[0].outcome,
+        ThermalProviderOutcomeV1::Success,
+        "{:?}",
+        resources.providers[0]
+    );
+    assert_eq!(resources.readings.len(), 1);
+}
 
 #[test]
 fn thermal_provider_fixture_plain_stdout_is_accepted() {
@@ -151,12 +169,14 @@ struct ProviderFixture {
 }
 
 impl ProviderFixture {
+    fn body_path(&self) -> PathBuf {
+        common::fixture_command::body_path(&self.root.join("provider"))
+    }
+
     fn new(body: &str) -> Self {
         let root = common::unique_temp_dir("thermal-provider-process");
-        let command = root.join("provider");
-        fs::write(&command, format!("#!/bin/sh\n{body}")).expect("write provider");
-        fs::set_permissions(command, fs::Permissions::from_mode(0o700))
-            .expect("provider permissions");
+        common::fixture_command::write(&common::repo_root(), &root, "provider", body, 0o700)
+            .expect("create provider fixture");
         Self { root }
     }
 

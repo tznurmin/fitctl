@@ -1540,6 +1540,7 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
             "path_link_probe",
             "path_storage_health_probe",
             "thermal_provider",
+            "hardware_sensor_provider",
             "edac_memory_reliability",
             "nvidia_smi_gpu_reliability",
         ],
@@ -1553,6 +1554,7 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
             "filesystem_probe",
             "storage_health_probe",
             "thermal_provider",
+            "hardware_sensor_provider",
             "edac_memory_reliability",
             "nvidia_smi_gpu_reliability",
         ],
@@ -1632,6 +1634,9 @@ pub fn validate_host_state(state: &HostStateV1) -> Result<(), ArtifactValidation
     validate_state_memory_accounting(state)?;
     validate_state_path_resources(state)?;
     validate_state_thermal_resources(state)?;
+    if let Some(sensors) = &state.state.core_state.hardware_sensor_resources {
+        super::hardware_sensor_validation_v1::validate_hardware_sensor_resources_v1(sensors)?;
+    }
     validate_state_memory_reliability(state)?;
     validate_state_gpu_reliability(state)?;
     validate_state_field(

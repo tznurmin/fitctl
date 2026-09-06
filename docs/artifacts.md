@@ -17,6 +17,9 @@ Common artifacts in the local decision flow:
 Artifacts are JSON. `fitctl inspect` can print text views, and automation can read the JSON
 directly.
 
+Development builds can add opt-in typed [hardware sensor evidence](./hardware-sensors.md) to
+`host-state.v2`; it is separate from temperature and admission policy.
+
 Read any supported artifact with `inspect`:
 
 ```bash
@@ -101,6 +104,14 @@ fitctl versions remain available; custom/prerelease/build suffixes are replaced 
 profile-scoped placeholders. This checks version syntax, not publication status. Recognized core
 command names are preserved; auxiliary command names use the existing placeholder rule.
 Ordinary artifact loading and `local`/`fleet` provenance compatibility are unchanged.
+
+The same grammar applies to retained typed payload times: state freshness, thermal and hardware
+sensor observations, memory/GPU reliability, path/link/storage-health checks, contract derivation,
+validation-basis state observations, recommendation freshness and batch validation/matched-state
+times. Supported decision-bundle members and the supplied redaction time are checked too.
+Invalid payload times fail at `sharing_timestamp_validate`, without echoing rejected text or
+emitting a partial artifact. Valid timestamps and optional absence remain unchanged; syntax checks
+do not establish freshness or require independently collected sections to share a timestamp.
 
 Those profiles also transform typed core claim metadata, free-form labels and notes, state path and
 relationship identifiers, service-profile identifiers and selectors, storage identities, and

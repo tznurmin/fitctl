@@ -315,6 +315,9 @@ pub fn run(args: &[String]) -> ExitCode {
     .with_memory_reliability_collection(
         collect_features.contains(&StateCollectFeatureV1::MemoryReliability),
     )
+    .with_hardware_sensor_collection(
+        collect_features.contains(&StateCollectFeatureV1::HardwareSensors),
+    )
     .with_gpu_reliability_collection(
         collect_features.contains(&StateCollectFeatureV1::GpuReliability),
     );
@@ -363,7 +366,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn render_help() -> &'static str {
-    "Usage:\n  fitctl state [--live] [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] [--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] [--probe-path-health <id> ...] [--thermal-provider-config <path> ...] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl state --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - --collect thermal enables built-in local sensors and nvidia-smi thermal providers when available\n  - --collect cuda-runtime enables the built-in fitctl.runtime.cuda state namespace\n  - --probe-path-links, --probe-path-link-pair, and --probe-path-health are opt-in and must reference --path-check ids\n  - --thermal-provider-config is live-only and loads exact-argv thermal provider definitions\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n"
+    "Usage:\n  fitctl state [--live] [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime|hardware-sensors> ...] [--path-check <id>=<path> ...] [--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] [--probe-path-health <id> ...] [--thermal-provider-config <path> ...] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-environment-catalogue <path> --cuda-environment-id <id>]\n  fitctl state --fixture <fixture-id> [--fixtures-root <path>] [--extension-pack <path> ...] [--invocation-context <path>] [--enable-extension <namespace> ...] [--cuda-selected-environment-input <path>]\n\nNotes:\n  - --collect thermal enables built-in local sensors and nvidia-smi thermal providers when available\n  - --collect hardware-sensors adds typed local voltage, current, power, fan, energy and humidity evidence\n  - --collect cuda-runtime enables the built-in fitctl.runtime.cuda state namespace\n  - --probe-path-links, --probe-path-link-pair, and --probe-path-health are opt-in and must reference --path-check ids\n  - --thermal-provider-config is live-only and loads exact-argv thermal provider definitions\n  - built-in extension packs are available for fitctl.runtime.cuda, fitctl.runtime.python, and fitctl.runtime.node\n"
 }
 
 fn parse_path_check(value: &str) -> Result<StatePathCheckRequestV1, &'static str> {

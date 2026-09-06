@@ -932,6 +932,9 @@ pub fn run(args: &[String]) -> ExitCode {
             .with_memory_reliability_collection(
                 collect_features.contains(&StateCollectFeatureV1::MemoryReliability),
             )
+            .with_hardware_sensor_collection(
+                collect_features.contains(&StateCollectFeatureV1::HardwareSensors),
+            )
             .with_gpu_reliability_collection(
                 collect_features.contains(&StateCollectFeatureV1::GpuReliability),
             );
@@ -1033,7 +1036,7 @@ fn render_help() -> &'static str {
         "(--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] ",
         "[--invocation-context <path>] | --config-bundle <path>) ",
         "[--validation-mode <contract_only|state_advisory|state_required>] ",
-        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] ",
+        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime|hardware-sensors> ...] [--path-check <id>=<path> ...] ",
         "[--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] ",
         "[--probe-path-health <id> ...] [--thermal-provider-config <path> ...] ",
         "[--extension-pack <path> ...] [--enable-extension <namespace> ...]] ",
@@ -1046,7 +1049,7 @@ fn render_help() -> &'static str {
         "(--profile <path> | --service-profile-catalogue <path> [--profile-id <id>] ",
         "[--invocation-context <path>] | --config-bundle <path>) ",
         "[--validation-mode <contract_only|state_advisory|state_required>] ",
-        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] ",
+        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime|hardware-sensors> ...] [--path-check <id>=<path> ...] ",
         "[--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] ",
         "[--probe-path-health <id> ...] [--thermal-provider-config <path> ...] ",
         "[--extension-pack <path> ...] [--enable-extension <namespace> ...]] ",
@@ -1086,7 +1089,7 @@ fn render_help() -> &'static str {
         "and fitctl.runtime.node\n",
         "\nLegacy compatibility:\n",
         "  fitctl validate --mode <contract_only|state_aware> ",
-        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime> ...] [--path-check <id>=<path> ...] ",
+        "[--state <path> | --live-state [--collect <thermal|memory-reliability|gpu-reliability|cuda-runtime|hardware-sensors> ...] [--path-check <id>=<path> ...] ",
         "[--probe-path-links <id> ...] [--probe-path-link-pair <from-id>:<to-id> ...] ",
         "[--probe-path-health <id> ...] [--thermal-provider-config <path> ...] ",
         "[--extension-pack <path> ...] [--enable-extension <namespace> ...]] ",

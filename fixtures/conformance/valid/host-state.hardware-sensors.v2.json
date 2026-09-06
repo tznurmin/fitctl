@@ -1,0 +1,325 @@
+{
+  "envelope": {
+    "schema_id": "host-state.v2",
+    "schema_version": 2,
+    "artifact_id": "state-hardware-sensors",
+    "provenance": {
+      "source": "fixture_corpus:hardware_sensors_v1",
+      "collected_at": "2026-09-05T00:00:00Z",
+      "fitctl_version": "0.7.0-dev",
+      "command_name": "state",
+      "correlation_id": "state-hardware-sensors"
+    },
+    "redaction": null,
+    "signatures": []
+  },
+  "state": {
+    "collection_mode": "replay",
+    "snapshot_id": "hardware-sensors-v1",
+    "host_alias": "collector-host",
+    "source_ref": "fixture_corpus:hardware_sensors_v1",
+    "core_state": {
+      "collectors": [
+        {
+          "collector_id": "runtime_cpu_capacity",
+          "collector_version": "1",
+          "source_family": "rust_std"
+        },
+        {
+          "collector_id": "procfs_meminfo",
+          "collector_version": "1",
+          "source_family": "procfs"
+        },
+        {
+          "collector_id": "cgroupfs_cpuset",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cgroupfs_cpu_quota",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "cgroupfs_memory_boundary",
+          "collector_version": "1",
+          "source_family": "cgroupfs"
+        },
+        {
+          "collector_id": "sysfs_topology",
+          "collector_version": "1",
+          "source_family": "sysfs"
+        },
+        {
+          "collector_id": "hardware_sensor_provider",
+          "collector_version": "1",
+          "source_family": "hardware_sensor_provider"
+        }
+      ],
+      "section_metadata": {
+        "resources": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "runtime_cpu_capacity",
+            "procfs_meminfo",
+            "cgroupfs_cpuset",
+            "cgroupfs_cpu_quota",
+            "cgroupfs_memory_boundary",
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.resources"
+          ],
+          "trust_evidence_refs": []
+        },
+        "boundaries": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "cgroupfs_cpuset",
+            "cgroupfs_cpu_quota",
+            "cgroupfs_memory_boundary"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.boundaries"
+          ],
+          "trust_evidence_refs": []
+        },
+        "topology": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "sysfs_topology"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.topology"
+          ],
+          "trust_evidence_refs": []
+        },
+        "operability": {
+          "assurance_source": "self_observed",
+          "derivation_stage": "normalized",
+          "source_collectors": [
+            "runtime_cpu_capacity"
+          ],
+          "evidence_paths": [
+            "$.state.core_state.operability"
+          ],
+          "trust_evidence_refs": []
+        }
+      },
+      "freshness": {
+        "observed_at": "2026-09-05T00:00:00Z",
+        "freshness_state": "fresh"
+      },
+      "resources": {
+        "allocatable_cpu_logical_cores": {
+          "state": "observed",
+          "value": 12
+        },
+        "memory_total_bytes": {
+          "state": "observed",
+          "value": 68719476736
+        },
+        "allocatable_memory_bytes": {
+          "state": "observed",
+          "value": 51539607552
+        },
+        "memory_used_excluding_cache_bytes": {
+          "state": "observed",
+          "value": 17179869184
+        }
+      },
+      "boundaries": {
+        "cgroup_version": {
+          "state": "observed",
+          "value": "v2"
+        },
+        "available_cgroup_controllers": {
+          "state": "unknown",
+          "value": null
+        },
+        "cpuset_cpu_logical_cores": {
+          "state": "observed",
+          "value": 12
+        },
+        "cpu_quota_logical_cores": {
+          "state": "unknown",
+          "value": null
+        },
+        "memory_limit_bytes": {
+          "state": "unknown",
+          "value": null
+        },
+        "memory_current_bytes": {
+          "state": "unknown",
+          "value": null
+        }
+      },
+      "topology": {
+        "visible_numa_nodes": {
+          "state": "observed",
+          "value": 1
+        }
+      },
+      "operability": {
+        "degraded_capability_classes": []
+      },
+      "hardware_sensor_resources": {
+        "observed_at": "2026-09-05T00:00:00Z",
+        "collector_host": {
+          "host_alias": "sensor-host"
+        },
+        "providers": [
+          {
+            "provider_id": "local-lm-sensors",
+            "provider_kind": "lm_sensors_json",
+            "outcome": "success",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "observed_at": "2026-09-05T00:00:00Z"
+          }
+        ],
+        "readings": [
+          {
+            "sensor_id": "hardware-sensor:11d5e9ac5641da1502ac291016977cdeb54ec8b853a5bd755f5f8c54398be0e8",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "humidity1_input",
+            "raw_label": "fixture relative_humidity",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "relative_humidity",
+            "unit": "millipercent",
+            "measurement_kind": "input",
+            "value": 45500,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          },
+          {
+            "sensor_id": "hardware-sensor:2c944e7235d7ed934dd2a40e99490b6f4c8e3540cded575321a8db9e40b2ac80",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "power1_input",
+            "raw_label": "fixture power",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "power",
+            "unit": "microwatts",
+            "measurement_kind": "input",
+            "value": 34000000,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          },
+          {
+            "sensor_id": "hardware-sensor:4509f7e38c5a7a98a64ad92adfe3c5f9a3e97a9ed93eb4b8609e4e3f5c250467",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "energy1_input",
+            "raw_label": "fixture energy",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "energy",
+            "unit": "microjoules",
+            "measurement_kind": "counter",
+            "value": 123000000,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          },
+          {
+            "sensor_id": "hardware-sensor:564c20ddb4880c77465f1e4bee6710a85d6c400eaf702c5985afdb6b461980dd",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "fan1_input",
+            "raw_label": "fixture fan_speed",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "fan_speed",
+            "unit": "millirevolutions_per_minute",
+            "measurement_kind": "input",
+            "value": 0,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          },
+          {
+            "sensor_id": "hardware-sensor:6a014b92212ab514cb32987209630745a7b78fc8a153d92c8cd0e98e5dbedd4d",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "in0_input",
+            "raw_label": "fixture voltage",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "voltage",
+            "unit": "microvolts",
+            "measurement_kind": "input",
+            "value": -12250000,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          },
+          {
+            "sensor_id": "hardware-sensor:aaff4d4b6b18dcdafc554c8a1634e8b277ff7420843cb00f439a107edefa04f8",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "power1_average",
+            "raw_label": "fixture power",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "power",
+            "unit": "microwatts",
+            "measurement_kind": "average",
+            "value": 32000000,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          },
+          {
+            "sensor_id": "hardware-sensor:dd7d3528b98e33dd7e479c92200f69bd316a4bff52199b402704a28934959e55",
+            "provider_id": "local-lm-sensors",
+            "chip_id": "fixture-psu",
+            "channel_id": "curr1_input",
+            "raw_label": "fixture current",
+            "evidence_target": {
+              "target_kind": "current_host",
+              "collection_path": "local_process"
+            },
+            "quantity": "current",
+            "unit": "microamperes",
+            "measurement_kind": "input",
+            "value": 3000000,
+            "value_state": "observed",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "limits": [],
+            "flags": []
+          }
+        ]
+      }
+    },
+    "extension_state": {}
+  }
+}

@@ -5,8 +5,11 @@
 mod cli;
 #[path = "support/common.rs"]
 mod common;
+
 #[path = "support/e2e.rs"]
 mod e2e;
+#[path = "integration/redaction/sharing_times_cli.rs"]
+mod sharing_times_cli;
 
 #[path = "integration/inspect/batch_classification_matrix_view_renders_verdict_grid.rs"]
 mod batch_classification_matrix_view_renders_verdict_grid;
@@ -18,8 +21,12 @@ mod bundle_artifacts_accept_builtin_redaction_profiles;
 mod bundled_config_export_supports_repository_free_flow;
 #[path = "integration/inspect/color_modes_control_ansi_output.rs"]
 mod color_modes_control_ansi_output;
+#[path = "integration/cli/completion_execution.rs"]
+mod completion_execution;
 #[path = "integration/cli/completion_outputs_supported_shell_scripts.rs"]
 mod completion_outputs_supported_shell_scripts;
+#[path = "integration/cli/completion_shell_matrix.rs"]
+mod completion_shell_matrix;
 #[path = "integration/config/config_bundle_assembles_selected_policy_profile_and_resolved_config.rs"]
 mod config_bundle_assembles_selected_policy_profile_and_resolved_config;
 #[path = "integration/config/config_bundle_consumer_rejects_conflicting_cli_config_inputs.rs"]
@@ -50,6 +57,20 @@ mod decision_bundle_rejects_conflicting_config_bundle_and_resolved_config_inputs
 mod decision_bundle_rejects_contract_lineage_mismatch;
 #[path = "integration/e2e/workload_preflight_examples/examples_and_feedback_paths_match_runtime.rs"]
 mod examples_and_feedback_paths_match_runtime;
+#[cfg(unix)]
+#[path = "integration/e2e/hardware_sensor_collection.rs"]
+mod hardware_sensor_collection;
+#[path = "integration/redaction/hardware_sensor_input_cli.rs"]
+mod hardware_sensor_input_cli;
+#[cfg(unix)]
+#[path = "integration/e2e/hardware_sensor_process.rs"]
+mod hardware_sensor_process;
+#[cfg(unix)]
+#[path = "integration/e2e/hardware_sensor_support.rs"]
+mod hardware_sensor_support;
+#[cfg(unix)]
+#[path = "integration/e2e/hardware_sensor_validate.rs"]
+mod hardware_sensor_validate;
 #[path = "integration/redaction/imported_core_provenance_cli.rs"]
 mod imported_core_provenance_cli;
 #[path = "integration/config/inspect_config_reports_selection_provenance.rs"]
@@ -82,6 +103,9 @@ mod storage_profile_init_generates_service_profile;
 mod thermal_collect_and_validate;
 #[path = "integration/e2e/thermal_provider/thermal_provider_state_evidence.rs"]
 mod thermal_provider_state_evidence;
+#[cfg(unix)]
+#[path = "integration/e2e/thermal_provider/thermal_quantity_boundary.rs"]
+mod thermal_quantity_boundary;
 #[path = "integration/redaction/unknown_extensions_fail_closed.rs"]
 mod unknown_extensions_fail_closed;
 #[path = "integration/config/validate_config_bundle_rejects_missing_profile_section.rs"]

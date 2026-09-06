@@ -16,12 +16,15 @@ mod core_metadata_v1;
 mod extension_basis_v1;
 mod extension_payloads_v1;
 mod extension_sections_v1;
+mod hardware_sensors_v1;
+mod observation_times_v1;
 mod path_resources_v1;
 pub mod profile_v1;
 mod provenance_v1;
 mod runtime_artifacts_v1;
 mod service_profile_artifact_v1;
 mod survey_artifact_v1;
+mod timestamps_v1;
 mod validation_report_v1;
 
 pub use apply_v1::{load_artifact_record_for_redaction, redact_artifact_v1, RedactionRequestV1};

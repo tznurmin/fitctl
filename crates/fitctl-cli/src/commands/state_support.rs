@@ -22,6 +22,7 @@ pub enum StateCollectFeatureV1 {
     MemoryReliability,
     GpuReliability,
     CudaRuntime,
+    HardwareSensors,
 }
 
 pub fn parse_state_collect_feature_v1(value: &str) -> Result<StateCollectFeatureV1, String> {
@@ -30,8 +31,9 @@ pub fn parse_state_collect_feature_v1(value: &str) -> Result<StateCollectFeature
         "memory-reliability" => Ok(StateCollectFeatureV1::MemoryReliability),
         "gpu-reliability" => Ok(StateCollectFeatureV1::GpuReliability),
         "cuda-runtime" => Ok(StateCollectFeatureV1::CudaRuntime),
+        "hardware-sensors" => Ok(StateCollectFeatureV1::HardwareSensors),
         _ => Err(format!(
-            "unknown --collect feature {value}; expected thermal, memory-reliability, gpu-reliability, or cuda-runtime"
+            "unknown --collect feature {value}; expected thermal, memory-reliability, gpu-reliability, cuda-runtime, or hardware-sensors"
         )),
     }
 }

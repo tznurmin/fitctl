@@ -13,13 +13,19 @@ Compare Linux hosts against service profiles and produce machine-readable fit de
 - service-profile validation against declared host and runtime requirements
 - batch classification across several contracts and service profiles
 
+Opt-in hardware sensor collection provides typed voltage, current, power, fan-speed, energy and
+humidity evidence from lm-sensors. These are observations, not new health requirements.
+
+In `0.7.0`, exhaustive Rust literals for `HostStateCoreV1`, `CollectedHostStateSnapshotV1`, and
+`HostStateFixtureSnapshotV1` must supply `hardware_sensor_resources` (`None` when absent).
+
 ## Installation
 
 Add the library crate to your project:
 
 ```toml
 [dependencies]
-fitctl-core = "0.6.0"
+fitctl-core = "0.7.0"
 ```
 
 ## Related crate

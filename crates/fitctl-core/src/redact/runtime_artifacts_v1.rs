@@ -54,6 +54,9 @@ pub(crate) fn redact_state_artifact(
         if let Some(thermal_resources) = artifact.state.core_state.thermal_resources.as_mut() {
             redact_thermal_resources(thermal_resources, profile);
         }
+        if let Some(sensors) = artifact.state.core_state.hardware_sensor_resources.as_mut() {
+            super::hardware_sensors_v1::redact(sensors, profile)?;
+        }
         if let Some(memory_reliability) = artifact.state.core_state.memory_reliability.as_mut() {
             redact_memory_reliability(memory_reliability, profile);
         }

@@ -96,8 +96,7 @@ checked path capacity, and other runtime-only detail.
 
 ## Collect runtime health evidence
 
-Runtime health collectors are opt-in. This example selects every `0.6.0` runtime evidence class;
-omit collectors and probes the workload does not need:
+Runtime health collectors are opt-in. Select only the collectors and probes the workload needs:
 
 ```bash
 fitctl state --live \
@@ -135,6 +134,10 @@ fitctl thermal profile init \
 
 The generated profile is a reviewable starting point. Confirm its thresholds before using it as an
 admission gate.
+
+fitctl additionally accepts `--collect hardware-sensors` for typed
+electrical and cooling observations from lm-sensors. Combine it with `--collect thermal` to share
+one local capture. These observations add no health verdict or admission thresholds.
 
 ## Share a redacted artifact
 
@@ -235,16 +238,17 @@ cargo install --path crates/fitctl-cli --locked
 
 ## Documentation
 
-- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/configuration.md) - policies and service profiles
-- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/contracts.md) - contract derivation from survey evidence and policy
-- [Validation](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/validation.md) - validation, batch comparison, and fit decisions
-- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
-- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/artifacts.md) - survey, contract, state, thermal evidence, and validation-report artifacts
-- [Installed Configuration](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/installed-config.md) - bundled config listing and export
-- [Workload Reports](https://github.com/tznurmin/fitctl/blob/v0.6.0/docs/workload-reports.md) - attaching fit artifacts to workload-run reports
+- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/configuration.md) - policies and service profiles
+- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/contracts.md) - contract derivation from survey evidence and policy
+- [Validation](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/validation.md) - validation, batch comparison, and fit decisions
+- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
+- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/artifacts.md) - survey, contract, state, thermal evidence, and validation-report artifacts
+- [Hardware Sensors](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/hardware-sensors.md) - typed electrical and cooling observations
+- [Installed Configuration](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/installed-config.md) - bundled config listing and export
+- [Workload Reports](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/workload-reports.md) - attaching fit artifacts to workload-run reports
 
 Version history and release notes: [GitHub Releases](https://github.com/tznurmin/fitctl/releases)
 
 ## License
 
-[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.6.0/LICENSE)
+[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.7.0/LICENSE)

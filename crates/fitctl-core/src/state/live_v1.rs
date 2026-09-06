@@ -29,7 +29,7 @@ use crate::artifacts::state_v1::{
     StateStorageMediaClassConfidenceV1, StateStorageMediaClassV1,
 };
 use crate::identity::{select_live_linux_identity_input_v2, LocalStableIdentityInputV2};
-use crate::state::thermal_v1::{collect_thermal_resources_v1, ThermalProviderConfigEntryV1};
+use crate::state::thermal_v1::ThermalProviderConfigEntryV1;
 use crate::state::{LiveStateProbeV1, StateError, StateErrorCode};
 use crate::survey::{ObservationLimitationReasonV1, ObservationStateV1};
 
@@ -52,6 +52,8 @@ pub struct CollectedHostStateSnapshotV1 {
     pub resources: HostRuntimeResourcesV1,
     pub path_resources: HostStatePathResourcesV1,
     pub thermal_resources: Option<HostStateThermalResourcesV1>,
+    pub hardware_sensor_resources:
+        Option<crate::artifacts::hardware_sensor_resources_v1::HardwareSensorResourcesV1>,
     pub memory_reliability: Option<HostStateMemoryReliabilityV1>,
     pub gpu_reliability: Option<HostStateGpuReliabilityV1>,
     pub boundaries: HostStateExecutionBoundariesV1,
@@ -80,6 +82,7 @@ pub struct LocalLiveStateProbeV1 {
     thermal_provider_configs: Vec<ThermalProviderConfigEntryV1>,
     collect_memory_reliability: bool,
     collect_gpu_reliability: bool,
+    collect_hardware_sensors: bool,
 }
 
 impl LocalLiveStateProbeV1 {
@@ -90,6 +93,7 @@ impl LocalLiveStateProbeV1 {
             thermal_provider_configs: Vec::new(),
             collect_memory_reliability: false,
             collect_gpu_reliability: false,
+            collect_hardware_sensors: false,
         }
     }
 
@@ -103,6 +107,7 @@ impl LocalLiveStateProbeV1 {
             thermal_provider_configs: Vec::new(),
             collect_memory_reliability: false,
             collect_gpu_reliability: false,
+            collect_hardware_sensors: false,
         }
     }
 
@@ -117,6 +122,7 @@ impl LocalLiveStateProbeV1 {
             thermal_provider_configs,
             collect_memory_reliability: false,
             collect_gpu_reliability: false,
+            collect_hardware_sensors: false,
         }
     }
 
@@ -127,6 +133,11 @@ impl LocalLiveStateProbeV1 {
 
     pub fn with_gpu_reliability_collection(mut self, enabled: bool) -> Self {
         self.collect_gpu_reliability = enabled;
+        self
+    }
+
+    pub fn with_hardware_sensor_collection(mut self, enabled: bool) -> Self {
+        self.collect_hardware_sensors = enabled;
         self
     }
 }
@@ -195,11 +206,13 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
             .unwrap_or_else(unknown);
 
         let path_resources = collect_path_resources(&self.path_checks, &self.path_link_pair_probes);
-        let thermal_resources = collect_thermal_resources_v1(
-            &self.thermal_provider_configs,
-            &collected_at,
-            thermal_collector_host(&host_alias, Some(&live_identity.input)),
-        );
+        let (thermal_resources, hardware_sensor_resources) =
+            super::local_sensor_capture_v1::collect(
+                &self.thermal_provider_configs,
+                self.collect_hardware_sensors,
+                &collected_at,
+                thermal_collector_host(&host_alias, Some(&live_identity.input)),
+            );
         let memory_reliability = self
             .collect_memory_reliability
             .then(|| collect_memory_reliability(&collected_at));
@@ -237,6 +250,9 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
         if thermal_resources.is_some() {
             collectors.push("thermal_provider".to_string());
         }
+        if hardware_sensor_resources.is_some() {
+            collectors.push("hardware_sensor_provider".to_owned());
+        }
         if memory_reliability.is_some() {
             collectors.push("edac_memory_reliability".to_string());
         }
@@ -264,6 +280,7 @@ impl LiveStateProbeV1 for LocalLiveStateProbeV1 {
             },
             path_resources,
             thermal_resources,
+            hardware_sensor_resources,
             memory_reliability,
             gpu_reliability,
             boundaries,

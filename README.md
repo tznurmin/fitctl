@@ -99,8 +99,7 @@ checked path capacity, and other runtime-only detail.
 
 ## Collect runtime health evidence
 
-Runtime health collectors are opt-in. This example selects every `0.6.0` runtime evidence class;
-omit collectors and probes the workload does not need:
+Runtime health collectors are opt-in. Select only the collectors and probes the workload needs:
 
 ```bash
 fitctl state --live \
@@ -139,6 +138,20 @@ fitctl thermal profile init \
 The generated profile is a reviewable starting point. Confirm its thresholds before using it as an
 admission gate.
 
+## Inspect electrical and cooling sensors
+
+fitctl also records local voltage, current, power, fan speed, energy counters and relative humidity
+through `lm-sensors`:
+
+```bash
+fitctl state --live --collect thermal --collect hardware-sensors | fitctl inspect
+```
+
+Both collectors share one local capture. Units come from channel types, not labels: current and
+power readings are never temperatures. Missing tools, malformed readings and reported faults stay
+explicit; these observations do not introduce new admission thresholds. See
+[hardware sensors](./docs/hardware-sensors.md) for the typed fields and compatibility boundary.
+
 ## Share a redacted artifact
 
 Create a validated redacted view without changing the artifact schema:
@@ -154,6 +167,8 @@ namespaces must match their semantic-hash keys; populated payload namespaces mus
 that basis, and retained extension semantic hashes must be canonical lowercase SHA-256 values.
 Recommendation-pack ids and versions are replaced together. Imported auxiliary reports must carry
 a valid collection timestamp; custom command and non-release version provenance is replaced.
+Retained observation, derivation and report timestamps are also checked before sharing; malformed
+timestamp text is rejected rather than copied into the output.
 Those profiles also replace core claim provenance, free-form labels and notes, path and workload
 identifiers, storage identities, and accelerator PCI/device-node topology. Redacted identity
 summaries use the explicit `redacted` identity class rather than claiming to be pseudonyms. State
@@ -251,6 +266,9 @@ From crates.io:
 ```bash
 cargo install fitctl --locked
 ```
+
+Generate shell completions with `fitctl completion bash`, `fitctl completion zsh`, or
+`fitctl completion fish` and install the output using your shell's completion setup.
 
 ## Build from source
 

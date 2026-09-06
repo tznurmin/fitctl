@@ -4,7 +4,7 @@
 //! Thermal provider config, command execution, and output parsing.
 
 #[path = "thermal_command_v1.rs"]
-mod thermal_command_v1;
+pub(crate) mod thermal_command_v1;
 #[path = "thermal_config_v1.rs"]
 mod thermal_config_v1;
 #[path = "thermal_ipmitool_v1.rs"]
@@ -72,6 +72,17 @@ pub fn collect_thermal_resources_v1(
     observed_at: &str,
     collector_host: HostStateThermalCollectorHostV1,
 ) -> Option<HostStateThermalResourcesV1> {
+    collect_thermal_with_capture_v1(providers, observed_at, collector_host, run_provider_command)
+}
+
+pub(crate) fn collect_thermal_with_capture_v1(
+    providers: &[ThermalProviderConfigEntryV1],
+    observed_at: &str,
+    collector_host: HostStateThermalCollectorHostV1,
+    mut capture: impl FnMut(
+        &ThermalProviderConfigEntryV1,
+    ) -> Result<Output, thermal_command_v1::ProviderFailure>,
+) -> Option<HostStateThermalResourcesV1> {
     if providers.is_empty() {
         return None;
     }
@@ -79,7 +90,8 @@ pub fn collect_thermal_resources_v1(
     let mut provider_entries = Vec::with_capacity(providers.len());
     let mut readings = Vec::new();
     for provider in providers {
-        let (provider_entry, provider_readings) = collect_provider(provider, observed_at);
+        let (provider_entry, provider_readings) =
+            collect_provider(provider, observed_at, capture(provider));
         provider_entries.push(provider_entry);
         readings.extend(provider_readings);
     }
@@ -95,8 +107,9 @@ pub fn collect_thermal_resources_v1(
 fn collect_provider(
     provider: &ThermalProviderConfigEntryV1,
     observed_at: &str,
+    capture: Result<Output, thermal_command_v1::ProviderFailure>,
 ) -> (HostStateThermalProviderV1, Vec<HostStateThermalReadingV1>) {
-    match run_provider_command(provider) {
+    match capture {
         Ok(output) => {
             if !output.status.success() {
                 let diagnostics = provider_command_failed_diagnostics(&output);

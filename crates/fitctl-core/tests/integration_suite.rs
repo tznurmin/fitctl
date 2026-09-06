@@ -4,6 +4,13 @@
 #[path = "support/common.rs"]
 mod common;
 
+#[path = "support/sharing_time_fixtures.rs"]
+mod sharing_time_fixtures;
+#[path = "integration/redaction/sharing_times.rs"]
+mod sharing_times;
+#[path = "integration/redaction/sharing_times_edges.rs"]
+mod sharing_times_edges;
+
 #[path = "integration/contract/accelerator_contract_summary_surfaces_richer_details.rs"]
 mod accelerator_contract_summary_surfaces_richer_details;
 #[path = "integration/survey/accelerator_inventory_depth_surfaces_richer_details.rs"]
@@ -42,12 +49,30 @@ mod external_profile_redacts_sensitive_fields;
 mod general_compute_no_gpu_rejects_gpu_contract;
 #[path = "integration/validation/gpu_contract_satisfies_general_compute_by_subsumption.rs"]
 mod gpu_contract_satisfies_general_compute_by_subsumption;
+#[path = "integration/state/hardware_sensor_compatibility.rs"]
+mod hardware_sensor_compatibility;
+#[path = "integration/state/hardware_sensor_contract.rs"]
+mod hardware_sensor_contract;
+#[path = "integration/redaction/hardware_sensor_input.rs"]
+mod hardware_sensor_input;
+#[path = "integration/state/hardware_sensor_quantities.rs"]
+mod hardware_sensor_quantities;
+#[path = "integration/state/hardware_sensor_replay.rs"]
+mod hardware_sensor_replay;
+#[path = "integration/state/hardware_sensor_roundtrip.rs"]
+mod hardware_sensor_roundtrip;
+#[path = "integration/state/hardware_sensor_validation.rs"]
+mod hardware_sensor_validation;
 #[path = "integration/redaction/imported_bundle_provenance.rs"]
 mod imported_bundle_provenance;
 #[path = "integration/redaction/imported_core_provenance.rs"]
 mod imported_core_provenance;
+#[path = "integration/state/thermal_lm_sensors_units.rs"]
+mod lm_sensors_units;
 #[path = "integration/state/path_storage_evidence_enrichment.rs"]
 mod path_storage_evidence_enrichment;
+#[path = "integration/state/provider_fixture_command.rs"]
+mod provider_fixture_command;
 #[path = "integration/validation/reliability_and_storage_health_requirements.rs"]
 mod reliability_and_storage_health_requirements;
 #[path = "integration/state/replay_produces_stable_host_state_artifact.rs"]

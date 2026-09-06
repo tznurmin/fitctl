@@ -31,7 +31,7 @@ pub fn parse_lm_sensors_json_output_v1(
                 continue;
             };
             for (field, field_value) in fields {
-                if !field.ends_with("_input") {
+                if !is_temperature_input(field) {
                     continue;
                 }
                 let Some(value) = number_to_millidegrees(field_value) else {
@@ -55,4 +55,16 @@ pub fn parse_lm_sensors_json_output_v1(
         }
     }
     Ok(readings)
+}
+
+fn is_temperature_input(field: &str) -> bool {
+    let Some(index) = field
+        .strip_prefix("temp")
+        .and_then(|s| s.strip_suffix("_input"))
+    else {
+        return false;
+    };
+    // libsensors exposes several quantities as *_input; only tempN carries Celsius.
+    matches!(index.as_bytes().first(), Some(b'1'..=b'9'))
+        && index.bytes().all(|byte| byte.is_ascii_digit())
 }

@@ -217,6 +217,16 @@
       "case_id": "batch_classification_state_aware_cuda_runtime_shortlist",
       "path": "fixtures/conformance/valid/batch-classification-report.cuda-runtime-shortlist.v3.json",
       "schema_id": "fitctl.batch-classification-report.v3"
+    },
+    {
+      "case_id": "state_hardware_sensors",
+      "path": "fixtures/conformance/valid/host-state.hardware-sensors.v2.json",
+      "schema_id": "host-state.v2"
+    },
+    {
+      "case_id": "state_hardware_sensors_partial",
+      "path": "fixtures/conformance/valid/host-state.hardware-sensors-partial.v2.json",
+      "schema_id": "host-state.v2"
     }
   ],
   "redaction_valid_cases": [
@@ -253,6 +263,12 @@
     {
       "case_id": "survey_unknown_provenance_key",
       "path": "fixtures/conformance/invalid/survey-unknown-provenance-key.json",
+      "expected_error_code": "artifact_load_invalid",
+      "expected_checkpoint": "artifact_load"
+    },
+    {
+      "case_id": "hardware_sensor_quantity_unit_mismatch",
+      "path": "fixtures/conformance/invalid/hardware-sensor-quantity-unit-mismatch.json",
       "expected_error_code": "artifact_load_invalid",
       "expected_checkpoint": "artifact_load"
     }

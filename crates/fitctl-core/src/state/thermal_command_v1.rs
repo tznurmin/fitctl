@@ -31,15 +31,15 @@ pub(super) const MAX_PROVIDER_OUTPUT_BYTES: usize = 1_048_576;
 #[cfg(unix)]
 const MAX_PROVIDER_STDERR_BYTES: usize = 4096;
 
-#[derive(Debug)]
-pub(super) struct ProviderFailure {
-    pub(super) outcome: ThermalProviderOutcomeV1,
-    pub(super) error_code: &'static str,
-    pub(super) diagnostics: String,
+#[derive(Debug, Clone)]
+pub(crate) struct ProviderFailure {
+    pub(crate) outcome: ThermalProviderOutcomeV1,
+    pub(crate) error_code: &'static str,
+    pub(crate) diagnostics: String,
 }
 
 #[cfg(unix)]
-pub(super) fn run_provider_command(
+pub(crate) fn run_provider_command(
     provider: &ThermalProviderConfigEntryV1,
 ) -> Result<Output, ProviderFailure> {
     let (program, args) = provider.command.split_first().ok_or_else(|| {
@@ -71,7 +71,7 @@ pub(super) fn run_provider_command(
 }
 
 #[cfg(not(unix))]
-pub(super) fn run_provider_command(
+pub(crate) fn run_provider_command(
     _provider: &ThermalProviderConfigEntryV1,
 ) -> Result<Output, ProviderFailure> {
     Err(ProviderFailure {

@@ -82,6 +82,9 @@ pub struct HostStateCoreV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thermal_resources: Option<HostStateThermalResourcesV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hardware_sensor_resources:
+        Option<super::hardware_sensor_resources_v1::HardwareSensorResourcesV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_reliability: Option<HostStateMemoryReliabilityV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpu_reliability: Option<HostStateGpuReliabilityV1>,

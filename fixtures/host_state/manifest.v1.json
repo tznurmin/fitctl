@@ -219,6 +219,14 @@
       "related_survey_fixtures": [
         "linux-gpu-dual-numa-like-v1"
       ]
+    },
+    {
+      "fixture_id": "linux-hardware-sensors-v1",
+      "path": "linux-hardware-sensors-v1.json",
+      "coverage_tags": [],
+      "related_survey_fixtures": [
+        "linux-bare-metal-like-v1"
+      ]
     }
   ]
 }

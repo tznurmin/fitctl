@@ -2,6 +2,10 @@
 // Copyright 2026 fitctl contributors
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(unix)]
+#[path = "../../../fitctl-core/tests/support/fixture_command.rs"]
+pub mod fixture_command;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;

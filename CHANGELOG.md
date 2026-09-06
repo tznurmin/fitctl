@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format follows Keep a Changelog and the project uses Semantic Versioning for public release
 tags.
 
+## [0.7.0] - 2026-09-05
+
+- opt-in typed voltage, current, power, fan-speed, energy and humidity evidence from lm-sensors,
+  including reported limits, flags, value validity, inspect, hash, signing, redaction and replay
+- one bounded local capture shared by thermal and hardware-sensor collection
+- thermal channel selection excludes voltage, current, power and other non-temperature fields
+- corrected Bash, Zsh and Fish collector completion
+- sharing profiles reject malformed retained observation and report timestamps without partial output
+- direct Rust sharing calls reject invalid hardware sensor relationships before identity replacement
+- public Rust snapshot/state structs add `hardware_sensor_resources`; exhaustive struct literals
+  must supply it, while old state JSON without the optional section remains readable
+
 ## [0.6.0] - 2026-09-05
 
 - target-bound thermal evidence collection, bounded concurrent provider output capture,

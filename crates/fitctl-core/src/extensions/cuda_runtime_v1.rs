@@ -3728,7 +3728,7 @@ fn parse_cuda_runtime_state_probe_output(
         });
     }
 
-    devices.sort_by(|left, right| left.device_ordinal.cmp(&right.device_ordinal));
+    devices.sort_by_key(|device| device.device_ordinal);
 
     Ok(devices)
 }

@@ -17,7 +17,6 @@ use fitctl_core::state::thermal_v1::{
     parse_nvidia_smi_query_output_v1, ThermalProviderConfigEntryV1,
 };
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 #[test]
@@ -232,7 +231,7 @@ fn thermal_provider_config_maps_raw_labels_to_roles_and_aliases() {
     )
     .expect("thermal resources should be collected");
 
-    assert_eq!(resources.readings.len(), 1);
+    assert_eq!(resources.readings.len(), 1, "{:?}", resources.providers);
     assert_eq!(resources.readings[0].raw_label, "VR_P1_TEMP");
     assert_eq!(resources.readings[0].sensor_role, ThermalSensorRoleV1::Vrm);
     assert_eq!(
@@ -586,14 +585,8 @@ fn assert_provider_outcome(
 }
 
 fn write_executable_script(root: &Path, name: &str, body: &str, mode: u32) -> std::path::PathBuf {
-    let path = root.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}")).expect("provider script should write");
-    let mut permissions = fs::metadata(&path)
-        .expect("provider script metadata")
-        .permissions();
-    permissions.set_mode(mode);
-    fs::set_permissions(&path, permissions).expect("provider script permissions should update");
-    path
+    common::fixture_command::write(&common::repo_root(), root, name, body, mode)
+        .expect("create provider fixture")
 }
 
 fn state_with_thermal_reading(

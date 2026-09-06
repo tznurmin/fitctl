@@ -50,6 +50,9 @@ pub fn redact_artifact_v1(request: RedactionRequestV1) -> Result<ArtifactRecordV
     }
 
     preflight_input(&request.artifact)?;
+    if request.profile.applies_auditor_redactions() {
+        crate::redact::observation_times_v1::core_times(&request.artifact)?;
+    }
 
     match request.artifact {
         ArtifactRecordV1::Survey(artifact) => {

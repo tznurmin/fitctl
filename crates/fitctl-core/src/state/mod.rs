@@ -12,7 +12,11 @@ use std::path::{Path, PathBuf};
 use crate::artifacts::state_v1::HostStateV1;
 use crate::artifacts::validation_v1::{validate_host_state, ArtifactValidationErrorCode};
 
+pub(crate) mod hardware_sensor_channels_v1;
+mod hardware_sensor_json_v1;
+pub mod hardware_sensors_v1;
 pub mod live_v1;
+mod local_sensor_capture_v1;
 pub mod normalize_v1;
 pub mod replay_v1;
 pub mod thermal_v1;

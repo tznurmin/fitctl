@@ -3,7 +3,6 @@
 
 use serde_json::Value;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::{common, e2e};
@@ -293,17 +292,14 @@ fn collect_thermal_evidence_to_file(root: &Path) -> PathBuf {
 }
 
 fn write_ipmi_provider_config(root: &Path) -> PathBuf {
-    let provider_script = root.join("emit-ipmi-sensors");
-    fs::write(
-        &provider_script,
-        "#!/bin/sh\ncat <<'EOF'\nInlet Temp | 41.000 | degrees C | ok | na | na | na | na | na | na\nEOF\n",
+    let provider_script = common::fixture_command::write(
+        &common::repo_root(),
+        root,
+        "emit-ipmi-sensors",
+        "cat <<'EOF'\nInlet Temp | 41.000 | degrees C | ok | na | na | na | na | na | na\nEOF\n",
+        0o755,
     )
-    .expect("provider script should write");
-    let mut permissions = fs::metadata(&provider_script)
-        .expect("provider script metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_script, permissions).expect("provider script should chmod");
+    .expect("create provider fixture");
 
     let config_path = root.join("thermal-provider.json");
     common::write_json_file(
@@ -336,17 +332,14 @@ fn write_ipmi_provider_config(root: &Path) -> PathBuf {
 }
 
 fn write_current_host_provider_config(root: &Path) -> PathBuf {
-    let provider_script = root.join("emit-local-sensors");
-    fs::write(
-        &provider_script,
-        "#!/bin/sh\ncat <<'EOF'\nInlet Temp | 41.000 | degrees C | ok | na | na | na | na | na | na\nEOF\n",
+    let provider_script = common::fixture_command::write(
+        &common::repo_root(),
+        root,
+        "emit-local-sensors",
+        "cat <<'EOF'\nInlet Temp | 41.000 | degrees C | ok | na | na | na | na | na | na\nEOF\n",
+        0o755,
     )
-    .expect("provider script should write");
-    let mut permissions = fs::metadata(&provider_script)
-        .expect("provider script metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_script, permissions).expect("provider script should chmod");
+    .expect("create provider fixture");
 
     let config_path = root.join("thermal-current-host-provider.json");
     common::write_json_file(
