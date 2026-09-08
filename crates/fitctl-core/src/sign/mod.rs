@@ -11,7 +11,7 @@ pub mod openssh_v1;
 pub use openssh_v1::{
     load_artifact_record_for_signing, sign_artifact_v1, sign_detached_semantic_payload_v1,
     verify_artifact_signatures_v1, verify_detached_semantic_payload_signature_v1,
-    DetachedSignatureRequestV1, SignatureRequestV1, PAYLOAD_ENCODING_V1, SIGNATURE_FORMAT_V1,
+    DetachedSignatureRequestV1, SignatureRequestV1, PAYLOAD_ENCODING_V2, SIGNATURE_FORMAT_V1,
     SIGNATURE_NAMESPACE_V1,
 };
 

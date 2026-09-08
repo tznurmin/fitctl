@@ -3,7 +3,7 @@
 
 //! Structural and semantic validation for all supported artifact families.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 mod report_semantics;
@@ -2065,6 +2065,10 @@ fn validate_state_path_resources(state: &HostStateV1) -> Result<(), ArtifactVali
             }
         }
         if let Some(link_capabilities) = path.link_capabilities.as_ref() {
+            super::path_probe_cleanup_v1::validate_cleanup(
+                link_capabilities.cleanup.as_deref(),
+                1,
+            )?;
             validate_state_field(
                 &link_capabilities.hardlink_supported,
                 "path_resources.link_capabilities.hardlink_supported",
@@ -2143,6 +2147,7 @@ fn validate_state_path_resources(state: &HostStateV1) -> Result<(), ArtifactVali
     }
     let mut pair_ids = BTreeSet::new();
     for pair in &state.state.core_state.path_resources.link_pairs {
+        super::path_probe_cleanup_v1::validate_cleanup(pair.cleanup.as_deref(), 2)?;
         if is_blank(&pair.pair_id)
             || is_blank(&pair.from_path_id)
             || is_blank(&pair.to_path_id)
@@ -3329,7 +3334,7 @@ fn validate_envelope(
         }
     }
 
-    let mut signature_tuples = HashSet::new();
+    let mut signature_tuples = BTreeSet::new();
 
     for signature in &envelope.signatures {
         validate_signature_entry(signature)?;
@@ -3418,7 +3423,7 @@ fn validate_auxiliary_envelope(
         }
     }
 
-    let mut signature_tuples = HashSet::new();
+    let mut signature_tuples = BTreeSet::new();
     for signature in &envelope.signatures {
         validate_signature_entry(signature)?;
 
@@ -3732,7 +3737,7 @@ fn validate_collector_metadata(
     allowed_ids: &[&str],
     allowed_source_families: &[&str],
 ) -> Result<(), ArtifactValidationError> {
-    let mut tuples = HashSet::new();
+    let mut tuples = BTreeSet::new();
 
     for collector in collectors {
         if is_blank(&collector.collector_id)
@@ -3807,11 +3812,12 @@ fn validate_signature_entry(
     if signature.signer_identity.as_deref() != Some(signature.key_id.as_str())
         || signature.signature_format.as_deref() != Some("openssh_sshsig_v1")
         || signature.signature_namespace.as_deref() != Some("fitctl-artifact-v1")
-        || signature.payload_encoding.as_deref() != Some("fitctl.semantic_cbor.v1")
+        || signature.payload_encoding.as_deref()
+            != Some(crate::artifacts::canonical_cbor_v2::SEMANTIC_ENCODING)
     {
         return Err(ArtifactValidationError::new(
             ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
-            "signature entries must use the pinned v1 signing metadata values",
+            "signature entries must use the current signing metadata and semantic encoding",
         ));
     }
 

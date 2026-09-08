@@ -5,8 +5,8 @@
     "artifact_id": "contract-linux-gpu-workstation-partial-integrated-like-v1-nvidia-gpu-default-v1",
     "provenance": {
       "source": "policy:nvidia_gpu_default_v1",
-      "collected_at": "unix:1776620421",
-      "fitctl_version": "0.2.1",
+      "collected_at": "2025-04-21T14:37:19Z",
+      "fitctl_version": "0.8.0-dev",
       "command_name": "contract",
       "correlation_id": "contract-linux-gpu-workstation-partial-integrated-like-v1-nvidia-gpu-default-v1"
     },
@@ -18,17 +18,17 @@
   "short_display_name": "NVIDIA GPU default",
   "contract_basis": {
     "core_semantic_basis": {
-      "source_survey_semantic_hash": "d114ff26ef921c8069084a973da21aa9b0f86231e616dbb9a187d869a7d3cad4",
-      "policy_semantic_hash": "103c0b50c8844ec901bcafcb5e4156e642218d8f75307f5b93faa2ed1ed26f61",
+      "source_survey_semantic_hash": "703487768af4d2001482a2596a4e594e5c35ae083bba194b225a7dd0b377232a",
+      "policy_semantic_hash": "7c1b4616b1c7e8e3ac7a0e3512d3b9935de1ab9f328bc2bb21bb97e572243a5c",
       "derivation_engine_id": "fitctl.contract.v1",
-      "derivation_engine_version": "1",
+      "derivation_engine_version": "2",
       "contract_schema_version": 2,
       "selected_policy_layers": [
         "defaults/nvidia_gpu_compute"
       ]
     },
     "derivation_provenance": {
-      "derived_at": "unix:1776620421",
+      "derived_at": "2025-04-21T14:37:19Z",
       "notes": null
     }
   },

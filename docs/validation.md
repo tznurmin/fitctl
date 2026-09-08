@@ -80,6 +80,12 @@ fitctl validate \
 
 See `fitctl --help validate` for more details.
 
+Without state or standalone thermal evidence, `state_advisory` and `state_required` return
+`indeterminate` with `state_missing`, including when a static requirement is incompatible.
+Static failures remain in the report's diagnostics; missing evidence is not a fit decision.
+The same inputs remain report rows in batch classification. Invalid supplied artifacts and
+freshness controls still fail as input errors.
+
 ## Path capacity requirements
 
 Use `fitctl state --path-check <id>=<path>` to record filesystem capacity for paths that matter to

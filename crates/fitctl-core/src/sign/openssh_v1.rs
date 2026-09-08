@@ -20,7 +20,7 @@ use crate::sign::{SignError, SignErrorCode};
 
 pub const SIGNATURE_FORMAT_V1: &str = "openssh_sshsig_v1";
 pub const SIGNATURE_NAMESPACE_V1: &str = "fitctl-artifact-v1";
-pub const PAYLOAD_ENCODING_V1: &str = "fitctl.semantic_cbor.v1";
+pub const PAYLOAD_ENCODING_V2: &str = crate::artifacts::canonical_cbor_v2::SEMANTIC_ENCODING;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SignatureRequestV1 {
@@ -81,7 +81,7 @@ pub fn sign_artifact_v1(request: SignatureRequestV1) -> Result<ArtifactRecordV1,
         payload_semantic_hash: semantic_hash.clone(),
         private_key_path: request.private_key_path,
         signature_namespace: SIGNATURE_NAMESPACE_V1.to_string(),
-        payload_encoding: PAYLOAD_ENCODING_V1.to_string(),
+        payload_encoding: PAYLOAD_ENCODING_V2.to_string(),
         signed_at: request.signed_at,
     })?;
 

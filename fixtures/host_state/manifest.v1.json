@@ -4,6 +4,12 @@
   "corpus_id": "host_state_runtime_v1",
   "fixtures": [
     {
+      "fixture_id": "linux-path-probe-cleanup-v1",
+      "path": "linux-path-probe-cleanup-v1.json",
+      "coverage_tags": ["path_resources", "fresh_state"],
+      "related_survey_fixtures": ["linux-gpu-workstation-like-v1"]
+    },
+    {
       "fixture_id": "linux-bare-metal-like-fresh-v1",
       "path": "linux-bare-metal-like-fresh-v1.json",
       "coverage_tags": [

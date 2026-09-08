@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::ffi::CString;
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::mem::MaybeUninit;
 use std::os::unix::ffi::OsStrExt;
+#[cfg(test)]
 use std::os::unix::fs::symlink;
-use std::os::unix::fs::MetadataExt;
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,16 +21,20 @@ use crate::artifacts::state_v1::{
     HostStateExecutionBoundariesV1, HostStateGpuReliabilityDeviceV1,
     HostStateGpuReliabilityProviderV1, HostStateGpuReliabilityV1,
     HostStateMemoryReliabilityProviderV1, HostStateMemoryReliabilityV1, HostStateOperabilityV1,
-    HostStatePathLinkCapabilitiesV1, HostStatePathLinkPairV1, HostStatePathResourceV1,
-    HostStatePathResourcesV1, HostStatePathStorageHealthV1, HostStateThermalCollectorHostV1,
-    HostStateThermalResourcesV1, HostStateTopologyV1, MemoryReliabilityProviderKindV1,
-    StateEvidenceProviderOutcomeV1, StateFieldV1, StateFreshnessV1, StateStorageDurabilityClassV1,
-    StateStorageMediaClassConfidenceV1, StateStorageMediaClassV1,
+    HostStatePathResourceV1, HostStatePathResourcesV1, HostStatePathStorageHealthV1,
+    HostStateThermalCollectorHostV1, HostStateThermalResourcesV1, HostStateTopologyV1,
+    MemoryReliabilityProviderKindV1, StateEvidenceProviderOutcomeV1, StateFieldV1,
+    StateFreshnessV1, StateStorageDurabilityClassV1, StateStorageMediaClassConfidenceV1,
+    StateStorageMediaClassV1,
 };
 use crate::identity::{select_live_linux_identity_input_v2, LocalStableIdentityInputV2};
 use crate::state::thermal_v1::ThermalProviderConfigEntryV1;
 use crate::state::{LiveStateProbeV1, StateError, StateErrorCode};
 use crate::survey::{ObservationLimitationReasonV1, ObservationStateV1};
+
+#[path = "path_link_probe_v1.rs"]
+mod path_link_probe_v1;
+use path_link_probe_v1::{probe_path_link_capabilities, probe_path_link_pair_capabilities};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SnapshotSourceKindV1 {
@@ -1115,169 +1118,6 @@ fn read_block_temperature_celsius(sysfs_device_root: &Path) -> Option<i64> {
         }
     }
     None
-}
-
-fn probe_path_link_capabilities(path: &Path, observed_at: &str) -> HostStatePathLinkCapabilitiesV1 {
-    let mut result = HostStatePathLinkCapabilitiesV1 {
-        probe_method: Some("temporary-files-under-checked-path".to_string()),
-        observed_at: Some(observed_at.to_string()),
-        ..HostStatePathLinkCapabilitiesV1::default()
-    };
-
-    if !path.is_dir() {
-        result.hardlink_supported = observed(false);
-        result.reflink_supported = observed(false);
-        result.symlink_supported = observed(false);
-        result.copy_possible = observed(false);
-        result.probe_error = Some("checked path is not an existing directory".to_string());
-        return result;
-    }
-
-    let probe_root = path.join(format!(
-        ".fitctl-link-probe-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-
-    result.probe_root = Some(probe_root.to_string_lossy().to_string());
-    if let Err(error) = fs::create_dir(&probe_root) {
-        result.hardlink_supported = observed(false);
-        result.reflink_supported = observed(false);
-        result.symlink_supported = observed(false);
-        result.copy_possible = observed(false);
-        result.probe_error = Some(format!("failed to create probe root: {error}"));
-        return result;
-    }
-
-    let source = probe_root.join("source");
-    let hardlink = probe_root.join("hardlink");
-    let symlink_path = probe_root.join("symlink");
-    let reflink_path = probe_root.join("reflink");
-    let copy_path = probe_root.join("copy");
-
-    let source_created = fs::write(&source, b"fitctl-link-probe\n");
-    if let Err(error) = source_created {
-        result.hardlink_supported = observed(false);
-        result.reflink_supported = observed(false);
-        result.symlink_supported = observed(false);
-        result.copy_possible = observed(false);
-        result.probe_error = Some(format!("failed to create probe file: {error}"));
-        let _ = fs::remove_dir_all(&probe_root);
-        return result;
-    }
-
-    result.hardlink_supported = observed(fs::hard_link(&source, &hardlink).is_ok());
-    result.symlink_supported = observed(symlink(&source, &symlink_path).is_ok());
-    result.copy_possible = observed(fs::copy(&source, &copy_path).is_ok());
-    result.reflink_supported = observed(try_reflink(&source, &reflink_path).unwrap_or(false));
-
-    let _ = fs::remove_dir_all(&probe_root);
-    result
-}
-
-fn probe_path_link_pair_capabilities(
-    from_path_id: &str,
-    from_path: &Path,
-    to_path_id: &str,
-    to_path: &Path,
-    observed_at: &str,
-) -> HostStatePathLinkPairV1 {
-    let mut result = HostStatePathLinkPairV1 {
-        pair_id: format!("{from_path_id}-to-{to_path_id}"),
-        from_path_id: from_path_id.to_string(),
-        to_path_id: to_path_id.to_string(),
-        same_filesystem: same_filesystem_field(from_path, to_path),
-        hardlink_supported: observed(false),
-        reflink_supported: observed(false),
-        symlink_supported: observed(false),
-        copy_possible: observed(false),
-        probe_method: Some("temporary-files-under-checked-path-pair".to_string()),
-        probe_error: None,
-        observed_at: Some(observed_at.to_string()),
-    };
-
-    if !from_path.is_dir() || !to_path.is_dir() {
-        result.probe_error =
-            Some("both checked paths must be existing directories for pair probes".to_string());
-        return result;
-    }
-
-    let probe_suffix = format!(
-        ".fitctl-link-pair-probe-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let from_probe_root = from_path.join(&probe_suffix);
-    let to_probe_root = to_path.join(&probe_suffix);
-
-    if let Err(error) = fs::create_dir(&from_probe_root) {
-        result.probe_error = Some(format!("failed to create source probe root: {error}"));
-        return result;
-    }
-    if let Err(error) = fs::create_dir(&to_probe_root) {
-        result.probe_error = Some(format!("failed to create destination probe root: {error}"));
-        let _ = fs::remove_dir_all(&from_probe_root);
-        return result;
-    }
-
-    let source = from_probe_root.join("source");
-    let hardlink = to_probe_root.join("hardlink");
-    let symlink_path = to_probe_root.join("symlink");
-    let reflink_path = to_probe_root.join("reflink");
-    let copy_path = to_probe_root.join("copy");
-
-    if let Err(error) = fs::write(&source, b"fitctl-link-pair-probe\n") {
-        result.probe_error = Some(format!("failed to create pair probe file: {error}"));
-        let _ = fs::remove_dir_all(&from_probe_root);
-        let _ = fs::remove_dir_all(&to_probe_root);
-        return result;
-    }
-
-    result.hardlink_supported = observed(fs::hard_link(&source, &hardlink).is_ok());
-    result.symlink_supported = observed(symlink(&source, &symlink_path).is_ok());
-    result.copy_possible = observed(fs::copy(&source, &copy_path).is_ok());
-    result.reflink_supported = observed(try_reflink(&source, &reflink_path).unwrap_or(false));
-
-    let _ = fs::remove_dir_all(&from_probe_root);
-    let _ = fs::remove_dir_all(&to_probe_root);
-    result
-}
-
-fn same_filesystem_field(left: &Path, right: &Path) -> StateFieldV1<bool> {
-    match (fs::metadata(left), fs::metadata(right)) {
-        (Ok(left), Ok(right)) => observed(left.dev() == right.dev()),
-        _ => unknown(),
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn try_reflink(source: &Path, destination: &Path) -> Option<bool> {
-    const FICLONE: libc::c_ulong = 0x4004_9409;
-    let source_file = File::open(source).ok()?;
-    let destination_file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(destination)
-        .ok()?;
-    let result = unsafe {
-        libc::ioctl(
-            destination_file.as_raw_fd(),
-            FICLONE,
-            source_file.as_raw_fd(),
-        )
-    };
-    Some(result == 0)
-}
-
-#[cfg(not(target_os = "linux"))]
-fn try_reflink(_source: &Path, _destination: &Path) -> Option<bool> {
-    Some(false)
 }
 
 fn statvfs_bytes(path: &std::path::Path) -> Option<(StateFieldV1<u64>, StateFieldV1<u64>)> {

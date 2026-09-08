@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::artifacts::path_probe_cleanup_v1::HostStatePathProbeCleanupV1;
 use crate::artifacts::state_v1::{HostStatePathResourcesV1, StateFieldV1};
 use crate::redact::profile_v1::BuiltInRedactionProfileV1;
 
@@ -72,6 +73,7 @@ pub(crate) fn redact_state_path_resources_v1(
             path.storage_identity_evidence = vec![storage_placeholder.clone()];
         }
         if let Some(link_capabilities) = path.link_capabilities.as_mut() {
+            redact_cleanup(link_capabilities.cleanup.as_deref_mut(), &mount_placeholder);
             link_capabilities.probe_root = Some(mount_placeholder);
             replace_optional_indexed(
                 &mut link_capabilities.probe_method,
@@ -109,6 +111,19 @@ pub(crate) fn redact_state_path_resources_v1(
             index,
         );
         replace_optional(&mut pair.probe_error, "redacted:probe_error");
+        redact_cleanup(
+            pair.cleanup.as_deref_mut(),
+            &format!("{}:pair:{index}", profile.mount_path_placeholder()),
+        );
+    }
+}
+
+fn redact_cleanup(cleanup: Option<&mut [HostStatePathProbeCleanupV1]>, base: &str) {
+    if let Some(cleanup) = cleanup {
+        for (index, entry) in cleanup.iter_mut().enumerate() {
+            entry.probe_root = format!("{base}:probe:{index}");
+            replace_optional(&mut entry.error, "redacted:cleanup_error");
+        }
     }
 }
 

@@ -49,7 +49,7 @@ pub(crate) fn build_contract_basis_v1(
             source_survey_semantic_hash,
             policy_semantic_hash,
             derivation_engine_id: "fitctl.contract.v1".to_string(),
-            derivation_engine_version: "1".to_string(),
+            derivation_engine_version: "2".to_string(),
             contract_schema_version: TOP_LEVEL_ARTIFACT_SCHEMA_VERSION,
             selected_policy_layers: effective_policy.selected_policy_layers.clone(),
         },
@@ -85,7 +85,7 @@ fn policy_semantic_hash_hex(
         require_network_visibility: effective_policy.require_network_visibility,
     };
 
-    let bytes = serde_cbor::to_vec(&projection).map_err(|error| {
+    let bytes = crate::artifacts::canonical_cbor_v2::to_vec(&projection).map_err(|error| {
         ContractDerivationError::new(
             ContractDerivationErrorCode::ContractBasisInvalid,
             "contract_basis_build",

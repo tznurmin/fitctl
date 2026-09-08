@@ -254,6 +254,10 @@ impl serde::Serialize for ArtifactRecordV1 {
 }
 
 /// Load a typed artifact record from disk and fail closed on unsupported schema ids.
+///
+/// Service-profile dispatch checks the artifact, not the specialized raw-input and
+/// profile-semantic ingress contract. For supplied profiles use
+/// [`crate::service_profile::load_service_profile_from_path`] instead.
 pub fn load_artifact_record_from_path(
     path: &Path,
 ) -> Result<ArtifactRecordV1, ArtifactRecordError> {
@@ -292,6 +296,10 @@ pub fn load_artifact_record_from_path(
 }
 
 /// Load a typed artifact record from an already-decoded JSON value.
+///
+/// This is not a substitute for specialized service-profile ingress: optional nulls
+/// may normalize away during decoding. Use
+/// [`crate::service_profile::load_service_profile_from_value`] for supplied profiles.
 pub fn load_artifact_record_from_value(
     raw: Value,
 ) -> Result<ArtifactRecordV1, ArtifactRecordError> {

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format follows Keep a Changelog and the project uses Semantic Versioning for public release
 tags.
 
+## [0.8.0] - 2026-09-08
+
+- Replace the unmaintained CBOR dependency with `minicbor`.
+- Version semantic encoding explicitly and fix incomplete optional contract maps. Hashes,
+  policy locks and signatures from earlier releases require regeneration.
+- Add validated in-memory loaders for policy documents, service profiles, extension packs and
+  invocation contexts, using the same ingress checks as file-based loading.
+- Accept valid service-profile provenance emitted by redaction without weakening unknown-field
+  or explicit-null validation.
+- Remove unnecessary entropy acquisition from recorded artifact validation.
+- Return valid `indeterminate` / `state_missing` reports when required or advisory state is absent,
+  including static incompatibilities, unresolved visibility and batch rows.
+- Record independent per-root cleanup outcomes for path link probes, including removal failures,
+  with inspection, validation, semantic hashing and redaction support.
+
 ## [0.7.0] - 2026-09-05
 
 - opt-in typed voltage, current, power, fan-speed, energy and humidity evidence from lm-sensors,

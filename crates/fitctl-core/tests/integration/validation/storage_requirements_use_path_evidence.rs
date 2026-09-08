@@ -597,6 +597,7 @@ fn unknown_json() -> serde_json::Value {
 #[allow(dead_code)]
 fn observed_links() -> HostStatePathLinkCapabilitiesV1 {
     HostStatePathLinkCapabilitiesV1 {
+        cleanup: None,
         hardlink_supported: observed(true),
         reflink_supported: observed(false),
         symlink_supported: observed(true),

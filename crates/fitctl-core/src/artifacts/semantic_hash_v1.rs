@@ -3,11 +3,9 @@
 
 //! Canonical semantic projections and hashing helpers for supported artifact families.
 
-use std::cmp::Ordering;
-
-use serde::ser::{SerializeMap, SerializeSeq};
+use serde::ser::SerializeMap;
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::artifacts::batch_classification_report_v1::{
@@ -1170,7 +1168,7 @@ impl From<&HostContractV1> for ContractSemanticProjection {
 }
 
 fn canonical_cbor_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, ArtifactValidationError> {
-    serde_cbor::to_vec(value).map_err(|error| {
+    crate::artifacts::canonical_cbor_v2::to_vec(value).map_err(|error| {
         crate::artifacts::validation_v1::ArtifactValidationError::new(
             crate::artifacts::validation_v1::ArtifactValidationErrorCode::ArtifactPayloadCorrupt,
             format!("failed to encode canonical semantic projection as CBOR: {error}"),
@@ -1200,7 +1198,8 @@ impl Serialize for ContractSemanticProjection {
     where
         S: serde::Serializer,
     {
-        let mut map = serializer.serialize_map(Some(5))?;
+        let mut map =
+            serializer.serialize_map(Some(4 + usize::from(self.extension_contract.is_some())))?;
         map.serialize_entry("schema_id", &self.schema_id)?;
         map.serialize_entry("schema_version", &self.schema_version)?;
         map.serialize_entry("contract_basis", &self.contract_basis)?;
@@ -1223,7 +1222,8 @@ impl Serialize for ContractBasisSemanticProjection {
     where
         S: serde::Serializer,
     {
-        let mut map = serializer.serialize_map(Some(2))?;
+        let mut map =
+            serializer.serialize_map(Some(1 + usize::from(self.extension_basis.is_some())))?;
         map.serialize_entry("core_semantic_basis", &self.core_semantic_basis)?;
         if let Some(extension_basis) = &self.extension_basis {
             map.serialize_entry("extension_basis", extension_basis)?;
@@ -1299,73 +1299,13 @@ impl Serialize for ContractExtensionBasisProjection {
     }
 }
 
-// Canonical JSON value normalises object ordering before CBOR encoding so equivalent JSON payloads
-// converge on one semantic byte representation.
-#[derive(Debug, Clone, PartialEq)]
-enum CanonicalJsonValue {
-    Null,
-    Bool(bool),
-    Number(serde_json::Number),
-    String(String),
-    Array(Vec<CanonicalJsonValue>),
-    Object(Vec<(String, CanonicalJsonValue)>),
-}
+// The shared semantic encoder owns ordering for every map, including outer projections.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+struct CanonicalJsonValue(Value);
 
 impl From<&Value> for CanonicalJsonValue {
     fn from(value: &Value) -> Self {
-        match value {
-            Value::Null => Self::Null,
-            Value::Bool(flag) => Self::Bool(*flag),
-            Value::Number(number) => Self::Number(number.clone()),
-            Value::String(text) => Self::String(text.clone()),
-            Value::Array(values) => {
-                Self::Array(values.iter().map(CanonicalJsonValue::from).collect())
-            }
-            Value::Object(map) => Self::Object(canonicalise_object_entries(map)),
-        }
+        Self(value.clone())
     }
-}
-
-impl Serialize for CanonicalJsonValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::Null => serializer.serialize_unit(),
-            Self::Bool(flag) => serializer.serialize_bool(*flag),
-            Self::Number(number) => number.serialize(serializer),
-            Self::String(text) => serializer.serialize_str(text),
-            Self::Array(values) => {
-                let mut sequence = serializer.serialize_seq(Some(values.len()))?;
-                for value in values {
-                    sequence.serialize_element(value)?;
-                }
-                sequence.end()
-            }
-            Self::Object(entries) => {
-                let mut map = serializer.serialize_map(Some(entries.len()))?;
-                for (key, value) in entries {
-                    map.serialize_entry(key, value)?;
-                }
-                map.end()
-            }
-        }
-    }
-}
-
-fn canonicalise_object_entries(map: &Map<String, Value>) -> Vec<(String, CanonicalJsonValue)> {
-    let mut entries: Vec<(String, CanonicalJsonValue)> = map
-        .iter()
-        .map(|(key, value)| (key.clone(), CanonicalJsonValue::from(value)))
-        .collect();
-
-    entries.sort_by(|left, right| canonical_cbor_text_key_order(&left.0, &right.0));
-    entries
-}
-
-fn canonical_cbor_text_key_order(left: &str, right: &str) -> Ordering {
-    left.len()
-        .cmp(&right.len())
-        .then_with(|| left.as_bytes().cmp(right.as_bytes()))
 }

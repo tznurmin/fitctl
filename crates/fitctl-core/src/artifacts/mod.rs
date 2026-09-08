@@ -7,6 +7,7 @@
 //! diffs, redacts, and inspects.
 
 pub mod batch_classification_report_v1;
+pub(crate) mod canonical_cbor_v2;
 pub(crate) mod categorical_values_v1;
 pub mod config_bundle_v1;
 pub(crate) mod contract_extension_integrity_v1;
@@ -19,6 +20,7 @@ pub mod hardware_sensor_resources_v1;
 pub(crate) mod hardware_sensor_semantic_v1;
 pub mod hardware_sensor_validation_v1;
 pub mod metadata_v1;
+pub mod path_probe_cleanup_v1;
 pub mod recommendation_report_v1;
 pub mod record_v1;
 pub mod schema_ids_v1;

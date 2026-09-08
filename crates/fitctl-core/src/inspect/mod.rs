@@ -16,6 +16,7 @@ use serde_json::Value;
 mod field_diagnostic;
 mod format;
 mod hardware_sensors_v1;
+mod path_probe_cleanup_v1;
 
 use self::field_diagnostic::*;
 use self::format::*;
@@ -2773,6 +2774,13 @@ fn format_state_path_resource_for_inspect(
         path.path, exists, available, total
     )];
 
+    if let Some(links) = &path.link_capabilities {
+        parts.push(path_probe_cleanup_v1::summary(
+            links.cleanup.as_deref(),
+            options.verbose,
+        ));
+    }
+
     if options.verbose {
         parts.push(format!("mount {mount_point}"));
         parts.push(format!("filesystem {filesystem_type}"));
@@ -2864,6 +2872,10 @@ fn format_state_path_link_pair_for_inspect(
         format_state_field_compact(&pair.symlink_supported, |value| value.to_string()),
         format_state_field_compact(&pair.copy_possible, |value| value.to_string()),
     )];
+    parts.push(path_probe_cleanup_v1::summary(
+        pair.cleanup.as_deref(),
+        options.verbose,
+    ));
     if options.verbose {
         if let Some(method) = pair.probe_method.as_ref() {
             parts.push(format!("probe method {method}"));

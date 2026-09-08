@@ -26,7 +26,8 @@ pub const POLICY_PACK_SCHEMA_ID: &str = "fitctl.policy-pack.v1";
 pub const POLICY_PACK_LOCK_SCHEMA_ID: &str = "fitctl.policy-pack-lock.v1";
 pub const SERVICE_PROFILE_CATALOGUE_SCHEMA_ID: &str = "fitctl.service-profile-catalogue.v1";
 pub const POLICY_PACK_LOCK_SIGNATURE_NAMESPACE_V1: &str = "fitctl-policy-pack-lock-v1";
-pub const POLICY_PACK_LOCK_PAYLOAD_ENCODING_V1: &str = "fitctl.policy-pack-lock.semantic_cbor.v1";
+pub const POLICY_PACK_LOCK_PAYLOAD_ENCODING_V2: &str =
+    crate::artifacts::canonical_cbor_v2::POLICY_LOCK_ENCODING;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogueErrorCode {
@@ -245,7 +246,7 @@ pub fn sign_policy_pack_lock_v1(
         payload_semantic_hash: semantic_hash,
         private_key_path: private_key_path.to_path_buf(),
         signature_namespace: POLICY_PACK_LOCK_SIGNATURE_NAMESPACE_V1.to_string(),
-        payload_encoding: POLICY_PACK_LOCK_PAYLOAD_ENCODING_V1.to_string(),
+        payload_encoding: POLICY_PACK_LOCK_PAYLOAD_ENCODING_V2.to_string(),
         signed_at: signed_at.to_string(),
     })
     .map_err(|error| {
@@ -761,14 +762,6 @@ fn verify_policy_pack_lock_signatures(lock: &PolicyPackLockV1) -> Result<(), Cat
     let semantic_bytes = policy_pack_lock_semantic_bytes(lock)?;
     let semantic_hash = policy_pack_lock_semantic_hash_hex(lock)?;
     for signature in &lock.signatures {
-        verify_detached_semantic_payload_signature_v1(signature, &semantic_bytes, &semantic_hash)
-            .map_err(|error| {
-            CatalogueError::new(
-                CatalogueErrorCode::ManifestSignatureInvalid,
-                "policy_pack_lock_signature_verify",
-                error.message,
-            )
-        })?;
         if signature.signature_namespace.as_deref() != Some(POLICY_PACK_LOCK_SIGNATURE_NAMESPACE_V1)
         {
             return Err(CatalogueError::new(
@@ -784,13 +777,21 @@ fn verify_policy_pack_lock_signatures(lock: &PolicyPackLockV1) -> Result<(), Cat
                 "policy-pack lock signatures must use the supported signature format",
             ));
         }
-        if signature.payload_encoding.as_deref() != Some(POLICY_PACK_LOCK_PAYLOAD_ENCODING_V1) {
+        if signature.payload_encoding.as_deref() != Some(POLICY_PACK_LOCK_PAYLOAD_ENCODING_V2) {
             return Err(CatalogueError::new(
                 CatalogueErrorCode::ManifestSignatureInvalid,
                 "policy_pack_lock_signature_verify",
                 "policy-pack lock signatures must use the supported payload encoding",
             ));
         }
+        verify_detached_semantic_payload_signature_v1(signature, &semantic_bytes, &semantic_hash)
+            .map_err(|error| {
+            CatalogueError::new(
+                CatalogueErrorCode::ManifestSignatureInvalid,
+                "policy_pack_lock_signature_verify",
+                error.message,
+            )
+        })?;
     }
 
     Ok(())
@@ -806,7 +807,7 @@ fn policy_pack_entry_semantic_hash_hex(
         policy_path: &'a str,
     }
 
-    let bytes = serde_cbor::to_vec(&PolicyPackEntrySemanticProjection {
+    let bytes = crate::artifacts::canonical_cbor_v2::to_vec(&PolicyPackEntrySemanticProjection {
         policy_id: &entry.policy_id,
         summary: &entry.summary,
         policy_path: &entry.policy_path,
@@ -903,7 +904,7 @@ fn policy_document_semantic_hash_hex(policy: &PolicyDocumentV1) -> Result<String
         .collect::<Vec<_>>();
     allowed_extension_namespaces.sort_unstable();
 
-    let bytes = serde_cbor::to_vec(&PolicyDocumentSemanticProjection {
+    let bytes = crate::artifacts::canonical_cbor_v2::to_vec(&PolicyDocumentSemanticProjection {
         policy_id: &policy.policy_id,
         selected_policy_layers: effective_policy.selected_policy_layers,
         capability_class: effective_policy.capability_class,
@@ -946,7 +947,7 @@ fn policy_pack_lock_semantic_bytes(lock: &PolicyPackLockV1) -> Result<Vec<u8>, C
         policy_semantic_hash: &'a str,
     }
 
-    serde_cbor::to_vec(&PolicyPackLockSemanticProjection {
+    crate::artifacts::canonical_cbor_v2::policy_lock_bytes(&PolicyPackLockSemanticProjection {
         lock_id: &lock.lock_id,
         pack_id: &lock.pack_id,
         pack_version: &lock.pack_version,

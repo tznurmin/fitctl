@@ -9,10 +9,13 @@
 pub mod capability_classes_v1;
 pub mod explanation_v1;
 pub mod layering_v1;
+mod load_v1;
 pub mod schema_v1;
+mod validation_v1;
 
 pub use layering_v1::{merge_policy_document_v1, EffectivePolicyV1};
 pub use schema_v1::{
-    load_policy_document_from_path, PolicyDocumentV1, PolicyExtensionPolicyV1, PolicyLayerKindV1,
-    PolicyLayerV1, PolicyRulesOverrideV1, PolicyScopedAcceleratorInventoryModeV1,
+    load_policy_document_from_path, load_policy_document_from_value, PolicyDocumentV1,
+    PolicyExtensionPolicyV1, PolicyLayerKindV1, PolicyLayerV1, PolicyRulesOverrideV1,
+    PolicyScopedAcceleratorInventoryModeV1,
 };

@@ -8,6 +8,7 @@
 
 pub mod contract_only_v1;
 pub mod reason_codes_v1;
+mod state_basis_v1;
 
 pub use crate::artifacts::validation_report_v1::{
     ValidationModeV1, ValidationReasonCodeV1, ValidationReportV1, ValidationVerdictV1,

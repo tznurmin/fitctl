@@ -9,8 +9,12 @@
 mod builtin_assets_v1;
 pub mod catalogue_v1;
 pub mod cuda_environment_catalogue_v1;
+mod load_v1;
+mod raw_validation_v1;
 pub mod resolve_v1;
 pub mod schema_v1;
+mod semantic_hash_v1;
+mod validation_v1;
 
 pub use builtin_assets_v1::{built_in_config_assets_v1, BuiltInConfigAssetV1};
 pub use catalogue_v1::{
@@ -20,7 +24,7 @@ pub use catalogue_v1::{
     sign_policy_pack_lock_v1, CatalogueError, CatalogueErrorCode, PolicyPackEntryV1,
     PolicyPackLockCompatibilityModeV1, PolicyPackLockV1, PolicyPackV1,
     ServiceProfileCatalogueEntryV1, ServiceProfileCatalogueV1, CATALOGUE_ERROR_MODEL_ID,
-    CATALOGUE_ERROR_MODEL_VERSION, POLICY_PACK_LOCK_PAYLOAD_ENCODING_V1,
+    CATALOGUE_ERROR_MODEL_VERSION, POLICY_PACK_LOCK_PAYLOAD_ENCODING_V2,
     POLICY_PACK_LOCK_SCHEMA_ID, POLICY_PACK_LOCK_SIGNATURE_NAMESPACE_V1, POLICY_PACK_SCHEMA_ID,
     SERVICE_PROFILE_CATALOGUE_SCHEMA_ID,
 };
@@ -39,7 +43,8 @@ pub use resolve_v1::{
 };
 pub use schema_v1::{
     add_missing_built_in_extension_packs_v1, built_in_extension_pack_for_namespace_v1,
-    load_extension_pack_from_path, load_invocation_context_from_path,
+    load_extension_pack_from_path, load_extension_pack_from_value,
+    load_invocation_context_from_path, load_invocation_context_from_value,
     load_recommendation_pack_from_path, load_resolved_config_from_path,
     semantic_hash_hex_for_extension_pack, semantic_hash_hex_for_resolved_config,
     validate_resolved_config, ConfigError, ConfigErrorCode, ConfigSelectionSourceV1,

@@ -313,6 +313,7 @@ pub fn validate_request_v1(
             &request.thermal_evidence,
         ),
     };
+    let report_payload = super::state_basis_v1::apply_missing_state_basis(report_payload, &request);
     let report_payload = apply_extension_requirements_gate(
         report_payload,
         &request.contract,

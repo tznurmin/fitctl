@@ -12,6 +12,13 @@ supported artifacts, and automation reads the JSON directly.
 Use `--fail-on-unfit` or `--require-fit` when validation should control the process exit status.
 The validation report is written to stdout, and the exit status reflects the gate result.
 
+## New in 0.8.0
+
+Semantic encoding now uses the maintained `minicbor` library. Regenerate existing hashes,
+policy locks and signatures together; see the
+[encoding compatibility note](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/artifacts.md#semantic-encoding).
+Validated in-memory configuration loaders are available in the matching Rust core library.
+
 ## Inspect a live host
 
 ```bash
@@ -113,7 +120,7 @@ fitctl inspect --input host.state.json
 ```
 
 The resulting state can carry normalized thermal readings, memory and GPU reliability evidence,
-CUDA runtime state, and storage health for checked paths. Service profiles can require these facts
+CUDA runtime state, and available storage-health observations for checked paths. Service profiles can require these facts
 during validation.
 
 For an out-of-band collector, produce target-bound thermal evidence without treating the collector
@@ -141,15 +148,19 @@ one local capture. These observations add no health verdict or admission thresho
 
 ## Share a redacted artifact
 
+Use the `external` profile to reduce identifying information before sharing a host report:
+
 ```bash
 fitctl redact --profile external --input host.state.json > host.external.json
 ```
 
-`auditor` and `external` apply typed redaction to core provenance and supported extension data;
-unknown populated extension sections and invalid closed categories fail closed. State-local
-identity metadata is omitted and flexible engine provenance is replaced. Inspect every result
-before sharing it. Semantic hashes remain linkable, and redacted configuration or decision bundles
-remain retained disclosures rather than anonymity boundaries.
+The output keeps useful diagnostic information while replacing identifying details. If fitctl
+cannot redact an extension, it rejects the artifact rather than copying that data unchanged.
+
+Redaction does not guarantee anonymity. Share only the artifact needed to explain the issue, rather
+than a complete configuration bundle, and review the JSON before sending it. See the
+[artifact documentation](https://github.com/tznurmin/fitctl/blob/main/docs/artifacts.md#common-envelope)
+for what is removed and retained.
 
 ## Use Installed Config
 
@@ -238,17 +249,17 @@ cargo install --path crates/fitctl-cli --locked
 
 ## Documentation
 
-- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/configuration.md) - policies and service profiles
-- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/contracts.md) - contract derivation from survey evidence and policy
-- [Validation](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/validation.md) - validation, batch comparison, and fit decisions
-- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
-- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/artifacts.md) - survey, contract, state, thermal evidence, and validation-report artifacts
-- [Hardware Sensors](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/hardware-sensors.md) - typed electrical and cooling observations
-- [Installed Configuration](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/installed-config.md) - bundled config listing and export
-- [Workload Reports](https://github.com/tznurmin/fitctl/blob/v0.7.0/docs/workload-reports.md) - attaching fit artifacts to workload-run reports
+- [Configuration](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/configuration.md) - policies and service profiles
+- [Contracts](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/contracts.md) - contract derivation from survey evidence and policy
+- [Validation](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/validation.md) - validation, batch comparison, and fit decisions
+- [Accelerators](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/accelerators.md) - accelerator inventory, CUDA runtime detail, and the `survey` versus `state` split
+- [Artifacts](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/artifacts.md) - survey, contract, state, thermal evidence, and validation-report artifacts
+- [Hardware Sensors](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/hardware-sensors.md) - typed electrical and cooling observations
+- [Installed Configuration](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/installed-config.md) - bundled config listing and export
+- [Workload Reports](https://github.com/tznurmin/fitctl/blob/v0.8.0/docs/workload-reports.md) - attaching fit artifacts to workload-run reports
 
 Version history and release notes: [GitHub Releases](https://github.com/tznurmin/fitctl/releases)
 
 ## License
 
-[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.7.0/LICENSE)
+[Apache-2.0](https://github.com/tznurmin/fitctl/blob/v0.8.0/LICENSE)

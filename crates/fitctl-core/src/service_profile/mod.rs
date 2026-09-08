@@ -7,8 +7,9 @@
 //! constraints. They do not define what a host may promise.
 
 pub mod schema_v1;
+mod validation;
 
-pub use schema_v1::load_service_profile_from_path;
+pub use schema_v1::{load_service_profile_from_path, load_service_profile_from_value};
 
 pub const SERVICE_PROFILE_ERROR_MODEL_ID: &str = "fitctl.service_profile.v1";
 pub const SERVICE_PROFILE_ERROR_MODEL_VERSION: u32 = 1;

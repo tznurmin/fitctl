@@ -12,6 +12,13 @@ supported artifacts, and automation reads the JSON directly.
 Use `--fail-on-unfit` or `--require-fit` when validation should control the process exit status.
 The validation report is written to stdout, and the exit status reflects the gate result.
 
+## New in 0.8.0
+
+Semantic encoding now uses the maintained `minicbor` library. Existing hashes, policy locks and
+signatures require regeneration; see [semantic encoding](./docs/artifacts.md#semantic-encoding).
+The [Rust library](./crates/fitctl-core/README.md) also provides validated in-memory configuration
+loaders for applications and native bindings, without temporary-file adapters.
+
 ## Inspect a live host
 
 ```bash
@@ -116,7 +123,7 @@ fitctl inspect --input host.state.json
 ```
 
 The resulting state can carry normalized thermal readings, memory and GPU reliability evidence,
-CUDA runtime state, and storage health for checked paths. Service profiles can require these facts
+CUDA runtime state, and available storage-health observations for checked paths. Service profiles can require these facts
 during validation.
 
 For an out-of-band collector, produce target-bound thermal evidence without treating the collector
@@ -154,34 +161,18 @@ explicit; these observations do not introduce new admission thresholds. See
 
 ## Share a redacted artifact
 
-Create a validated redacted view without changing the artifact schema:
+Use the `external` profile to reduce identifying information before sharing a host report:
 
 ```bash
 fitctl redact --profile external --input host.state.json > host.external.json
 ```
 
-For `auditor` and `external`, fitctl redacts supported typed extension payloads and rejects an
-artifact when a populated extension section has no registered redactor. This fail-closed behavior
-prevents unknown extension JSON from bypassing the sharing boundary. Host-contract extension-basis
-namespaces must match their semantic-hash keys; populated payload namespaces must be a subset of
-that basis, and retained extension semantic hashes must be canonical lowercase SHA-256 values.
-Recommendation-pack ids and versions are replaced together. Imported auxiliary reports must carry
-a valid collection timestamp; custom command and non-release version provenance is replaced.
-Retained observation, derivation and report timestamps are also checked before sharing; malformed
-timestamp text is rejected rather than copied into the output.
-Those profiles also replace core claim provenance, free-form labels and notes, path and workload
-identifiers, storage identities, and accelerator PCI/device-node topology. Redacted identity
-summaries use the explicit `redacted` identity class rather than claiming to be pseudonyms. State
-local-identity metadata is omitted, and flexible engine provenance is replaced, in `auditor` and
-`external`; imported closed categories are validated before a sharing view can be emitted.
+The output keeps useful diagnostic information while replacing identifying details. If fitctl
+cannot redact an extension, it rejects the artifact rather than copying that data unchanged.
 
-Prefer narrow survey, state, or validation artifacts when reporting a host issue. Configuration and
-decision bundles retain configuration, trust, signer, evidence-lineage, and semantic-hash data by
-design; their redacted forms are structurally valid retained disclosure artifacts, not an anonymity
-boundary or a generally safe publication package. Semantic hashes remain linkable fingerprints in
-redacted output. Diagnostic software and runtime versions can retain custom prerelease or build
-suffixes.
-Inspect every output before sharing it.
+Redaction does not guarantee anonymity. Share only the artifact needed to explain the issue, rather
+than a complete configuration bundle, and review the JSON before sending it. See the
+[artifact documentation](./docs/artifacts.md#common-envelope) for what is removed and retained.
 
 ## Use Installed Config
 

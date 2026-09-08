@@ -4,6 +4,11 @@
   "corpus_id": "core-artifact-conformance-v1",
   "valid_cases": [
     {
+      "case_id": "state_path_probe_cleanup",
+      "path": "fixtures/host_state/linux-path-probe-cleanup-v1.json",
+      "schema_id": "host-state.v2"
+    },
+    {
       "case_id": "survey_linux_bare_metal_like",
       "path": "fixtures/host_survey/linux-bare-metal-like-v1.json",
       "schema_id": "host-survey.v2"

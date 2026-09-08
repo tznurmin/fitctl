@@ -4,6 +4,9 @@
 #[path = "support/common.rs"]
 mod common;
 
+#[path = "integration/artifacts/semantic_encoding.rs"]
+mod semantic_encoding;
+
 #[path = "support/sharing_time_fixtures.rs"]
 mod sharing_time_fixtures;
 #[path = "integration/redaction/sharing_times.rs"]

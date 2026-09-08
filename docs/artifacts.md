@@ -17,7 +17,7 @@ Common artifacts in the local decision flow:
 Artifacts are JSON. `fitctl inspect` can print text views, and automation can read the JSON
 directly.
 
-Development builds can add opt-in typed [hardware sensor evidence](./hardware-sensors.md) to
+Opt-in typed [hardware sensor evidence](./hardware-sensors.md) can be added to
 `host-state.v2`; it is separate from temperature and admission policy.
 
 Read any supported artifact with `inspect`:
@@ -45,6 +45,18 @@ exercise compatibility with artifacts produced by earlier release lines.
 policies and service profiles. [Validation](./validation.md) covers the decision flow.
 
 Namespaced runtime examples in this repository use `fitctl.runtime.*` extension identifiers.
+
+## Semantic encoding
+
+Version 0.8.0 uses `fitctl.semantic_cbor.v2`: one CBOR array containing the encoding
+identifier and the validated semantic projection. Maps use UTF-8 text keys in length-first order;
+collections have definite lengths and numbers use their shortest lossless widths. JSON formatting
+is not hashed. Policy-pack locks use `fitctl.policy-pack-lock.semantic_cbor.v2`.
+
+This replaces the 0.7 encoding, including incorrect optional-map lengths. Old signatures are not
+accepted under the new encoding. Regenerate hashes, policy locks, derived artifacts and reference
+chains together, then sign them again. Changing a version label does not update a stored hash.
+Unsigned JSON shapes are unchanged; a raw SHA-256 digest does not identify its encoding version.
 
 ## Common envelope
 
@@ -363,10 +375,26 @@ Pairwise link probes are also evidence only. They answer whether the observed so
 or copy into the observed destination path; they do not decide which cache policy a downstream
 tool should select.
 
+Both link evidence shapes may include `cleanup`, independent of link support and `probe_error`.
+Current probes record an ordered list of `{probe_root, outcome, error?}` entries: one root for
+a single-path probe, or source then destination for a pair. `not_created` means this invocation
+did not create that root; `removed` means its removal succeeded; `remove_failed` retains a
+nonblank removal error. Only roots actually created by this invocation are removed. Cleanup
+failure does not overwrite successful link observations or the original setup failure.
+
+An empty `cleanup` list means no roots were attempted. Absent or null cleanup is historical
+evidence with cleanup not recorded, not proof that files were removed. Outcomes participate in
+semantic hashing and signatures. Auditor/external views mask paths and diagnostics while keeping
+the outcomes. Cleanup evidence is not authorization to delete paths named in an imported artifact.
+
 `storage_health` is emitted only when requested with `--probe-path-health <path-id>`. It can record
 health state, probe source, probe method, temperature, used percentage, available spare percentage,
 probe errors, and observation time. Health evidence is included in the state semantic hash and is
 redacted under auditor/external redaction profiles where it can expose device identity.
+
+The current live path-health probe reads temperature from a safe sysfs source when available.
+It does not run SMART utilities or infer health state, wear or spare capacity from temperature;
+those fields remain unknown without evidence. A successful collection is not an SSD health verdict.
 
 `memory_reliability` is emitted only when requested with `--collect memory-reliability`. It records
 safe local memory reliability provider outcomes and aggregate counters such as corrected and

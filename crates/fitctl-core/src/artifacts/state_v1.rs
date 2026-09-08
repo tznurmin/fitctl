@@ -14,6 +14,7 @@ use crate::artifacts::metadata_v1::{
     LocalStableAnchorFamilyV1, LocalStableAnchorSourceV1, LocalStableIdDegradedReasonV1,
     LocalStableStabilityClassV1,
 };
+use crate::artifacts::path_probe_cleanup_v1::HostStatePathProbeCleanupV1;
 use crate::survey::{
     deserialize_observation_limitation_reason_opt_v1, ObservationLimitationReasonV1,
     ObservationStateV1,
@@ -601,6 +602,9 @@ impl StateStorageDurabilityClassV1 {
 #[serde(deny_unknown_fields)]
 /// Optional safe link capability probes for one checked path.
 pub struct HostStatePathLinkCapabilitiesV1 {
+    /// Absent means not recorded; an empty list means no probe roots were attempted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleanup: Option<Vec<HostStatePathProbeCleanupV1>>,
     pub hardlink_supported: StateFieldV1<bool>,
     pub reflink_supported: StateFieldV1<bool>,
     pub symlink_supported: StateFieldV1<bool>,
@@ -658,6 +662,9 @@ impl StateStorageHealthStateV1 {
 #[serde(deny_unknown_fields)]
 /// Optional safe link capability probes between two checked paths.
 pub struct HostStatePathLinkPairV1 {
+    /// Root outcomes in source/destination order, independent of link support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleanup: Option<Vec<HostStatePathProbeCleanupV1>>,
     pub pair_id: String,
     pub from_path_id: String,
     pub to_path_id: String,
